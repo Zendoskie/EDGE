@@ -8,12 +8,8 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import DashboardLayout from "./components/DashboardLayout";
 import DashboardHome from "./pages/dashboard/DashboardHome";
-import Programs from "./pages/dashboard/Programs";
 import Subjects from "./pages/dashboard/Subjects";
-import Students from "./pages/dashboard/Students";
-import Attendance from "./pages/dashboard/Attendance";
-import Activities from "./pages/dashboard/Activities";
-import Predictions from "./pages/dashboard/Predictions";
+import SubjectDetail from "./pages/dashboard/SubjectDetail";
 import MySubjects from "./pages/dashboard/MySubjects";
 import MyAttendance from "./pages/dashboard/MyAttendance";
 import MyScores from "./pages/dashboard/MyScores";
@@ -34,12 +30,8 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<DashboardLayout />}>
               <Route index element={<DashboardHome />} />
-              <Route path="programs" element={<Programs />} />
               <Route path="subjects" element={<Subjects />} />
-              <Route path="students" element={<Students />} />
-              <Route path="attendance" element={<Attendance />} />
-              <Route path="activities" element={<Activities />} />
-              <Route path="predictions" element={<Predictions />} />
+              <Route path="subjects/:id" element={<SubjectDetail />} />
               <Route path="my-subjects" element={<MySubjects />} />
               <Route path="my-attendance" element={<MyAttendance />} />
               <Route path="my-scores" element={<MyScores />} />
