@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,43 +9,33 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Pencil, Trash2, BookOpen, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SubjectForm {
   name: string;
   code: string;
-  program_id: string;
   semester: string;
   academic_year: string;
 }
 
-const emptyForm: SubjectForm = { name: '', code: '', program_id: '', semester: '', academic_year: '' };
+const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '' };
 
 export default function Subjects() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<SubjectForm>(emptyForm);
-
-  const { data: programs = [] } = useQuery({
-    queryKey: ['programs'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('programs').select('id, name, code');
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('subjects')
-        .select('*, programs(name, code)')
+        .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -53,11 +44,7 @@ export default function Subjects() {
 
   const upsert = useMutation({
     mutationFn: async (form: SubjectForm) => {
-      const payload = {
-        ...form,
-        program_id: form.program_id || null,
-        instructor_id: user?.id,
-      };
+      const payload = { ...form, instructor_id: user?.id };
       if (editId) {
         const { error } = await supabase.from('subjects').update(payload).eq('id', editId);
         if (error) throw error;
@@ -88,15 +75,10 @@ export default function Subjects() {
 
   const closeDialog = () => { setOpen(false); setEditId(null); setForm(emptyForm); };
 
-  const openEdit = (s: typeof subjects[0]) => {
+  const openEdit = (s: typeof subjects[0], e: React.MouseEvent) => {
+    e.stopPropagation();
     setEditId(s.id);
-    setForm({
-      name: s.name,
-      code: s.code,
-      program_id: s.program_id || '',
-      semester: s.semester || '',
-      academic_year: s.academic_year || '',
-    });
+    setForm({ name: s.name, code: s.code, semester: s.semester || '', academic_year: s.academic_year || '' });
     setOpen(true);
   };
 
@@ -119,23 +101,6 @@ export default function Subjects() {
                   <Input placeholder="e.g. CS101" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} required />
                 </div>
                 <div className="space-y-2">
-                  <Label>Program</Label>
-                  <Select value={form.program_id} onValueChange={v => setForm(f => ({ ...f, program_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
-                    <SelectContent>
-                      {programs.map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.code} — {p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Subject Name</Label>
-                <Input placeholder="e.g. Introduction to Computer Science" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
                   <Label>Semester</Label>
                   <Select value={form.semester} onValueChange={v => setForm(f => ({ ...f, semester: v }))}>
                     <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -146,10 +111,14 @@ export default function Subjects() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Academic Year</Label>
-                  <Input placeholder="e.g. 2025-2026" value={form.academic_year} onChange={e => setForm(f => ({ ...f, academic_year: e.target.value }))} />
-                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Subject Name</Label>
+                <Input placeholder="e.g. Introduction to Computer Science" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Academic Year</Label>
+                <Input placeholder="e.g. 2025-2026" value={form.academic_year} onChange={e => setForm(f => ({ ...f, academic_year: e.target.value }))} />
               </div>
               <Button type="submit" className="w-full" disabled={upsert.isPending}>
                 {upsert.isPending ? 'Saving...' : editId ? 'Update' : 'Create'}
@@ -159,54 +128,48 @@ export default function Subjects() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <p className="p-6 text-muted-foreground text-sm">Loading subjects...</p>
-          ) : subjects.length === 0 ? (
-            <div className="p-12 text-center">
-              <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground text-sm">No subjects yet. Create programs first, then add subjects.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Program</TableHead>
-                  <TableHead>Semester</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead className="w-24">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {subjects.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.code}</TableCell>
-                    <TableCell>{s.name}</TableCell>
-                    <TableCell>
-                      {s.programs ? <Badge variant="secondary">{(s.programs as any).code}</Badge> : '—'}
-                    </TableCell>
-                    <TableCell>{s.semester || '—'}</TableCell>
-                    <TableCell>{s.academic_year || '—'}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => remove.mutate(s.id)} className="text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <p className="text-muted-foreground text-sm">Loading subjects...</p>
+      ) : subjects.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+            <p className="text-muted-foreground text-sm">No subjects yet. Create your first subject to get started.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {subjects.map(s => (
+            <Card
+              key={s.id}
+              className="cursor-pointer hover:border-primary/40 transition-colors"
+              onClick={() => navigate(`/dashboard/subjects/${s.id}`)}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="font-semibold">{s.code}</p>
+                    <p className="text-sm text-muted-foreground">{s.name}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {s.semester && <Badge variant="secondary">{s.semester}</Badge>}
+                  {s.academic_year && <Badge variant="outline">{s.academic_year}</Badge>}
+                </div>
+                <div className="flex gap-1 mt-3 justify-end">
+                  <Button variant="ghost" size="icon" onClick={(e) => openEdit(s, e)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); remove.mutate(s.id); }}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

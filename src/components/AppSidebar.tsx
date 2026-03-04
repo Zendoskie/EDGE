@@ -1,9 +1,7 @@
 import {
-  LayoutDashboard, BookOpen, Users, ClipboardList, Brain,
-  BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, FolderOpen
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -14,12 +12,7 @@ import { Button } from '@/components/ui/button';
 
 const instructorItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Programs', url: '/dashboard/programs', icon: FolderOpen },
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
-  { title: 'Students', url: '/dashboard/students', icon: Users },
-  { title: 'Attendance', url: '/dashboard/attendance', icon: CalendarCheck },
-  { title: 'Activities', url: '/dashboard/activities', icon: ClipboardList },
-  { title: 'Predictions', url: '/dashboard/predictions', icon: Brain },
 ];
 
 const studentItems = [
@@ -34,7 +27,6 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const { role, signOut, user } = useAuth();
-  const location = useLocation();
 
   const items = role === 'instructor' ? instructorItems : studentItems;
 
