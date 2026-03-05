@@ -319,6 +319,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', type: 'quiz', max_score: '100', weight: '1' });
+  const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
 
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['activities', subjectId],
@@ -365,7 +366,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">Activities</CardTitle>
+        <CardTitle className="text-lg">Activities & Scores</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="mr-2 h-4 w-4" /> Add Activity</Button>
@@ -415,35 +416,165 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
             <p className="text-muted-foreground text-sm">No activities yet.</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Max Score</TableHead>
-                <TableHead>Weight</TableHead>
-                <TableHead className="w-16">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activities.map(a => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-medium">{a.title}</TableCell>
-                  <TableCell><Badge variant="secondary" className="capitalize">{a.type}</Badge></TableCell>
-                  <TableCell>{a.max_score}</TableCell>
-                  <TableCell>{a.weight}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => remove.mutate(a.id)}>
+          <div className="divide-y divide-border">
+            {activities.map(a => (
+              <div key={a.id}>
+                <div
+                  className="flex items-center px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setExpandedActivity(expandedActivity === a.id ? null : a.id)}
+                >
+                  <div className="flex-1 flex items-center gap-3">
+                    <span className="font-medium">{a.title}</span>
+                    <Badge variant="secondary" className="capitalize">{a.type}</Badge>
+                    <span className="text-xs text-muted-foreground">Max: {a.max_score} · Weight: {a.weight}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={e => { e.stopPropagation(); remove.mutate(a.id); }}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    {expandedActivity === a.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </div>
+                </div>
+                {expandedActivity === a.id && (
+                  <ActivityScoring activityId={a.id} subjectId={subjectId} maxScore={a.max_score} userId={userId} />
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/* ───── Activity Scoring Sub-component ───── */
+function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activityId: string; subjectId: string; maxScore: number; userId?: string }) {
+  const queryClient = useQueryClient();
+  const [scores, setScores] = useState<Record<string, string>>({});
+
+  const { data: enrollments = [] } = useQuery({
+    queryKey: ['enrollments', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('enrollments').select('*').eq('subject_id', subjectId);
+      if (error) throw error;
+      if (!data.length) return [];
+      const studentIds = data.map(e => e.student_id).filter(Boolean) as string[];
+      const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
+      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) }));
+    },
+  });
+
+  const { data: submissions = [], isLoading } = useQuery({
+    queryKey: ['submissions', activityId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('submissions').select('*').eq('activity_id', activityId);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Initialize scores from existing submissions
+  useState(() => {
+    if (submissions.length > 0) {
+      const initial: Record<string, string> = {};
+      submissions.forEach(s => {
+        if (s.student_id) initial[s.student_id] = s.score?.toString() ?? '';
+      });
+      setScores(initial);
+    }
+  });
+
+  // Sync scores when submissions load
+  const prevSubmissions = submissions;
+  if (prevSubmissions.length > 0 && Object.keys(scores).length === 0) {
+    const initial: Record<string, string> = {};
+    prevSubmissions.forEach(s => {
+      if (s.student_id) initial[s.student_id] = s.score?.toString() ?? '';
+    });
+    if (Object.keys(initial).length > 0) setScores(initial);
+  }
+
+  const saveScores = useMutation({
+    mutationFn: async () => {
+      const ops = enrollments.map(async (e: any) => {
+        const studentId = e.student_id as string;
+        const scoreVal = scores[studentId];
+        if (scoreVal === undefined || scoreVal === '') return;
+        const numScore = Number(scoreVal);
+        if (isNaN(numScore) || numScore < 0 || numScore > maxScore) return;
+
+        const existing = submissions.find(s => s.student_id === studentId);
+        if (existing) {
+          const { error } = await supabase.from('submissions').update({ score: numScore, graded_by: userId, graded_at: new Date().toISOString() }).eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('submissions').insert({
+            activity_id: activityId,
+            student_id: studentId,
+            score: numScore,
+            graded_by: userId,
+            graded_at: new Date().toISOString(),
+          });
+          if (error) throw error;
+        }
+      });
+      await Promise.all(ops);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['submissions', activityId] });
+      toast.success('Scores saved');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (isLoading) return <p className="px-4 py-3 text-sm text-muted-foreground">Loading scores...</p>;
+
+  if (enrollments.length === 0) {
+    return <p className="px-4 py-3 text-sm text-muted-foreground">Enroll students first to input scores.</p>;
+  }
+
+  return (
+    <div className="border-t border-border bg-muted/30 px-4 py-3 space-y-3">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Student</TableHead>
+            <TableHead className="w-32">Score (/ {maxScore})</TableHead>
+            <TableHead className="w-24">%</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {enrollments.map((e: any) => {
+            const scoreStr = scores[e.student_id] ?? submissions.find(s => s.student_id === e.student_id)?.score?.toString() ?? '';
+            const numScore = Number(scoreStr);
+            const pct = scoreStr && !isNaN(numScore) ? ((numScore / maxScore) * 100).toFixed(1) : '—';
+            return (
+              <TableRow key={e.student_id}>
+                <TableCell className="font-medium">{e.profile?.full_name || '—'}</TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={maxScore}
+                    placeholder="—"
+                    value={scores[e.student_id] ?? submissions.find(s => s.student_id === e.student_id)?.score?.toString() ?? ''}
+                    onChange={ev => setScores(prev => ({ ...prev, [e.student_id]: ev.target.value }))}
+                    className="h-8 w-24"
+                  />
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">{pct}%</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => saveScores.mutate()} disabled={saveScores.isPending}>
+          <Save className="mr-2 h-4 w-4" />
+          {saveScores.isPending ? 'Saving...' : 'Save Scores'}
+        </Button>
+      </div>
+    </div>
   );
 }
 
