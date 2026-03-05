@@ -580,6 +580,9 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 
 /* ───── Predictions Tab ───── */
 function SubjectPredictions({ subjectId }: { subjectId: string }) {
+  const queryClient = useQueryClient();
+  const [generating, setGenerating] = useState(false);
+
   const { data: predictions = [], isLoading } = useQuery({
     queryKey: ['predictions', subjectId],
     queryFn: async () => {
@@ -587,9 +590,8 @@ function SubjectPredictions({ subjectId }: { subjectId: string }) {
         .from('predictions')
         .select('*')
         .eq('subject_id', subjectId)
-        .order('created_at', { ascending: false });
+        .order('risk_level', { ascending: true });
       if (error) throw error;
-      // enrich with profiles
       if (!data.length) return [];
       const studentIds = data.map(p => p.student_id).filter(Boolean) as string[];
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
@@ -597,16 +599,60 @@ function SubjectPredictions({ subjectId }: { subjectId: string }) {
     },
   });
 
-  const riskColor = (level: string) => {
-    if (level === 'high') return 'destructive';
-    if (level === 'medium') return 'secondary';
-    return 'default';
+  const generatePredictions = async () => {
+    setGenerating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error('Please log in'); return; }
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/predict-risk`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ subject_id: subjectId }),
+        }
+      );
+      const result = await resp.json();
+      if (!resp.ok) {
+        toast.error(result.error || 'Failed to generate predictions');
+        return;
+      }
+      toast.success(`Generated predictions for ${result.count} students`);
+      queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+    } catch (e: any) {
+      toast.error(e.message || 'Prediction failed');
+    } finally {
+      setGenerating(false);
+    }
   };
+
+  const riskColor = (level: string) => {
+    if (level === 'at_risk') return 'destructive';
+    if (level === 'excelling') return 'default';
+    return 'secondary';
+  };
+
+  const riskLabel = (level: string) => {
+    if (level === 'at_risk') return 'At Risk';
+    if (level === 'excelling') return 'Excelling';
+    return 'Stable';
+  };
+
+  const riskOrder = { at_risk: 0, stable: 1, excelling: 2 };
+  const sorted = [...predictions].sort((a: any, b: any) => (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1));
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">AI Predictions</CardTitle>
+        <Button size="sm" onClick={generatePredictions} disabled={generating}>
+          <Brain className="mr-2 h-4 w-4" />
+          {generating ? 'Analyzing...' : 'Generate Predictions'}
+        </Button>
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
@@ -614,7 +660,7 @@ function SubjectPredictions({ subjectId }: { subjectId: string }) {
         ) : predictions.length === 0 ? (
           <div className="p-12 text-center">
             <Brain className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground text-sm">No predictions generated yet. Add students, attendance, and activity scores first.</p>
+            <p className="text-muted-foreground text-sm">No predictions yet. Add students, record attendance & scores, then click "Generate Predictions".</p>
           </div>
         ) : (
           <Table>
@@ -623,16 +669,22 @@ function SubjectPredictions({ subjectId }: { subjectId: string }) {
                 <TableHead>Student</TableHead>
                 <TableHead>Risk Level</TableHead>
                 <TableHead>Confidence</TableHead>
-                <TableHead>Recommendation</TableHead>
+                <TableHead>Attendance</TableHead>
+                <TableHead>Quiz Avg</TableHead>
+                <TableHead>Assignment Avg</TableHead>
+                <TableHead className="min-w-[200px]">Recommendation</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {predictions.map((p: any) => (
+              {sorted.map((p: any) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
-                  <TableCell><Badge variant={riskColor(p.risk_level)} className="capitalize">{p.risk_level}</Badge></TableCell>
-                  <TableCell>{p.confidence ? `${(p.confidence * 100).toFixed(0)}%` : '—'}</TableCell>
-                  <TableCell className="max-w-xs truncate">{p.recommendation || '—'}</TableCell>
+                  <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
+                  <TableCell>{p.confidence != null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}</TableCell>
+                  <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
+                  <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{p.recommendation || '—'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
