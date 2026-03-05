@@ -1,1 +1,4 @@
 project_id = "sqklneckddcdpfkwhldr"
+
+[functions.predict-risk]
+verify_jwt = false
