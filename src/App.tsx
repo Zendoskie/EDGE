@@ -3,6 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true };
 import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -14,6 +16,9 @@ import MySubjects from "./pages/dashboard/MySubjects";
 import MyAttendance from "./pages/dashboard/MyAttendance";
 import MyScores from "./pages/dashboard/MyScores";
 import Insights from "./pages/dashboard/Insights";
+import Settings from "./pages/dashboard/Settings";
+import Programs from "./pages/dashboard/Programs";
+import Reports from "./pages/dashboard/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,7 +29,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter future={routerFuture}>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
@@ -36,6 +41,9 @@ const App = () => (
               <Route path="my-attendance" element={<MyAttendance />} />
               <Route path="my-scores" element={<MyScores />} />
               <Route path="insights" element={<Insights />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="programs" element={<Programs />} />
+              <Route path="reports" element={<Reports />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

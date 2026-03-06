@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, BookOpen, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, BookOpen, ChevronRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SubjectForm {
@@ -18,9 +18,10 @@ interface SubjectForm {
   code: string;
   semester: string;
   academic_year: string;
+  program_id: string;
 }
 
-const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '' };
+const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '', program_id: '' };
 
 export default function Subjects() {
   const { user } = useAuth();
@@ -29,6 +30,15 @@ export default function Subjects() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<SubjectForm>(emptyForm);
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('programs').select('id, name, code').order('name');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects'],
@@ -42,9 +52,21 @@ export default function Subjects() {
     },
   });
 
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success('Course code copied');
+  };
+
   const upsert = useMutation({
     mutationFn: async (form: SubjectForm) => {
-      const payload = { ...form, instructor_id: user?.id };
+      const payload = {
+        name: form.name,
+        code: form.code,
+        semester: form.semester || null,
+        academic_year: form.academic_year || null,
+        program_id: form.program_id || null,
+        instructor_id: user?.id,
+      };
       if (editId) {
         const { error } = await supabase.from('subjects').update(payload).eq('id', editId);
         if (error) throw error;
@@ -78,7 +100,13 @@ export default function Subjects() {
   const openEdit = (s: typeof subjects[0], e: React.MouseEvent) => {
     e.stopPropagation();
     setEditId(s.id);
-    setForm({ name: s.name, code: s.code, semester: s.semester || '', academic_year: s.academic_year || '' });
+    setForm({
+      name: s.name,
+      code: s.code,
+      semester: s.semester || '',
+      academic_year: s.academic_year || '',
+      program_id: (s as any).program_id || '',
+    });
     setOpen(true);
   };
 
@@ -120,6 +148,18 @@ export default function Subjects() {
                 <Label>Academic Year</Label>
                 <Input placeholder="e.g. 2025-2026" value={form.academic_year} onChange={e => setForm(f => ({ ...f, academic_year: e.target.value }))} />
               </div>
+              <div className="space-y-2">
+                <Label>Program (optional)</Label>
+                <Select value={form.program_id || 'none'} onValueChange={v => setForm(f => ({ ...f, program_id: v === 'none' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {programs.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>{p.code} — {p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button type="submit" className="w-full" disabled={upsert.isPending}>
                 {upsert.isPending ? 'Saving...' : editId ? 'Update' : 'Create'}
               </Button>
@@ -148,7 +188,12 @@ export default function Subjects() {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="font-semibold">{s.code}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold">{s.code}</p>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); copyCode(s.code); }} title="Copy course code">
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <p className="text-sm text-muted-foreground">{s.name}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />

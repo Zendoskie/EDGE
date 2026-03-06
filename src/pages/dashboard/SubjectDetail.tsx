@@ -12,13 +12,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SubjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: subject, isLoading: subjectLoading } = useQuery({
@@ -35,22 +36,66 @@ export default function SubjectDetail() {
     enabled: !!id,
   });
 
+  const copyCode = () => {
+    if (!subject?.code) return;
+    navigator.clipboard.writeText(subject.code);
+    toast.success('Course code copied to clipboard');
+  };
+
   if (subjectLoading) return <p className="p-6 text-muted-foreground">Loading...</p>;
   if (!subject) return <p className="p-6 text-destructive">Subject not found.</p>;
 
+  const isInstructor = role === 'instructor';
+  const backUrl = isInstructor ? '/dashboard/subjects' : '/dashboard/my-subjects';
+
+  if (!isInstructor) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(backUrl)}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-display font-bold">{subject.code} — {subject.name}</h1>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyCode} title="Copy course code">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
+                {subject.semester && `${subject.semester} Semester`}
+                {subject.academic_year && ` • ${subject.academic_year}`}
+              </p>
+            </div>
+          </div>
+        </div>
+        <StudentSubjectView subjectId={id!} subjectCode={subject.code} userId={user?.id} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/subjects')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-display font-bold">{subject.code} — {subject.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
-            {subject.semester && `${subject.semester} Semester`}
-            {subject.academic_year && ` • ${subject.academic_year}`}
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(backUrl)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-display font-bold">{subject.code} — {subject.name}</h1>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={copyCode} title="Copy course code">
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
+              {subject.semester && `${subject.semester} Semester`}
+              {subject.academic_year && ` • ${subject.academic_year}`}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -72,9 +117,119 @@ export default function SubjectDetail() {
           <SubjectActivities subjectId={id!} userId={user?.id} />
         </TabsContent>
         <TabsContent value="predictions">
-          <SubjectPredictions subjectId={id!} />
+          <SubjectPredictions subjectId={id!} subjectCode={subject.code} subjectName={subject.name} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/* ───── Student read-only view ───── */
+function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: string; subjectCode: string; userId?: string }) {
+  const { data: myAttendance = [] } = useQuery({
+    queryKey: ['my-attendance-subject', subjectId, userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('date, status')
+        .eq('subject_id', subjectId)
+        .eq('student_id', userId)
+        .order('date', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!userId,
+  });
+
+  const { data: activities = [] } = useQuery({
+    queryKey: ['activities', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('activities').select('*').eq('subject_id', subjectId).order('due_date', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: mySubmissions = [] } = useQuery({
+    queryKey: ['my-submissions-subject', subjectId, userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const activityIds = (await supabase.from('activities').select('id').eq('subject_id', subjectId)).data?.map(a => a.id) ?? [];
+      if (activityIds.length === 0) return [];
+      const { data, error } = await supabase.from('submissions').select('activity_id, score').eq('student_id', userId).in('activity_id', activityIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!userId,
+  });
+
+  const { data: myPrediction } = useQuery({
+    queryKey: ['my-prediction', subjectId, userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('predictions')
+        .select('*')
+        .eq('subject_id', subjectId)
+        .eq('student_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!userId,
+  });
+
+  const getScore = (activityId: string) => mySubmissions.find((s: any) => s.activity_id === activityId)?.score;
+  const riskLabel = (level: string) => level === 'critical' ? 'Critical' : level === 'at_risk' ? 'At Risk' : level === 'excelling' ? 'Excelling' : 'Stable';
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader><CardTitle className="text-lg">My attendance</CardTitle></CardHeader>
+        <CardContent>
+          {myAttendance.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No attendance records yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {myAttendance.map((a: any) => (
+                <Badge key={a.date} variant={a.status === 'present' || a.status === 'late' ? 'default' : 'secondary'}>{a.date} — {a.status}</Badge>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-lg">My scores</CardTitle></CardHeader>
+        <CardContent>
+          {activities.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activities yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {activities.map((a: any) => (
+                <li key={a.id} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+                  <span>{a.title} ({a.type})</span>
+                  <span>{getScore(a.id) != null ? `${getScore(a.id)} / ${a.max_score}` : '—'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+      {myPrediction && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Risk & recommendation</CardTitle></CardHeader>
+          <CardContent>
+            <Badge variant={myPrediction.risk_level === 'critical' || myPrediction.risk_level === 'at_risk' ? 'destructive' : myPrediction.risk_level === 'excelling' ? 'default' : 'secondary'}>
+              {riskLabel(myPrediction.risk_level)}
+            </Badge>
+            {myPrediction.recommendation && <p className="mt-2 text-sm text-muted-foreground">{myPrediction.recommendation}</p>}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -579,9 +734,16 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 }
 
 /* ───── Predictions Tab ───── */
-function SubjectPredictions({ subjectId }: { subjectId: string }) {
+function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId: string; subjectCode: string; subjectName: string }) {
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
+  const [interventionPrediction, setInterventionPrediction] = useState<any>(null);
+  const [interventionType, setInterventionType] = useState<string>('email');
+  const [interventionMessage, setInterventionMessage] = useState('');
+  const [sendEmailNotification, setSendEmailNotification] = useState(false);
+  const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
+  const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
+  const [bulkNotifyPreparing, setBulkNotifyPreparing] = useState(false);
 
   const { data: predictions = [], isLoading } = useQuery({
     queryKey: ['predictions', subjectId],
@@ -630,67 +792,204 @@ function SubjectPredictions({ subjectId }: { subjectId: string }) {
     }
   };
 
+  const logIntervention = useMutation({
+    mutationFn: async () => {
+      if (!interventionPrediction?.id || !interventionPrediction?.student_id) throw new Error('Missing prediction');
+      const studentEmail = interventionPrediction.profile?.email;
+      if (sendEmailNotification && studentEmail) {
+        const mailSubject = `EDGE: ${subjectCode} — Instructor Intervention`;
+        const mailBody =
+          interventionMessage ||
+          `Your instructor has logged an intervention for ${subjectCode} (${subjectName}).\n\nPlease check the EDGE platform for details and reach out if you need support.`;
+        window.location.href = `mailto:${encodeURIComponent(studentEmail)}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+      }
+      const { error } = await supabase.from('interventions').insert({
+        prediction_id: interventionPrediction.id,
+        student_id: interventionPrediction.student_id,
+        subject_id: subjectId,
+        type: interventionType,
+        message: interventionMessage || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(sendEmailNotification ? 'Intervention logged and email draft opened' : 'Intervention logged');
+      setInterventionPrediction(null);
+      setInterventionMessage('');
+      setInterventionType('email');
+      setSendEmailNotification(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const riskColor = (level: string) => {
+    if (level === 'critical') return 'destructive';
     if (level === 'at_risk') return 'destructive';
     if (level === 'excelling') return 'default';
     return 'secondary';
   };
 
   const riskLabel = (level: string) => {
+    if (level === 'critical') return 'Critical';
     if (level === 'at_risk') return 'At Risk';
     if (level === 'excelling') return 'Excelling';
     return 'Stable';
   };
 
-  const riskOrder = { at_risk: 0, stable: 1, excelling: 2 };
+  const riskOrder = { critical: 0, at_risk: 1, stable: 2, excelling: 3 };
   const sorted = [...predictions].sort((a: any, b: any) => (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1));
 
+  const summary = {
+    critical: predictions.filter((p: any) => p.risk_level === 'critical').length,
+    at_risk: predictions.filter((p: any) => p.risk_level === 'at_risk').length,
+    stable: predictions.filter((p: any) => p.risk_level === 'stable').length,
+    excelling: predictions.filter((p: any) => p.risk_level === 'excelling').length,
+  };
+
+  const atRiskPredictions = predictions.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
+  const sendBulkNotifications = async () => {
+    const withEmail = atRiskPredictions.filter((p: any) => p.profile?.email);
+    if (withEmail.length === 0) {
+      toast.error('No at-risk students have email on file');
+      return;
+    }
+    setBulkNotifyPreparing(true);
+    const body = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
+    const recipients = withEmail.map((p: any) => p.profile.email).join(',');
+    const mailSubject = `EDGE: ${subjectCode} — Important Update`;
+    // Use BCC to avoid exposing student emails to each other.
+    window.location.href = `mailto:?bcc=${encodeURIComponent(recipients)}&subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(body)}`;
+    setBulkNotifyPreparing(false);
+    setBulkNotifyOpen(false);
+    setBulkNotifyMessage('');
+    toast.success(`Opened email draft for ${withEmail.length} at-risk students`);
+  };
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">AI Predictions</CardTitle>
-        <Button size="sm" onClick={generatePredictions} disabled={generating}>
-          <Brain className="mr-2 h-4 w-4" />
-          {generating ? 'Analyzing...' : 'Generate Predictions'}
-        </Button>
-      </CardHeader>
-      <CardContent className="p-0">
-        {isLoading ? (
-          <p className="p-6 text-muted-foreground text-sm">Loading...</p>
-        ) : predictions.length === 0 ? (
-          <div className="p-12 text-center">
-            <Brain className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground text-sm">No predictions yet. Add students, record attendance & scores, then click "Generate Predictions".</p>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-lg">AI Predictions</CardTitle>
+          <div className="flex gap-2">
+            {atRiskPredictions.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => setBulkNotifyOpen(true)}>
+                <Mail className="mr-2 h-4 w-4" />
+                Notify at-risk students
+              </Button>
+            )}
+            <Button size="sm" onClick={generatePredictions} disabled={generating}>
+              <Brain className="mr-2 h-4 w-4" />
+              {generating ? 'Analyzing...' : 'Generate Predictions'}
+            </Button>
           </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Risk Level</TableHead>
-                <TableHead>Confidence</TableHead>
-                <TableHead>Attendance</TableHead>
-                <TableHead>Quiz Avg</TableHead>
-                <TableHead>Assignment Avg</TableHead>
-                <TableHead className="min-w-[200px]">Recommendation</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map((p: any) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
-                  <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
-                  <TableCell>{p.confidence != null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}</TableCell>
-                  <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
-                  <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
-                  <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{p.recommendation || '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <p className="p-6 text-muted-foreground text-sm">Loading...</p>
+          ) : predictions.length === 0 ? (
+            <div className="p-12 text-center">
+              <Brain className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground text-sm">No predictions yet. Add students, record attendance & scores, then click "Generate Predictions".</p>
+            </div>
+          ) : (
+            <>
+              <div className="px-6 py-2 flex gap-4 text-sm border-b bg-muted/30 flex-wrap">
+                <span><strong>{summary.critical}</strong> critical</span>
+                <span><strong>{summary.at_risk}</strong> at-risk</span>
+                <span><strong>{summary.stable}</strong> stable</span>
+                <span><strong>{summary.excelling}</strong> excelling</span>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Risk Level</TableHead>
+                    <TableHead>Confidence</TableHead>
+                    <TableHead>Attendance</TableHead>
+                    <TableHead>Quiz Avg</TableHead>
+                    <TableHead>Assignment Avg</TableHead>
+                    <TableHead className="min-w-[200px]">Recommendation</TableHead>
+                    <TableHead className="w-28">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sorted.map((p: any) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
+                      <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
+                      <TableCell>{p.confidence != null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}</TableCell>
+                      <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
+                      <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
+                      <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{p.recommendation || '—'}</TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" onClick={() => setInterventionPrediction(p)}>Log intervention</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Notify at-risk students</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: any) => p.profile?.email).length} at-risk/critical students for {subjectCode}.</p>
+          <div className="space-y-2">
+            <Label>Message (optional)</Label>
+            <Input
+              placeholder="Custom message or leave blank for default"
+              value={bulkNotifyMessage}
+              onChange={e => setBulkNotifyMessage(e.target.value)}
+              className="min-h-[80px]"
+            />
+          </div>
+          <Button onClick={sendBulkNotifications} disabled={bulkNotifyPreparing}>
+            {bulkNotifyPreparing ? 'Preparing...' : 'Open email draft'}
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!interventionPrediction} onOpenChange={(open) => !open && setInterventionPrediction(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Log intervention</DialogTitle></DialogHeader>
+          {interventionPrediction && (
+            <form className="space-y-4" onSubmit={e => { e.preventDefault(); logIntervention.mutate(); }}>
+              <p className="text-sm text-muted-foreground">Student: {interventionPrediction.profile?.full_name || '—'}</p>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select value={interventionType} onValueChange={setInterventionType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="meeting">One-on-one Meeting</SelectItem>
+                    <SelectItem value="tutoring">Tutoring</SelectItem>
+                    <SelectItem value="counseling">Counseling</SelectItem>
+                    <SelectItem value="academic_support">Academic Support</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Message (optional)</Label>
+                <Input placeholder="Note or summary" value={interventionMessage} onChange={e => setInterventionMessage(e.target.value)} />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="send-email" checked={sendEmailNotification} onCheckedChange={(c) => setSendEmailNotification(!!c)} />
+                <Label htmlFor="send-email" className="text-sm font-normal cursor-pointer">
+                  Send email notification to student (Gmail/email)
+                </Label>
+              </div>
+              {sendEmailNotification && !interventionPrediction?.profile?.email && (
+                <p className="text-xs text-amber-600">Student has no email on file. Notification will not be sent.</p>
+              )}
+              <Button type="submit" disabled={logIntervention.isPending}>{logIntervention.isPending ? 'Saving...' : 'Save'}</Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

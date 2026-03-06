@@ -7,6 +7,99 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+type RiskLevel = "critical" | "at_risk" | "stable" | "excelling";
+
+interface StudentMetrics {
+  student_id: string;
+  name: string;
+  attendance_rate: number | null;
+  quiz_average: number | null;
+  assignment_average: number | null;
+  project_score: number | null;
+  activity_completion_rate: number | null;
+}
+
+function classifyStudent(metrics: StudentMetrics): { risk_level: RiskLevel; confidence: number; recommendation: string } {
+  const att = metrics.attendance_rate ?? null;
+  const quiz = metrics.quiz_average ?? null;
+  const assign = metrics.assignment_average ?? null;
+  const project = metrics.project_score ?? null;
+  const completion = metrics.activity_completion_rate ?? null;
+
+  const attPct = att != null ? att * 100 : null;
+  const quizPct = quiz;
+  const assignPct = assign;
+  const projectPct = project;
+  const avgGrade = [quizPct, assignPct, projectPct].filter((x) => x != null).length
+    ? ([quizPct, assignPct, projectPct].filter((x) => x != null) as number[]).reduce((a, b) => a + b, 0) /
+      ([quizPct, assignPct, projectPct].filter((x) => x != null).length)
+    : null;
+  const completionPct = completion != null ? completion * 100 : null;
+
+  const reasons: string[] = [];
+  let atRiskScore = 0;
+  let excellingScore = 0;
+
+  if (attPct != null) {
+    if (attPct < 60) {
+      atRiskScore += 3;
+      reasons.push(`attendance (${attPct.toFixed(0)}%)`);
+    } else if (attPct < 70) {
+      atRiskScore += 2;
+      reasons.push(`attendance (${attPct.toFixed(0)}%)`);
+    } else if (attPct >= 90) excellingScore += 1;
+  }
+  if (avgGrade != null) {
+    if (avgGrade < 50) {
+      atRiskScore += 3;
+      reasons.push(`averages (${avgGrade.toFixed(0)}%)`);
+    } else if (avgGrade < 60) {
+      atRiskScore += 2;
+      reasons.push(`averages (${avgGrade.toFixed(0)}%)`);
+    } else if (avgGrade >= 85) excellingScore += 1;
+  }
+  if (completionPct != null) {
+    if (completionPct < 40) {
+      atRiskScore += 3;
+      reasons.push(`activity completion (${completionPct.toFixed(0)}%)`);
+    } else if (completionPct < 50) {
+      atRiskScore += 2;
+      reasons.push(`activity completion (${completionPct.toFixed(0)}%)`);
+    } else if (completionPct >= 80) excellingScore += 1;
+  }
+
+  // Critical: very low scores or multiple severe indicators
+  if (atRiskScore >= 5 || (avgGrade != null && avgGrade < 50) || (attPct != null && attPct < 50)) {
+    const recommendation =
+      reasons.length > 0
+        ? `Urgent: Focus on improving ${reasons.join(" and ")}. Recommend counseling, tutoring, or academic support.`
+        : "Multiple critical indicators. Immediate intervention recommended.";
+    return { risk_level: "critical", confidence: Math.min(0.95, 0.7 + atRiskScore * 0.05), recommendation };
+  }
+
+  if (atRiskScore >= 2) {
+    const recommendation =
+      reasons.length > 0
+        ? `Focus on improving ${reasons.join(" and ")}. Consider office hours or tutoring.`
+        : "Multiple indicators suggest risk. Review attendance and graded work.";
+    return { risk_level: "at_risk", confidence: Math.min(0.95, 0.6 + atRiskScore * 0.1), recommendation };
+  }
+
+  if (excellingScore >= 2 && (attPct == null || attPct >= 85) && (avgGrade == null || avgGrade >= 80)) {
+    return {
+      risk_level: "excelling",
+      confidence: 0.85,
+      recommendation: "Strong performance. Consider mentoring peers or enrichment if available.",
+    };
+  }
+
+  const stableRecommendation =
+    reasons.length > 0
+      ? `Monitor ${reasons.join(" and ")}. Small improvements can help.`
+      : "Metrics are in a moderate range. Keep consistent effort and attendance.";
+  return { risk_level: "stable", confidence: 0.75, recommendation: stableRecommendation };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -16,12 +109,8 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY not configured");
-
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify caller is instructor using service role client
     const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !user) throw new Error("Unauthorized");
 
@@ -31,7 +120,6 @@ serve(async (req) => {
     const { subject_id } = await req.json();
     if (!subject_id) throw new Error("subject_id is required");
 
-    // 1. Get enrolled students
     const { data: enrollments } = await supabase
       .from("enrollments")
       .select("student_id")
@@ -47,17 +135,14 @@ serve(async (req) => {
 
     const studentIds = enrollments.map((e) => e.student_id).filter(Boolean) as string[];
 
-    // 2. Get profiles
     const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", studentIds);
     const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p.full_name]));
 
-    // 3. Get attendance records for this subject
     const { data: attendance } = await supabase
       .from("attendance")
       .select("student_id, status")
       .eq("subject_id", subject_id);
 
-    // 4. Get activities for this subject
     const { data: activities } = await supabase
       .from("activities")
       .select("id, type, max_score, weight")
@@ -65,7 +150,6 @@ serve(async (req) => {
 
     const activityIds = (activities || []).map((a) => a.id);
 
-    // 5. Get submissions
     let submissions: any[] = [];
     if (activityIds.length > 0) {
       const { data } = await supabase
@@ -75,8 +159,7 @@ serve(async (req) => {
       submissions = data || [];
     }
 
-    // 6. Compute metrics per student
-    const studentMetrics = studentIds.map((sid) => {
+    const studentMetrics: StudentMetrics[] = studentIds.map((sid) => {
       const studentAttendance = (attendance || []).filter((a) => a.student_id === sid);
       const totalClasses = studentAttendance.length;
       const presentCount = studentAttendance.filter((a) => a.status === "present" || a.status === "late").length;
@@ -97,8 +180,6 @@ serve(async (req) => {
       const quizAvg = avg(activityMap["quiz"] || []);
       const assignmentAvg = avg(activityMap["assignment"] || []);
       const projectScore = avg(activityMap["project"] || []);
-      const examAvg = avg(activityMap["exam"] || []);
-
       const totalActivities = (activities || []).length;
       const completedActivities = studentSubs.filter((s) => s.score != null).length;
       const completionRate = totalActivities > 0 ? completedActivities / totalActivities : null;
@@ -110,112 +191,26 @@ serve(async (req) => {
         quiz_average: quizAvg,
         assignment_average: assignmentAvg,
         project_score: projectScore,
-        exam_average: examAvg,
         activity_completion_rate: completionRate,
       };
     });
 
-    // 7. Call Lovable AI for classification
-    const prompt = `You are an academic risk assessment AI for a higher education system called EDGE (Early Detection for Graduation Enhancement).
-
-Analyze each student's metrics and classify their risk level. Return a JSON array using the tool provided.
-
-Metrics for each student:
-${JSON.stringify(studentMetrics, null, 2)}
-
-Classification guidelines:
-- "at_risk": attendance < 70%, OR multiple averages below 60%, OR completion rate < 50%
-- "stable": metrics are moderate (60-80% range), no critical flags
-- "excelling": attendance > 90%, averages > 85%, high completion
-
-If data is insufficient (null values), note that in the recommendation and classify as "stable" by default.
-For each student provide a specific, actionable recommendation.`;
-
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "classify_students",
-              description: "Classify students by risk level with recommendations",
-              parameters: {
-                type: "object",
-                properties: {
-                  predictions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        student_id: { type: "string" },
-                        risk_level: { type: "string", enum: ["at_risk", "stable", "excelling"] },
-                        confidence: { type: "number", description: "0 to 1" },
-                        recommendation: { type: "string" },
-                      },
-                      required: ["student_id", "risk_level", "confidence", "recommendation"],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: ["predictions"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "classify_students" } },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const status = aiResponse.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits depleted. Please add funds in Settings → Workspace → Usage." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await aiResponse.text();
-      console.error("AI error:", status, errText);
-      throw new Error("AI classification failed");
-    }
-
-    const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No tool call in AI response");
-
-    const { predictions: aiPredictions } = JSON.parse(toolCall.function.arguments);
-
-    // 8. Delete old predictions for this subject, then insert new ones
     await supabase.from("predictions").delete().eq("subject_id", subject_id);
 
-    const rows = aiPredictions.map((p: any) => {
-      const metrics = studentMetrics.find((m) => m.student_id === p.student_id);
+    const rows = studentMetrics.map((metrics) => {
+      const { risk_level, confidence, recommendation } = classifyStudent(metrics);
       return {
-        student_id: p.student_id,
+        student_id: metrics.student_id,
         subject_id,
         prediction_type: "ai_classification",
-        risk_level: p.risk_level,
-        confidence: p.confidence,
-        recommendation: p.recommendation,
-        attendance_rate: metrics?.attendance_rate,
-        quiz_average: metrics?.quiz_average,
-        assignment_average: metrics?.assignment_average,
-        project_score: metrics?.project_score,
-        activity_completion_rate: metrics?.activity_completion_rate,
+        risk_level,
+        confidence,
+        recommendation,
+        attendance_rate: metrics.attendance_rate,
+        quiz_average: metrics.quiz_average,
+        assignment_average: metrics.assignment_average,
+        project_score: metrics.project_score,
+        activity_completion_rate: metrics.activity_completion_rate,
       };
     });
 

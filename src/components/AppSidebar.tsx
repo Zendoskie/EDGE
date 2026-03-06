@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button';
 const instructorItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
+  { title: 'Reports', url: '/dashboard/reports', icon: FileBarChart },
+  { title: 'Programs', url: '/dashboard/programs', icon: Library },
+  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
 const studentItems = [
@@ -21,6 +24,7 @@ const studentItems = [
   { title: 'Attendance', url: '/dashboard/my-attendance', icon: CalendarCheck },
   { title: 'Scores', url: '/dashboard/my-scores', icon: FileText },
   { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },
+  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
 export function AppSidebar() {
