@@ -1,5 +1,8 @@
-project_id = "gvtvuopmybdmwfinxtou"
+project_id = "zqmptaazjlovnrnzjbmy"
 
 [functions.predict-risk]
+verify_jwt = false
+
+[functions.send-notification]
 verify_jwt = false
 

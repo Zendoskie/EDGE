@@ -100,6 +100,33 @@ function classifyStudent(metrics: StudentMetrics): { risk_level: RiskLevel; conf
   return { risk_level: "stable", confidence: 0.75, recommendation: stableRecommendation };
 }
 
+async function sendResendEmail(opts: { to: string; subject: string; html: string }) {
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey) throw new Error("Email not configured. Add RESEND_API_KEY to Edge Function secrets.");
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${resendKey}`,
+    },
+    body: JSON.stringify({
+      // Use a verified domain here if you have one, e.g. "EDGE <noreply@yourdomain.com>"
+      from: "EDGE <onboarding@resend.dev>",
+      to: [opts.to],
+      subject: opts.subject,
+      html: opts.html,
+    }),
+  });
+
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Resend error (${res.status})`;
+    throw new Error(msg);
+  }
+  return result as { id: string };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -120,6 +147,13 @@ serve(async (req) => {
     const { subject_id } = await req.json();
     if (!subject_id) throw new Error("subject_id is required");
 
+    const { data: subject, error: subjectErr } = await supabase
+      .from("subjects")
+      .select("code, name")
+      .eq("id", subject_id)
+      .single();
+    if (subjectErr) throw subjectErr;
+
     const { data: enrollments } = await supabase
       .from("enrollments")
       .select("student_id")
@@ -135,8 +169,8 @@ serve(async (req) => {
 
     const studentIds = enrollments.map((e) => e.student_id).filter(Boolean) as string[];
 
-    const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", studentIds);
-    const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p.full_name]));
+    const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, email").in("user_id", studentIds);
+    const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email }]));
 
     const { data: attendance } = await supabase
       .from("attendance")
@@ -186,7 +220,7 @@ serve(async (req) => {
 
       return {
         student_id: sid,
-        name: profileMap[sid] || "Unknown",
+        name: profileMap[sid]?.full_name || "Unknown",
         attendance_rate: attendanceRate,
         quiz_average: quizAvg,
         assignment_average: assignmentAvg,
@@ -216,6 +250,47 @@ serve(async (req) => {
 
     const { error: insertError } = await supabase.from("predictions").insert(rows);
     if (insertError) throw insertError;
+
+    // Auto-notify critical / at-risk students (at most once per 24h per subject+risk level)
+    const notifyRows = rows.filter((r) => r.risk_level === "critical" || r.risk_level === "at_risk");
+    if (notifyRows.length > 0) {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: alreadySent } = await supabase
+        .from("email_notifications")
+        .select("student_id, risk_level")
+        .eq("subject_id", subject_id)
+        .gte("sent_at", since);
+
+      const sentSet = new Set((alreadySent || []).map((n: any) => `${n.student_id}:${n.risk_level}`));
+
+      for (const n of notifyRows) {
+        const key = `${n.student_id}:${n.risk_level}`;
+        if (sentSet.has(key)) continue;
+
+        const studentEmail = profileMap[n.student_id]?.email;
+        if (!studentEmail) continue;
+
+        const subj = `EDGE Alert: ${n.risk_level === "critical" ? "Critical" : "At Risk"} — ${subject.code}`;
+        const html = `
+          <p>Hello ${profileMap[n.student_id]?.full_name || "student"},</p>
+          <p>You have been identified as <strong>${n.risk_level === "critical" ? "Critical" : "At Risk"}</strong> for <strong>${subject.code} — ${subject.name}</strong>.</p>
+          <p><strong>Recommendation:</strong> ${n.recommendation || "Please check EDGE for details and reach out to your instructor."}</p>
+          <p>Please log in to EDGE for more details.</p>
+        `;
+
+        try {
+          await sendResendEmail({ to: studentEmail, subject: subj, html });
+          await supabase.from("email_notifications").insert({
+            student_id: n.student_id,
+            subject_id,
+            risk_level: n.risk_level,
+            channel: "email",
+          });
+        } catch (e) {
+          console.error("auto-notify failed:", e);
+        }
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, count: rows.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

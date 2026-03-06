@@ -82,10 +82,25 @@ After this, “Generate Predictions” in the app will use the new project’s f
 
 ---
 
-## Step 4 (Optional): Email notifications (no API keys)
+## Step 4 (Optional): Automatic email notifications (Resend)
 
-EDGE can open a pre-filled email draft to notify students (uses their profile email and your default mail app / Gmail).
-This requires **no email API keys** and works immediately, but the instructor must click **Send** in their email client.
+EDGE can automatically email students when they are flagged as **Critical** or **At Risk** during prediction generation.
+
+1. Deploy the functions:
+
+```bash
+npx supabase functions deploy predict-risk
+npx supabase functions deploy send-notification
+```
+
+2. Set the Resend API key (Supabase secrets):
+
+```bash
+npx supabase secrets set RESEND_API_KEY=re_your_key --env prod
+```
+
+Notes:
+- To email arbitrary Gmail recipients reliably, you typically need a **verified sending domain** in Resend and update the `from` address in the functions.
 
 ---
 

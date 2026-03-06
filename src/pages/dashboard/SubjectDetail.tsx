@@ -797,11 +797,18 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       if (!interventionPrediction?.id || !interventionPrediction?.student_id) throw new Error('Missing prediction');
       const studentEmail = interventionPrediction.profile?.email;
       if (sendEmailNotification && studentEmail) {
-        const mailSubject = `EDGE: ${subjectCode} — Instructor Intervention`;
-        const mailBody =
-          interventionMessage ||
-          `Your instructor has logged an intervention for ${subjectCode} (${subjectName}).\n\nPlease check the EDGE platform for details and reach out if you need support.`;
-        window.location.href = `mailto:${encodeURIComponent(studentEmail)}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+        const { error: invokeError } = await supabase.functions.invoke('send-notification', {
+          body: {
+            to: studentEmail,
+            student_id: interventionPrediction.student_id,
+            subject_id: subjectId,
+            risk_level: interventionPrediction.risk_level,
+            subject_code: subjectCode,
+            subject_name: subjectName,
+            body: interventionMessage || `Your instructor has logged an intervention for ${subjectCode}. Please check the EDGE platform for details.`,
+          },
+        });
+        if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
       }
       const { error } = await supabase.from('interventions').insert({
         prediction_id: interventionPrediction.id,
@@ -813,7 +820,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(sendEmailNotification ? 'Intervention logged and email draft opened' : 'Intervention logged');
+      toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');
@@ -855,14 +862,28 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     }
     setBulkNotifyPreparing(true);
     const body = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
-    const recipients = withEmail.map((p: any) => p.profile.email).join(',');
-    const mailSubject = `EDGE: ${subjectCode} — Important Update`;
-    // Use BCC to avoid exposing student emails to each other.
-    window.location.href = `mailto:?bcc=${encodeURIComponent(recipients)}&subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(body)}`;
+    let sent = 0;
+    for (const p of withEmail) {
+      try {
+        const { error: invokeError } = await supabase.functions.invoke('send-notification', {
+          body: {
+            to: p.profile.email,
+            student_id: p.student_id,
+            subject_id: subjectId,
+            risk_level: p.risk_level,
+            subject_code: subjectCode,
+            subject_name: subjectName,
+            body,
+          },
+        });
+        if (!invokeError) sent++;
+      } catch {}
+    }
     setBulkNotifyPreparing(false);
     setBulkNotifyOpen(false);
     setBulkNotifyMessage('');
-    toast.success(`Opened email draft for ${withEmail.length} at-risk students`);
+    toast.success(`Sent notifications to ${sent} of ${withEmail.length} at-risk students`);
+    if (sent < withEmail.length) toast.error('Some emails failed. Check RESEND_API_KEY / Resend settings.');
   };
 
   return (
