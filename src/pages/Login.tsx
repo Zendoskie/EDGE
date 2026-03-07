@@ -22,6 +22,9 @@ export default function Login() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
   const [signupRole, setSignupRole] = useState<'student' | 'instructor'>('student');
+  const [signupCourse, setSignupCourse] = useState('');
+  const [signupYear, setSignupYear] = useState('');
+  const [signupStudentNumber, setSignupStudentNumber] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,8 +43,17 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await signUp(signupEmail, signupPassword, signupName, signupRole);
-      toast.success('Account created! Check your email to verify.');
+      const extras =
+        signupRole === 'student'
+          ? {
+              course: signupCourse || undefined,
+              yearLevel: signupYear || undefined,
+              studentNumber: signupStudentNumber || undefined,
+            }
+          : undefined;
+
+      await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
+      toast.success('Account created! You can now sign in.');
     } catch (err: any) {
       toast.error(err.message || 'Signup failed');
     } finally {
@@ -118,6 +130,49 @@ export default function Login() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {signupRole === 'student' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-course">Course</Label>
+                        <Input
+                          id="signup-course"
+                          value={signupCourse}
+                          onChange={e => setSignupCourse(e.target.value)}
+                          required
+                          placeholder="e.g. BSCS, BSEd"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-year">Year level</Label>
+                          <Select value={signupYear} onValueChange={setSignupYear}>
+                            <SelectTrigger id="signup-year">
+                              <SelectValue placeholder="Select year level" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1st Year">1st Year</SelectItem>
+                              <SelectItem value="2nd Year">2nd Year</SelectItem>
+                              <SelectItem value="3rd Year">3rd Year</SelectItem>
+                              <SelectItem value="4th Year">4th Year</SelectItem>
+                              <SelectItem value="Irregular">Irregular</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-student-number">Student No.</Label>
+                          <Input
+                            id="signup-student-number"
+                            value={signupStudentNumber}
+                            onChange={e => setSignupStudentNumber(e.target.value)}
+                            required
+                            placeholder="22-1-7-0008"
+                            pattern="\d{2}-\d-\d-\d{4}"
+                            title="Use format: 22-1-7-0008"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? 'Creating account...' : 'Create Account'}
                   </Button>

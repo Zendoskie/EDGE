@@ -925,7 +925,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Risk Level</TableHead>
-                    <TableHead>Confidence</TableHead>
                     <TableHead>Attendance</TableHead>
                     <TableHead>Quiz Avg</TableHead>
                     <TableHead>Assignment Avg</TableHead>
@@ -938,7 +937,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
                       <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
-                      <TableCell>{p.confidence != null ? `${(p.confidence * 100).toFixed(0)}%` : '—'}</TableCell>
                       <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
                       <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
                       <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>

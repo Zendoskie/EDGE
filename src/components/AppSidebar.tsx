@@ -41,6 +41,7 @@ export function AppSidebar() {
   }, []);
 
   const items = role === 'instructor' ? instructorItems : studentItems;
+  const showText = !collapsed || isMobile;
 
   return (
     <Sidebar
@@ -59,10 +60,11 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center gap-2 px-3 py-4">
-            {!collapsed && (
+            {showText ? (
               <span className="text-sidebar-primary font-display font-bold text-lg">EDGE</span>
+            ) : (
+              <GraduationCap className="w-5 h-5 text-sidebar-primary" />
             )}
-            {collapsed && <GraduationCap className="w-5 h-5 text-sidebar-primary" />}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -75,8 +77,8 @@ export function AppSidebar() {
                       className="hover:bg-sidebar-accent/60 transition-colors"
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-[inset_3px_0_0_0_hsl(var(--sidebar-primary))]"
                     >
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                      {showText && <span className="text-sidebar-foreground">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -86,19 +88,19 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-3">
-        {!collapsed && (
+        {showText && (
           <p className="text-xs text-sidebar-foreground/60 mb-2 truncate">
             {user?.email}
           </p>
         )}
         <Button
           variant="ghost"
-          size={collapsed ? 'icon' : 'sm'}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground"
+          size={showText ? 'sm' : 'icon'}
+          className="w-full justify-start text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
           onClick={signOut}
         >
-          <LogOut className="h-4 w-4" />
-          {!collapsed && <span className="ml-2">Sign Out</span>}
+          <LogOut className="h-4 w-4 shrink-0" />
+          {showText && <span className="ml-2">Sign Out</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>

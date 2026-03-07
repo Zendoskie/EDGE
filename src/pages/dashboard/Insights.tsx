@@ -83,9 +83,6 @@ export default function Insights() {
                     <span className="font-medium">{(p.subjects as any)?.code} — {(p.subjects as any)?.name}</span>
                     <Badge variant={riskVariant(p.risk_level)}>{riskLabel(p.risk_level)}</Badge>
                   </div>
-                  {p.confidence != null && (
-                    <p className="text-xs text-muted-foreground">Confidence: {Math.round((p.confidence as number) * 100)}%</p>
-                  )}
                   {p.recommendation && (
                     <p className="text-sm text-muted-foreground">{p.recommendation}</p>
                   )}
