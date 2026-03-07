@@ -93,6 +93,9 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    background-image: radial-gradient(circle at top left, hsl(200 70% 90%), transparent 55%), radial-gradient(circle at bottom right, hsl(215 65% 20%), transparent 55%);
+    background-attachment: fixed;
+    background-size: cover;
   }
 
   h1, h2, h3 {
