@@ -34,11 +34,31 @@ export default function MySubjects() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('enrollments')
-        .select('id, enrolled_at, subject_id, subjects(id, code, name, semester, academic_year)')
+        .select('id, enrolled_at, subject_id, subjects(id, code, name, semester, academic_year, instructor_id)')
         .eq('student_id', user.id)
         .order('enrolled_at', { ascending: false });
       if (error) throw error;
-      return data;
+      const instructorIds = Array.from(
+        new Set(
+          (data ?? [])
+            .map((row: any) => row.subjects?.instructor_id)
+            .filter(Boolean),
+        ),
+      ) as string[];
+      if (instructorIds.length === 0) return data;
+      const { data: instructorProfiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', instructorIds);
+      return (data ?? []).map((row: any) => ({
+        ...row,
+        subjects: row.subjects
+          ? {
+              ...row.subjects,
+              instructor_profile: instructorProfiles?.find(p => p.user_id === row.subjects.instructor_id) ?? null,
+            }
+          : row.subjects,
+      }));
     },
     enabled: !!user?.id,
   });
@@ -48,10 +68,20 @@ export default function MySubjects() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('subjects')
-        .select('*')
+        .select('id, code, name, semester, academic_year, instructor_id')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      const rows = data || [];
+      const instructorIds = Array.from(new Set(rows.map((s: any) => s.instructor_id).filter(Boolean))) as string[];
+      if (instructorIds.length === 0) return rows;
+      const { data: instructorProfiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', instructorIds);
+      return rows.map((s: any) => ({
+        ...s,
+        instructor_profile: instructorProfiles?.find(p => p.user_id === s.instructor_id) ?? null,
+      }));
     },
     enabled: !!user?.id,
   });
@@ -190,6 +220,9 @@ export default function MySubjects() {
                     <div>
                       <p className="font-semibold">{s.code}</p>
                       <p className="text-sm text-muted-foreground">{s.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Instructor: {((s as any).instructor_profile?.full_name ?? '').trim() || (s as any).instructor_profile?.email || '—'}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center justify-between">
                       <div className="flex gap-2">
@@ -243,6 +276,9 @@ export default function MySubjects() {
                         <div className="space-y-1">
                           <p className="font-semibold">{sub.code}</p>
                           <p className="text-sm text-muted-foreground">{sub.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Instructor: {((sub as any).instructor_profile?.full_name ?? '').trim() || (sub as any).instructor_profile?.email || '—'}
+                          </p>
                         </div>
                         <ChevronRight className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
                       </div>

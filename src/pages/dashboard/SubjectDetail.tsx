@@ -31,7 +31,13 @@ export default function SubjectDetail() {
         .eq('id', id!)
         .single();
       if (error) throw error;
-      return data;
+      if (!data?.instructor_id) return data;
+      const { data: instructorProfile } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .eq('user_id', data.instructor_id)
+        .maybeSingle();
+      return { ...data, instructor_profile: instructorProfile ?? null } as any;
     },
     enabled: !!id,
   });
@@ -67,6 +73,9 @@ export default function SubjectDetail() {
                 {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
                 {subject.semester && `${subject.semester} Semester`}
                 {subject.academic_year && ` • ${subject.academic_year}`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Instructor: {((subject as any).instructor_profile?.full_name ?? '').trim() || (subject as any).instructor_profile?.email || '—'}
               </p>
             </div>
           </div>
