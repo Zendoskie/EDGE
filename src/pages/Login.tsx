@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Shield, BookOpen } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Login() {
   const { signIn, signUp } = useAuth();
@@ -25,6 +26,29 @@ export default function Login() {
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
+  const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPrograms = async () => {
+      const { data, error } = await supabase
+        .from('programs')
+        .select('id, code, name')
+        .order('name');
+      if (cancelled) return;
+      if (error) {
+        // Non-blocking: allow signup even if programs fail to load.
+        console.warn('Failed to load programs', error);
+        setPrograms([]);
+        return;
+      }
+      setPrograms((data ?? []).map(p => ({ id: p.id, code: p.code, name: p.name })));
+    };
+    loadPrograms();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,12 +67,29 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
+      if (signupRole === 'student') {
+        if (!signupCourse) {
+          toast.error('Please select your course.');
+          return;
+        }
+        if (!signupYear) {
+          toast.error('Please select your year level.');
+          return;
+        }
+        const studentNo = signupStudentNumber.trim();
+        const studentNoRegex = /^\d{2}-\d-\d-\d{4}$/;
+        if (!studentNoRegex.test(studentNo)) {
+          toast.error('Student No. must match the format: 22-1-7-0008');
+          return;
+        }
+      }
+
       const extras =
         signupRole === 'student'
           ? {
               course: signupCourse || undefined,
               yearLevel: signupYear || undefined,
-              studentNumber: signupStudentNumber || undefined,
+              studentNumber: signupStudentNumber.trim() || undefined,
             }
           : undefined;
 
@@ -134,13 +175,18 @@ export default function Login() {
                     <>
                       <div className="space-y-2">
                         <Label htmlFor="signup-course">Course</Label>
-                        <Input
-                          id="signup-course"
-                          value={signupCourse}
-                          onChange={e => setSignupCourse(e.target.value)}
-                          required
-                          placeholder="e.g. BSCS, BSEd"
-                        />
+                        <Select value={signupCourse} onValueChange={setSignupCourse}>
+                          <SelectTrigger id="signup-course">
+                            <SelectValue placeholder={programs.length ? 'Select course' : 'No courses available'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {programs.map(p => (
+                              <SelectItem key={p.id} value={p.code}>
+                                {p.code} — {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-2">
@@ -163,10 +209,10 @@ export default function Login() {
                           <Input
                             id="signup-student-number"
                             value={signupStudentNumber}
-                            onChange={e => setSignupStudentNumber(e.target.value)}
+                            onChange={e => setSignupStudentNumber(e.target.value.replace(/\s+/g, ''))}
                             required
                             placeholder="22-1-7-0008"
-                            pattern="\d{2}-\d-\d-\d{4}"
+                            pattern="^\d{2}-\d-\d-\d{4}$"
                             title="Use format: 22-1-7-0008"
                           />
                         </div>

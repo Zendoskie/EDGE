@@ -5,15 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 
 export default function Settings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
+  const { theme, setTheme } = useTheme();
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile', user?.id],
@@ -51,6 +54,30 @@ export default function Settings() {
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">Settings</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <SettingsIcon className="h-5 w-5" />
+            Appearance
+          </CardTitle>
+          <p className="text-muted-foreground text-sm">Choose light or dark mode.</p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-w-md">
+            <Label>Theme</Label>
+            <Select value={(theme as string) || 'light'} onValueChange={v => setTheme(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select theme" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="light">Light mode</SelectItem>
+                <SelectItem value="dark">Dark mode</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

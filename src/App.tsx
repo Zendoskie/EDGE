@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true };
 import { AuthProvider } from "@/hooks/useAuth";
@@ -25,31 +26,33 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter future={routerFuture}>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<DashboardLayout />}>
-              <Route index element={<DashboardHome />} />
-              <Route path="subjects" element={<Subjects />} />
-              <Route path="subjects/:id" element={<SubjectDetail />} />
-              <Route path="my-subjects" element={<MySubjects />} />
-              <Route path="my-attendance" element={<MyAttendance />} />
-              <Route path="my-scores" element={<MyScores />} />
-              <Route path="insights" element={<Insights />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="programs" element={<Programs />} />
-              <Route path="reports" element={<Reports />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="edge-theme">
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter future={routerFuture}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/dashboard" element={<DashboardLayout />}>
+                <Route index element={<DashboardHome />} />
+                <Route path="subjects" element={<Subjects />} />
+                <Route path="subjects/:id" element={<SubjectDetail />} />
+                <Route path="my-subjects" element={<MySubjects />} />
+                <Route path="my-attendance" element={<MyAttendance />} />
+                <Route path="my-scores" element={<MyScores />} />
+                <Route path="insights" element={<Insights />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="programs" element={<Programs />} />
+                <Route path="reports" element={<Reports />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
