@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true };
 import { AuthProvider } from "@/hooks/useAuth";
+import PWABanner from "@/components/PWABanner";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import DashboardLayout from "./components/DashboardLayout";
@@ -17,9 +18,15 @@ import MySubjects from "./pages/dashboard/MySubjects";
 import MyAttendance from "./pages/dashboard/MyAttendance";
 import MyScores from "./pages/dashboard/MyScores";
 import Insights from "./pages/dashboard/Insights";
+import LearningAssistant from "./pages/dashboard/LearningAssistant";
 import Settings from "./pages/dashboard/Settings";
 import Programs from "./pages/dashboard/Programs";
 import Reports from "./pages/dashboard/Reports";
+import EnhancedReports from "./pages/dashboard/EnhancedReports";
+import CommunicationHub from "./pages/dashboard/CommunicationHub";
+import EnhancedUX from "./pages/dashboard/EnhancedUX";
+import AdministrativeFeatures from "./pages/dashboard/AdministrativeFeatures";
+import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +38,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <PWABanner />
           <BrowserRouter future={routerFuture}>
             <Routes>
               <Route path="/" element={<Index />} />
@@ -43,6 +51,12 @@ const App = () => (
                 <Route path="my-attendance" element={<MyAttendance />} />
                 <Route path="my-scores" element={<MyScores />} />
                 <Route path="insights" element={<Insights />} />
+                <Route path="learning-assistant" element={<LearningAssistant />} />
+                <Route path="enhanced-ux" element={<EnhancedUX />} />
+                <Route path="administrative" element={<AdministrativeFeatures />} />
+                <Route path="enhanced-security" element={<EnhancedSecurity />} />
+                <Route path="communication" element={<CommunicationHub />} />
+                <Route path="enhanced-reports" element={<EnhancedReports />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="programs" element={<Programs />} />
                 <Route path="reports" element={<Reports />} />

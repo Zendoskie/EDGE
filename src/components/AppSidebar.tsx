@@ -16,6 +16,7 @@ const instructorItems = [
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
   { title: 'Reports', url: '/dashboard/reports', icon: FileBarChart },
   { title: 'Programs', url: '/dashboard/programs', icon: Library },
+  { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 

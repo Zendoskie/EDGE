@@ -27,10 +27,12 @@ export default function Login() {
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [programsLoading, setProgramsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const loadPrograms = async () => {
+      setProgramsLoading(true);
       const { data, error } = await supabase
         .from('programs')
         .select('id, code, name')
@@ -40,9 +42,10 @@ export default function Login() {
         // Non-blocking: allow signup even if programs fail to load.
         console.warn('Failed to load programs', error);
         setPrograms([]);
-        return;
+      } else {
+        setPrograms((data ?? []).map(p => ({ id: p.id, code: p.code, name: p.name })));
       }
-      setPrograms((data ?? []).map(p => ({ id: p.id, code: p.code, name: p.name })));
+      setProgramsLoading(false);
     };
     loadPrograms();
     return () => {
@@ -175,18 +178,33 @@ export default function Login() {
                     <>
                       <div className="space-y-2">
                         <Label htmlFor="signup-course">Course</Label>
-                        <Select value={signupCourse} onValueChange={setSignupCourse}>
+                        <Select value={signupCourse} onValueChange={setSignupCourse} disabled={programsLoading}>
                           <SelectTrigger id="signup-course">
-                            <SelectValue placeholder={programs.length ? 'Select course' : 'No courses available'} />
+                            <SelectValue placeholder={programsLoading ? 'Loading courses...' : programs.length ? 'Select course' : 'No courses available'} />
                           </SelectTrigger>
                           <SelectContent>
-                            {programs.map(p => (
-                              <SelectItem key={p.id} value={p.code}>
-                                {p.code} — {p.name}
-                              </SelectItem>
-                            ))}
+                            {programsLoading ? (
+                              <div className="flex items-center justify-center py-2">
+                                <span className="text-sm text-muted-foreground">Loading courses...</span>
+                              </div>
+                            ) : programs.length > 0 ? (
+                              programs.map(p => (
+                                <SelectItem key={p.id} value={p.code}>
+                                  {p.code} — {p.name}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <div className="flex items-center justify-center py-2">
+                                <span className="text-sm text-muted-foreground">No courses available</span>
+                              </div>
+                            )}
                           </SelectContent>
                         </Select>
+                        {programs.length === 0 && !programsLoading && (
+                          <p className="text-xs text-muted-foreground">
+                            Contact an administrator to add academic programs.
+                          </p>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-2">
