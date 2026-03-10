@@ -117,10 +117,18 @@ export default function SubjectDetail() {
         </TabsList>
 
         <TabsContent value="students">
-          <SubjectStudents subjectId={id!} />
+          <SubjectStudents
+            subjectId={id!}
+            programCode={(subject.programs as any)?.code as string | undefined}
+            programName={(subject.programs as any)?.name as string | undefined}
+          />
         </TabsContent>
         <TabsContent value="attendance">
-          <SubjectAttendance subjectId={id!} />
+          <SubjectAttendance
+            subjectId={id!}
+            programCode={(subject.programs as any)?.code as string | undefined}
+            programName={(subject.programs as any)?.name as string | undefined}
+          />
         </TabsContent>
         <TabsContent value="activities">
           <SubjectActivities subjectId={id!} userId={user?.id} />
@@ -244,7 +252,15 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
 }
 
 /* ───── Students Tab ───── */
-function SubjectStudents({ subjectId }: { subjectId: string }) {
+function SubjectStudents({
+  subjectId,
+  programCode,
+  programName,
+}: {
+  subjectId: string;
+  programCode?: string;
+  programName?: string;
+}) {
   const queryClient = useQueryClient();
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState('');
@@ -351,22 +367,35 @@ function SubjectStudents({ subjectId }: { subjectId: string }) {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Student ID</TableHead>
+                <TableHead>Program</TableHead>
                 <TableHead className="w-16">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrollments.map((e: any) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-medium">{e.profile?.full_name || '—'}</TableCell>
-                  <TableCell>{e.profile?.email || '—'}</TableCell>
-                  <TableCell>{e.profile?.student_id || '—'}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => unenroll.mutate(e.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {enrollments.map((e: any) => {
+                const profile = e.profile as any;
+                const programLabel = programCode
+                  ? `${programCode}${programName ? ` — ${programName}` : ''}`
+                  : '—';
+                return (
+                  <TableRow key={e.id}>
+                    <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                    <TableCell>{profile?.email || '—'}</TableCell>
+                    <TableCell>{profile?.student_id || '—'}</TableCell>
+                    <TableCell>{programLabel}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => unenroll.mutate(e.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -376,7 +405,15 @@ function SubjectStudents({ subjectId }: { subjectId: string }) {
 }
 
 /* ───── Attendance Tab ───── */
-function SubjectAttendance({ subjectId }: { subjectId: string }) {
+function SubjectAttendance({
+  subjectId,
+  programCode,
+  programName,
+}: {
+  subjectId: string;
+  programCode?: string;
+  programName?: string;
+}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -446,30 +483,38 @@ function SubjectAttendance({ subjectId }: { subjectId: string }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Student</TableHead>
+                <TableHead>Program</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrollments.map((e: any) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-medium">{e.profile?.full_name || '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {['present', 'absent', 'late', 'excused'].map(status => (
-                        <Button
-                          key={status}
-                          size="sm"
-                          variant={getStatus(e.student_id) === status ? 'default' : 'outline'}
-                          className="capitalize text-xs"
-                          onClick={() => markAttendance.mutate({ studentId: e.student_id, status })}
-                        >
-                          {status}
-                        </Button>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {enrollments.map((e: any) => {
+                const profile = e.profile as any;
+                const programLabel = programCode
+                  ? `${programCode}${programName ? ` — ${programName}` : ''}`
+                  : '—';
+                return (
+                  <TableRow key={e.id}>
+                    <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                    <TableCell>{programLabel}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {['present', 'absent', 'late', 'excused'].map(status => (
+                          <Button
+                            key={status}
+                            size="sm"
+                            variant={getStatus(e.student_id) === status ? 'default' : 'outline'}
+                            className="capitalize text-xs"
+                            onClick={() => markAttendance.mutate({ studentId: e.student_id, status })}
+                          >
+                            {status}
+                          </Button>
+                        ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -703,26 +748,42 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
         <TableHeader>
           <TableRow>
             <TableHead>Student</TableHead>
+            <TableHead>Program</TableHead>
             <TableHead className="w-32">Score (/ {maxScore})</TableHead>
             <TableHead className="w-24">%</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {enrollments.map((e: any) => {
-            const scoreStr = scores[e.student_id] ?? submissions.find(s => s.student_id === e.student_id)?.score?.toString() ?? '';
+            const profile = e.profile as any;
+            const programLabel = (programCode && programName)
+              ? `${programCode} — ${programName}`
+              : programCode || '—';
+            const scoreStr =
+              scores[e.student_id] ??
+              submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
+              '';
             const numScore = Number(scoreStr);
-            const pct = scoreStr && !isNaN(numScore) ? ((numScore / maxScore) * 100).toFixed(1) : '—';
+            const pct =
+              scoreStr && !isNaN(numScore) ? ((numScore / maxScore) * 100).toFixed(1) : '—';
             return (
               <TableRow key={e.student_id}>
-                <TableCell className="font-medium">{e.profile?.full_name || '—'}</TableCell>
+                <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                <TableCell>{programLabel}</TableCell>
                 <TableCell>
                   <Input
                     type="number"
                     min={0}
                     max={maxScore}
                     placeholder="—"
-                    value={scores[e.student_id] ?? submissions.find(s => s.student_id === e.student_id)?.score?.toString() ?? ''}
-                    onChange={ev => setScores(prev => ({ ...prev, [e.student_id]: ev.target.value }))}
+                    value={
+                      scores[e.student_id] ??
+                      submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
+                      ''
+                    }
+                    onChange={ev =>
+                      setScores(prev => ({ ...prev, [e.student_id]: ev.target.value }))
+                    }
                     className="h-8 w-24"
                   />
                 </TableCell>

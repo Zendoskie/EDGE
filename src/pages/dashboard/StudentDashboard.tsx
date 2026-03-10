@@ -10,6 +10,24 @@ import { Badge } from '@/components/ui/badge';
 export default function StudentDashboard() {
   const { user } = useAuth();
 
+  const programCode = (user?.user_metadata as any)?.course as string | undefined;
+  const yearLevel = (user?.user_metadata as any)?.year_level as string | undefined;
+
+  const { data: program } = useQuery({
+    queryKey: ['student-program', programCode],
+    queryFn: async () => {
+      if (!programCode) return null;
+      const { data, error } = await supabase
+        .from('programs')
+        .select('code, name')
+        .eq('code', programCode)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!programCode,
+  });
+
   const { data: stats } = useQuery({
     queryKey: ['student-dashboard-stats', user?.id],
     queryFn: async () => {
@@ -87,6 +105,22 @@ export default function StudentDashboard() {
       <div>
         <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
+        {(programCode || yearLevel) && (
+          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+            {programCode && (
+              <div>
+                <span className="font-medium text-foreground">Program:</span>{' '}
+                {program?.code ?? programCode}
+                {program?.name ? ` — ${program.name}` : ''}
+              </div>
+            )}
+            {yearLevel && (
+              <div>
+                <span className="font-medium text-foreground">Year level:</span> {yearLevel}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

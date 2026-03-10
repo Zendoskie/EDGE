@@ -11,6 +11,29 @@ import { toast } from 'sonner';
 import { Shield, BookOpen } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
+  {
+    id: 'BSCS',
+    code: 'BSCS',
+    name: 'Bachelor of Science in Computer Science',
+  },
+  {
+    id: 'BSBA',
+    code: 'BSBA',
+    name: 'Bachelor of Science in Business Administration',
+  },
+  {
+    id: 'BEED',
+    code: 'BEED',
+    name: 'Bachelor of Elementary Education',
+  },
+  {
+    id: 'BSED',
+    code: 'BSED',
+    name: 'Bachelor of Secondary Education',
+  },
+];
+
 export default function Login() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
@@ -180,23 +203,19 @@ export default function Login() {
                         <Label htmlFor="signup-course">Course</Label>
                         <Select value={signupCourse} onValueChange={setSignupCourse} disabled={programsLoading}>
                           <SelectTrigger id="signup-course">
-                            <SelectValue placeholder={programsLoading ? 'Loading courses...' : programs.length ? 'Select course' : 'No courses available'} />
+                            <SelectValue placeholder={programsLoading ? 'Loading courses...' : 'Select course'} />
                           </SelectTrigger>
                           <SelectContent>
                             {programsLoading ? (
                               <div className="flex items-center justify-center py-2">
                                 <span className="text-sm text-muted-foreground">Loading courses...</span>
                               </div>
-                            ) : programs.length > 0 ? (
-                              programs.map(p => (
+                            ) : (
+                              (programs.length > 0 ? programs : DEFAULT_PROGRAMS).map(p => (
                                 <SelectItem key={p.id} value={p.code}>
                                   {p.code} — {p.name}
                                 </SelectItem>
                               ))
-                            ) : (
-                              <div className="flex items-center justify-center py-2">
-                                <span className="text-sm text-muted-foreground">No courses available</span>
-                              </div>
                             )}
                           </SelectContent>
                         </Select>

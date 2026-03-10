@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     const { course, yearLevel, studentNumber } = extras || {};
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -90,6 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) throw error;
+
+    const newUserId = data.user?.id;
+    if (newUserId && studentNumber) {
+      await supabase
+        .from('profiles')
+        .update({ student_id: studentNumber })
+        .eq('user_id', newUserId);
+    }
   };
 
   const signOut = async () => {

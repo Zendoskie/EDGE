@@ -28,6 +28,8 @@ export default function MySubjects() {
   const queryClient = useQueryClient();
   const [enrollCode, setEnrollCode] = useState('');
 
+  const programCode = (user?.user_metadata as any)?.course as string | undefined;
+
   const { data: enrollmentsWithSubjects = [], isLoading } = useQuery({
     queryKey: ['my-enrollments', user?.id],
     queryFn: async () => {
@@ -249,7 +251,15 @@ export default function MySubjects() {
       <Card>
         <CardHeader>
           <CardTitle>Enrolled subjects</CardTitle>
-          <p className="text-muted-foreground text-sm">Your enrolled subjects and course information.</p>
+          <p className="text-muted-foreground text-sm">
+            Your enrolled subjects and course information.
+            {programCode && (
+              <>
+                {' '}
+                Program: <span className="font-medium text-foreground">{programCode}</span>
+              </>
+            )}
+          </p>
         </CardHeader>
         <CardContent>
           {isLoading ? (

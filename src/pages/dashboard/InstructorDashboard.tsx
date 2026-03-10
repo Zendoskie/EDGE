@@ -101,12 +101,20 @@ export default function InstructorDashboard() {
         { level: 'Excelling', count: preds.filter((p: any) => p.risk_level === 'excelling').length, fill: 'hsl(215 65% 36%)' },
       ];
       const programCount: Record<string, number> = {};
+      const programMeta: Record<string, { code: string; name?: string | null }> = {};
       for (const s of subjectsWithPrograms ?? []) {
         const p = (s as any).programs;
         const code = p?.code ?? 'Unassigned';
         programCount[code] = (programCount[code] ?? 0) + 1;
+        if (!programMeta[code]) {
+          programMeta[code] = { code, name: p?.name };
+        }
       }
-      const byProgram = Object.entries(programCount).map(([name, count]) => ({ name, count }));
+      const byProgram = Object.entries(programCount).map(([code, count]) => {
+        const meta = programMeta[code];
+        const label = meta?.name ? `${code} — ${meta.name}` : code;
+        return { code, label, count };
+      });
       return { chartData: chartData.filter(d => d.count > 0), byProgram, needIntervention: criticalAndAtRisk };
     },
     enabled: !!user?.id && !!subjectsWithPrograms,
@@ -263,9 +271,9 @@ export default function InstructorDashboard() {
                   <p className="text-muted-foreground text-sm py-8 text-center">No subjects with programs yet.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {analyticsData.byProgram.map((p: { name: string; count: number }) => (
-                      <Badge key={p.name} variant="secondary" className="text-sm py-1 px-3">
-                        {p.name}: {p.count}
+                    {analyticsData.byProgram.map((p: { code: string; label: string; count: number }) => (
+                      <Badge key={p.code} variant="secondary" className="text-sm py-1 px-3">
+                        {p.label}: {p.count}
                       </Badge>
                     ))}
                   </div>
