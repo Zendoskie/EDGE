@@ -50,7 +50,11 @@ interface Conversation {
   unread_count: number;
 }
 
-export default function MessagingSystem() {
+interface MessagingSystemProps {
+  onUnreadChange?: (count: number) => void;
+}
+
+export default function MessagingSystem({ onUnreadChange }: MessagingSystemProps) {
   const { user } = useAuth();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageContent, setMessageContent] = useState('');
@@ -103,9 +107,14 @@ export default function MessagingSystem() {
         }
       });
 
-      return Array.from(conversationMap.values()).sort((a, b) => 
+      const list = Array.from(conversationMap.values()).sort((a, b) => 
         new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
       );
+      const totalUnread = list.reduce((sum, c) => sum + c.unread_count, 0);
+      if (onUnreadChange) {
+        onUnreadChange(totalUnread);
+      }
+      return list;
     },
     enabled: !!user?.id,
   });

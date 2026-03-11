@@ -103,16 +103,18 @@ export default function AdvancedReporting() {
   const generateReportMutation = useMutation({
     mutationFn: async ({ templateId, parameters }: { templateId: string; parameters: Record<string, any> }) => {
       setIsGenerating(true);
-      
+
       // Call Supabase function to generate report
       const { data, error } = await supabase.functions.invoke('generate-report', {
-        templateId,
-        parameters,
-        userId: user!.id
+        body: {
+          templateId,
+          parameters,
+          userId: user!.id,
+        },
       });
 
       setIsGenerating(false);
-      
+
       if (error) throw error;
       return data;
     },
@@ -125,7 +127,7 @@ export default function AdvancedReporting() {
   const downloadReportMutation = useMutation({
     mutationFn: async (reportId: string) => {
       const { data, error } = await supabase.functions.invoke('download-report', {
-        reportId
+        body: { reportId },
       });
 
       if (error) throw error;
@@ -137,8 +139,7 @@ export default function AdvancedReporting() {
   const emailReportMutation = useMutation({
     mutationFn: async ({ reportId, recipients }: { reportId: string; recipients: string[] }) => {
       const { data, error } = await supabase.functions.invoke('email-report', {
-        reportId,
-        recipients
+        body: { reportId, recipients },
       });
 
       if (error) throw error;
@@ -529,5 +530,3 @@ export default function AdvancedReporting() {
     </div>
   );
 }
-
-export default AdvancedReporting;

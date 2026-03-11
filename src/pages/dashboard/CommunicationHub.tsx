@@ -2,18 +2,10 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-// import MessagingSystem from '@/components/MessagingSystem';
-// import AnnouncementSystem from '@/components/AnnouncementSystem';
-// import DiscussionForum from '@/components/DiscussionForum';
-import { 
-  MessageCircle, 
-  Megaphone, 
-  Users, 
-  Bell,
-  Mail,
-  Calendar
-} from 'lucide-react';
+import { Bell, MessageCircle, Megaphone, Users } from 'lucide-react';
+import MessagingSystem from '@/components/MessagingSystem';
+import AnnouncementSystem from '@/components/AnnouncementSystem';
+import DiscussionForum from '@/components/DiscussionForum';
 
 export default function CommunicationHub() {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -50,45 +42,15 @@ export default function CommunicationHub() {
         </TabsList>
 
         <TabsContent value="messages" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Direct messaging features coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Chat with instructors and peers in real-time.
-              </p>
-            </CardContent>
-          </Card>
+          <MessagingSystem onUnreadChange={setUnreadCount} />
         </TabsContent>
 
         <TabsContent value="announcements" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <Megaphone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Announcement system coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Stay updated with important course announcements.
-              </p>
-            </CardContent>
-          </Card>
+          <AnnouncementSystem />
         </TabsContent>
 
         <TabsContent value="forums" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Discussion forums coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Engage in course discussions and collaborative learning.
-              </p>
-            </CardContent>
-          </Card>
+          <DiscussionForum />
         </TabsContent>
       </Tabs>
     </div>

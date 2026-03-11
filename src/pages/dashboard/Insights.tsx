@@ -87,7 +87,7 @@ export default function Insights() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('submissions')
-        .select('score, max_score, activities(name, subject_id)')
+        .select('score, activities(name, subject_id, max_score)')
         .eq('student_id', user.id);
       if (error) throw error;
       return data ?? [];
@@ -123,9 +123,11 @@ export default function Insights() {
 
   const attendanceRate = attendanceStats.total > 0 ? (attendanceStats.present / attendanceStats.total) * 100 : 0;
 
-  const scoreStats = scores.reduce((acc, submission) => {
-    if (submission.score !== null && submission.max_score > 0) {
-      const percentage = (submission.score / submission.max_score) * 100;
+  const scoreStats = scores.reduce((acc, submission: any) => {
+    if (submission.score !== null) {
+      const max = submission.activities?.max_score ?? 100;
+      if (max <= 0) return acc;
+      const percentage = (submission.score / max) * 100;
       acc.total += percentage;
       acc.count++;
     }
@@ -325,11 +327,15 @@ export default function Insights() {
               <CardContent>
                 <div className="space-y-3">
                   {subjects.slice(0, 5).map((subject: any) => {
-                    const subjectScores = scores.filter(s => 
+                    const subjectScores = scores.filter((s: any) => 
                       s.activities?.subject_id === subject.id
                     );
                     const subjectAvg = subjectScores.length > 0 
-                      ? subjectScores.reduce((acc, s) => acc + (s.score / s.max_score) * 100, 0) / subjectScores.length
+                      ? subjectScores.reduce((acc, s: any) => {
+                          const max = s.activities?.max_score ?? 100;
+                          if (!max) return acc;
+                          return acc + (s.score / max) * 100;
+                        }, 0) / subjectScores.length
                       : 0;
                     
                     return (

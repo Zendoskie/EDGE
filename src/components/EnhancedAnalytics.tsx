@@ -86,14 +86,19 @@ export default function EnhancedAnalytics() {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
 
-      // Get scores with activities and subjects
+      // Get scores with activities and subjects (via activities.subjects)
       const { data: scores } = await supabase
         .from('submissions')
         .select(`
           score,
           created_at,
-          activities!inner(max_score, type, name, subject_id),
-          subjects!inner(code, name)
+          activities!inner(
+            max_score,
+            type,
+            name,
+            subject_id,
+            subjects(code, name)
+          )
         `)
         .eq('student_id', user.id)
         .gte('created_at', startDate.toISOString())
@@ -171,14 +176,16 @@ export default function EnhancedAnalytics() {
   const processSubjectPerformance = (): SubjectPerformance[] => {
     if (!performanceData.scores) return [];
 
-    const subjectMap = new Map<string, { scores: number[], subjectName: string }>();
+    const subjectMap = new Map<string, { scores: number[]; subjectName: string }>();
     
     performanceData.scores.forEach((score: any) => {
-      const subjectCode = score.subjects.code;
+      const subjectCode = score.activities?.subjects?.code;
+      const subjectName = score.activities?.subjects?.name;
+      if (!subjectCode || !subjectName || !score.activities?.max_score) return;
       if (!subjectMap.has(subjectCode)) {
-        subjectMap.set(subjectCode, { scores: [], subjectName: score.subjects.name });
+        subjectMap.set(subjectCode, { scores: [], subjectName });
       }
-      
+
       const normalizedScore = (score.score / score.activities.max_score) * 100;
       subjectMap.get(subjectCode)!.scores.push(normalizedScore);
     });

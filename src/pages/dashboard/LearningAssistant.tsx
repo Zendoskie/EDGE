@@ -1,20 +1,11 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-// import AIRecommendations from '@/components/AIRecommendations';
-import { 
-  Brain, 
-  BookOpen, 
-  Target, 
-  TrendingUp,
-  Calendar,
-  Users
-} from 'lucide-react';
+import AIRecommendations from '@/components/AIRecommendations';
+import { Brain, Target, Calendar, TrendingUp } from 'lucide-react';
 
 export default function LearningAssistant() {
-  const [activeTab, setActiveTab] = useState('recommendations');
+  const [activeTab, setActiveTab] = useState('assistant');
 
   return (
     <div className="space-y-6">
@@ -30,18 +21,14 @@ export default function LearningAssistant() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="recommendations" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="assistant" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
-            Recommendations
+            Assistant
           </TabsTrigger>
-          <TabsTrigger value="resources" className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4" />
-            Resources
-          </TabsTrigger>
-          <TabsTrigger value="insights" className="flex items-center gap-2">
+          <TabsTrigger value="patterns" className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            Insights
+            Study Patterns
           </TabsTrigger>
           <TabsTrigger value="planning" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
@@ -49,60 +36,16 @@ export default function LearningAssistant() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="recommendations" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                AI-powered recommendations coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Get personalized learning suggestions based on your performance and study patterns.
-              </p>
-            </CardContent>
-          </Card>
+        <TabsContent value="assistant" className="mt-6">
+          <AIRecommendations />
         </TabsContent>
 
-        <TabsContent value="resources" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Learning resources coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Access curated learning materials and resources tailored to your needs.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="insights" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Study insights coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Analyze your learning patterns and performance trends.
-              </p>
-            </CardContent>
-          </Card>
+        <TabsContent value="patterns" className="mt-6">
+          <AIRecommendations />
         </TabsContent>
 
         <TabsContent value="planning" className="mt-6">
-          <Card>
-            <CardContent className="text-center py-8">
-              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                Smart study planning features coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Get personalized study schedules based on your patterns and upcoming deadlines.
-              </p>
-            </CardContent>
-          </Card>
+          <AIRecommendations />
         </TabsContent>
       </Tabs>
     </div>
