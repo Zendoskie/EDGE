@@ -60,15 +60,15 @@ export function AppSidebar() {
     >
       <SidebarContent className="border-r border-sidebar-border/50">
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2 px-4 py-5 border-b border-sidebar-border/20">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/80 flex items-center justify-center">
+          <SidebarGroupLabel className="flex items-center justify-center gap-3 px-4 py-5 border-b border-sidebar-border/20 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/80 flex items-center justify-center flex-shrink-0">
               <GraduationCap className="w-4 h-4 text-sidebar-primary-foreground" />
             </div>
             {showText && (
-              <span className="text-sidebar-foreground font-display font-bold text-lg">Academic Guardian</span>
+              <span className="text-sidebar-foreground font-display font-bold text-lg leading-none">EDGE</span>
             )}
           </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2 py-3">
+          <SidebarGroupContent className="px-2 py-3 group-data-[collapsible=icon]:px-1">
             <SidebarMenu className="space-y-1">
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
@@ -76,7 +76,7 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard'}
-                      className="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 ease-in-out"
+                      className="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 ease-in-out group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-sm border border-sidebar-border/50"
                     >
                       <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
@@ -89,7 +89,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border/50 p-4">
+      <SidebarFooter className="border-t border-sidebar-border/50 p-4 group-data-[collapsible=icon]:p-2">
         {showText && (
           <div className="mb-3 p-2 rounded-lg bg-sidebar-accent/30">
             <p className="text-xs text-sidebar-foreground/80 truncate font-medium">
@@ -103,7 +103,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           size={showText ? 'sm' : 'icon'}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 group-data-[collapsible=icon]:justify-center"
           onClick={signOut}
         >
           <LogOut className="h-4 w-4 shrink-0" />

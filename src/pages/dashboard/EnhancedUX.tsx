@@ -45,8 +45,8 @@ export default function EnhancedUX() {
   const onboardingSteps: OnboardingStep[] = [
     {
       id: 'welcome',
-      title: 'Welcome to Academic Guardian',
-      description: 'Your AI-powered academic risk analysis and early warning system',
+      title: 'Welcome to EDGE',
+      description: 'Early Detection of Grade Evaluation - AI-powered academic performance monitoring',
       icon: <Target className="h-8 w-8" />,
       completed: false
     },
