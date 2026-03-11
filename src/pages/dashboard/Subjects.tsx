@@ -19,9 +19,10 @@ interface SubjectForm {
   semester: string;
   academic_year: string;
   program_id: string;
+  target_year: string;
 }
 
-const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '', program_id: '' };
+const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '', program_id: '', target_year: '' };
 
 export default function Subjects() {
   const { user } = useAuth();
@@ -65,6 +66,7 @@ export default function Subjects() {
         semester: form.semester || null,
         academic_year: form.academic_year || null,
         program_id: form.program_id || null,
+        target_year: form.target_year ? parseInt(form.target_year) : null,
         instructor_id: user?.id,
       };
       if (editId) {
@@ -106,17 +108,23 @@ export default function Subjects() {
       semester: s.semester || '',
       academic_year: s.academic_year || '',
       program_id: (s as any).program_id || '',
+      target_year: (s as any).target_year?.toString() || '',
     });
     setOpen(true);
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-display font-bold">Subjects</h1>
+        <div>
+          <h1 className="text-3xl font-display font-bold text-foreground mb-2">Subjects</h1>
+          <p className="text-muted-foreground">Manage and organize your academic subjects</p>
+        </div>
         <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
           <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" /> Add Subject</Button>
+            <Button className="btn-primary shadow-lg hover:shadow-xl transition-all duration-200">
+              <Plus className="mr-2 h-4 w-4" /> Add Subject
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -160,6 +168,22 @@ export default function Subjects() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Target Year (optional)</Label>
+                <Select value={form.target_year || 'none'} onValueChange={v => setForm(f => ({ ...f, target_year: v === 'none' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select year level" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">All Years</SelectItem>
+                    <SelectItem value="1">1st Year</SelectItem>
+                    <SelectItem value="2">2nd Year</SelectItem>
+                    <SelectItem value="3">3rd Year</SelectItem>
+                    <SelectItem value="4">4th Year</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Restrict enrollment to students in this specific year level
+                </p>
+              </div>
               <Button type="submit" className="w-full" disabled={upsert.isPending}>
                 {upsert.isPending ? 'Saving...' : editId ? 'Update' : 'Create'}
               </Button>
@@ -169,38 +193,63 @@ export default function Subjects() {
       </div>
 
       {isLoading ? (
-        <p className="text-muted-foreground text-sm">Loading subjects...</p>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-pulse-glow">
+            <BookOpen className="h-8 w-8 text-muted-foreground/50" />
+          </div>
+          <p className="text-muted-foreground text-sm ml-3">Loading subjects...</p>
+        </div>
       ) : subjects.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground text-sm">No subjects yet. Create your first subject to get started.</p>
+        <Card className="card-shadow-lg border-dashed">
+          <CardContent className="p-16 text-center">
+            <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-6">
+              <BookOpen className="h-8 w-8 text-muted-foreground/60" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">No subjects yet</h3>
+            <p className="text-muted-foreground text-sm max-w-sm mx-auto">Create your first subject to start managing your academic courses.</p>
+            <Button className="mt-6 btn-primary" onClick={() => setOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Create Subject
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {subjects.map(s => (
             <Card
               key={s.id}
-              className="cursor-pointer hover:border-primary/40 transition-colors"
+              className="card-shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group border-0 bg-gradient-to-br from-card to-card/80"
               onClick={() => navigate(`/dashboard/subjects/${s.id}`)}
             >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold">{s.code}</p>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); copyCode(s.code); }} title="Copy course code">
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <span className="text-primary font-bold text-xs">{s.code.slice(0, 2).toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-foreground text-base">{s.code}</p>
+                        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{s.name}</p>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">{s.name}</p>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground/40 group-hover:text-muted-foreground group-hover:translate-x-1 transition-all duration-200" />
                 </div>
-                <div className="flex gap-2 mt-3">
-                  {s.semester && <Badge variant="secondary">{s.semester}</Badge>}
-                  {s.academic_year && <Badge variant="outline">{s.academic_year}</Badge>}
+                <div className="flex flex-wrap gap-2 items-center justify-between">
+                  <div className="flex gap-2">
+                    {s.semester && <Badge variant="secondary" className="text-xs">{s.semester}</Badge>}
+                    {s.academic_year && <Badge variant="outline" className="text-xs">{s.academic_year}</Badge>}
+                    {(s as any).target_year && <Badge variant="default" className="text-xs bg-gradient-to-r from-primary to-primary/80">Year {(s as any).target_year}</Badge>}
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200" 
+                    onClick={(e) => { e.stopPropagation(); copyCode(s.code); }} 
+                    title="Copy course code"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
                 <div className="flex gap-1 mt-3 justify-end">
                   <Button variant="ghost" size="icon" onClick={(e) => openEdit(s, e)}>

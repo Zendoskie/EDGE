@@ -58,28 +58,29 @@ export function AppSidebar() {
         closeTimer.current = window.setTimeout(() => setOpen(false), 140);
       }}
     >
-      <SidebarContent>
+      <SidebarContent className="border-r border-sidebar-border/50">
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2 px-3 py-4">
-            {showText ? (
-              <span className="text-sidebar-primary font-display font-bold text-lg">EDGE</span>
-            ) : (
-              <GraduationCap className="w-5 h-5 text-sidebar-primary" />
+          <SidebarGroupLabel className="flex items-center gap-2 px-4 py-5 border-b border-sidebar-border/20">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/80 flex items-center justify-center">
+              <GraduationCap className="w-4 h-4 text-sidebar-primary-foreground" />
+            </div>
+            {showText && (
+              <span className="text-sidebar-foreground font-display font-bold text-lg">Academic Guardian</span>
             )}
           </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+          <SidebarGroupContent className="px-2 py-3">
+            <SidebarMenu className="space-y-1">
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard'}
-                      className="hover:bg-sidebar-accent/60 transition-colors"
-                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-[inset_3px_0_0_0_hsl(var(--sidebar-primary))]"
+                      className="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 ease-in-out"
+                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-sm border border-sidebar-border/50"
                     >
-                      <item.icon className="mr-2 h-4 w-4 shrink-0" />
-                      {showText && <span className="text-sidebar-foreground">{item.title}</span>}
+                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                      {showText && <span className="text-sm font-medium">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -88,20 +89,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="border-t border-sidebar-border/50 p-4">
         {showText && (
-          <p className="text-xs text-sidebar-foreground/60 mb-2 truncate">
-            {user?.email}
-          </p>
+          <div className="mb-3 p-2 rounded-lg bg-sidebar-accent/30">
+            <p className="text-xs text-sidebar-foreground/80 truncate font-medium">
+              {user?.email}
+            </p>
+            <p className="text-xs text-sidebar-foreground/60 mt-1 capitalize">
+              {role} Account
+            </p>
+          </div>
         )}
         <Button
           variant="ghost"
           size={showText ? 'sm' : 'icon'}
-          className="w-full justify-start text-sidebar-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
           onClick={signOut}
         >
           <LogOut className="h-4 w-4 shrink-0" />
-          {showText && <span className="ml-2">Sign Out</span>}
+          {showText && <span className="ml-2 text-sm font-medium">Sign Out</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>

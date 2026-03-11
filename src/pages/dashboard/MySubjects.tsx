@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { BookOpen, ChevronRight, KeyRound, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
+import StudentProfileSetup from '@/components/StudentProfileSetup';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,7 +71,7 @@ export default function MySubjects() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('subjects')
-        .select('id, code, name, semester, academic_year, instructor_id')
+        .select('id, code, name, semester, academic_year, instructor_id, program_id, target_year, programs(code, name)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       const rows = data || [];
@@ -92,13 +93,43 @@ export default function MySubjects() {
     mutationFn: async (code: string) => {
       const trimmed = code.trim().toUpperCase();
       if (!trimmed) throw new Error('Please enter a course code.');
+      
+      // First, get the subject details to check restrictions
       const { data: subject, error: findError } = await supabase
         .from('subjects')
-        .select('id, code, name')
+        .select('id, code, name, program_id, target_year, programs(code, name)')
         .ilike('code', trimmed)
         .maybeSingle();
       if (findError) throw findError;
       if (!subject) throw new Error(`No course found with code "${code.trim()}".`);
+      
+      // Check if student can enroll based on restrictions
+      if (subject.program_id || subject.target_year) {
+        const { data: studentProgram } = await supabase
+          .from('student_programs')
+          .select('program_id, year_level, is_irregular, programs(code, name)')
+          .eq('student_id', user!.id)
+          .maybeSingle();
+        
+        // If student is irregular, allow enrollment
+        if (studentProgram?.is_irregular) {
+          // Irregular students can enroll in any course
+        } else if (!studentProgram && (subject.program_id || subject.target_year)) {
+          throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
+        } else if (studentProgram) {
+          // Check program restriction
+          if (subject.program_id && studentProgram.program_id !== subject.program_id) {
+            throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
+          }
+          
+          // Check year restriction
+          if (subject.target_year && studentProgram.year_level !== subject.target_year) {
+            throw new Error(`This course is only available for Year ${subject.target_year} students.`);
+          }
+        }
+      }
+      
+      // If all checks pass, proceed with enrollment
       const { error: insertError } = await supabase.from('enrollments').insert({
         student_id: user!.id,
         subject_id: subject.id,
@@ -137,6 +168,42 @@ export default function MySubjects() {
 
   const quickEnroll = useMutation({
     mutationFn: async (subjectId: string) => {
+      // First, get the subject details to check restrictions
+      const { data: subject, error: findError } = await supabase
+        .from('subjects')
+        .select('id, code, name, program_id, target_year, programs(code, name)')
+        .eq('id', subjectId)
+        .maybeSingle();
+      if (findError) throw findError;
+      if (!subject) throw new Error('Course not found.');
+      
+      // Check if student can enroll based on restrictions
+      if (subject.program_id || subject.target_year) {
+        const { data: studentProgram } = await supabase
+          .from('student_programs')
+          .select('program_id, year_level, is_irregular, programs(code, name)')
+          .eq('student_id', user!.id)
+          .maybeSingle();
+        
+        // If student is irregular, allow enrollment
+        if (studentProgram?.is_irregular) {
+          // Irregular students can enroll in any course
+        } else if (!studentProgram && (subject.program_id || subject.target_year)) {
+          throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
+        } else if (studentProgram) {
+          // Check program restriction
+          if (subject.program_id && studentProgram.program_id !== subject.program_id) {
+            throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
+          }
+          
+          // Check year restriction
+          if (subject.target_year && studentProgram.year_level !== subject.target_year) {
+            throw new Error(`This course is only available for Year ${subject.target_year} students.`);
+          }
+        }
+      }
+      
+      // If all checks pass, proceed with enrollment
       const { error } = await supabase.from('enrollments').insert({
         student_id: user!.id,
         subject_id: subjectId,
@@ -164,6 +231,8 @@ export default function MySubjects() {
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">My Subjects</h1>
+
+      <StudentProfileSetup />
 
       {/* Enroll with course code */}
       <Card>
@@ -216,32 +285,50 @@ export default function MySubjects() {
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {availableSubjects.map((s: any) => (
-                <Card key={s.id} className="border-dashed">
-                  <CardContent className="p-4 space-y-2">
-                    <div>
-                      <p className="font-semibold">{s.code}</p>
-                      <p className="text-sm text-muted-foreground">{s.name}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Instructor: {((s as any).instructor_profile?.full_name ?? '').trim() || (s as any).instructor_profile?.email || '—'}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 items-center justify-between">
-                      <div className="flex gap-2">
-                        {s.semester && <Badge variant="secondary">{s.semester}</Badge>}
-                        {s.academic_year && <Badge variant="outline">{s.academic_year}</Badge>}
+              {availableSubjects.map((s: any) => {
+                const isRestricted = s.program_id || s.target_year;
+                return (
+                  <Card key={s.id} className={`border-dashed ${isRestricted ? 'border-amber-200 bg-amber-50/50' : ''}`}>
+                    <CardContent className="p-4 space-y-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold">{s.code}</p>
+                          {isRestricted && (
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                              Restricted
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{s.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Instructor: {((s as any).instructor_profile?.full_name ?? '').trim() || (s as any).instructor_profile?.email || '—'}
+                        </p>
+                        {isRestricted && (
+                          <div className="text-xs text-amber-600 mt-1">
+                            {s.program_id && <span>{s.programs?.code} only</span>}
+                            {s.program_id && s.target_year && <span> • </span>}
+                            {s.target_year && <span>Year {s.target_year} only</span>}
+                          </div>
+                        )}
                       </div>
-                      <Button
-                        size="sm"
-                        onClick={() => quickEnroll.mutate(s.id)}
-                        disabled={quickEnroll.isPending}
-                      >
-                        Enroll
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="flex flex-wrap gap-2 items-center justify-between">
+                        <div className="flex gap-2">
+                          {s.semester && <Badge variant="secondary">{s.semester}</Badge>}
+                          {s.academic_year && <Badge variant="outline">{s.academic_year}</Badge>}
+                          {s.target_year && <Badge variant="default">Year {s.target_year}</Badge>}
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => quickEnroll.mutate(s.id)}
+                          disabled={quickEnroll.isPending}
+                        >
+                          Enroll
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </CardContent>
