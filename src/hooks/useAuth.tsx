@@ -71,9 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     role: AppRole,
-    extras?: { course?: string; yearLevel?: string; studentNumber?: string }
+    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean }
   ) => {
-    const { course, yearLevel, studentNumber } = extras || {};
+    const { course, yearLevel, studentNumber, isIrregular } = extras || {};
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -93,10 +93,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newUserId = data.user?.id;
     if (newUserId && studentNumber) {
+      // Update profiles table
       await supabase
         .from('profiles')
         .update({ student_id: studentNumber })
         .eq('user_id', newUserId);
+      
+      // Create student_programs record for students
+      if (role === 'student' && course && yearLevel) {
+        await supabase
+          .from('student_programs')
+          .insert({
+            student_id: newUserId,
+            program_id: course,
+            year_level: parseInt(yearLevel),
+            is_irregular: isIrregular || false,
+          });
+      }
     }
   };
 

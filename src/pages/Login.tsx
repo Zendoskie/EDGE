@@ -110,12 +110,19 @@ export default function Login() {
         }
       }
 
+      // Check if student is irregular based on year selection
+      const isIrregular = signupYear === 'Irregular';
+      
+      // For irregular students, set a default year level for database
+      const yearLevelForDb = isIrregular ? '1st Year' : signupYear;
+
       const extras =
         signupRole === 'student'
           ? {
               course: signupCourse || undefined,
-              yearLevel: signupYear || undefined,
+              yearLevel: yearLevelForDb || undefined,
               studentNumber: signupStudentNumber.trim() || undefined,
+              isIrregular: isIrregular,
             }
           : undefined;
 

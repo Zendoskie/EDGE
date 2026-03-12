@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { BookOpen, ChevronRight, KeyRound, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
-import StudentProfileSetup from '@/components/StudentProfileSetup';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -231,8 +230,6 @@ export default function MySubjects() {
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">My Subjects</h1>
-
-      <StudentProfileSetup />
 
       {/* Enroll with course code */}
       <Card>
