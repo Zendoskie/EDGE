@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true };
 import { AuthProvider } from "@/hooks/useAuth";
 import PWABanner from "@/components/PWABanner";
+import Landing from "./pages/Landing";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import DashboardLayout from "./components/DashboardLayout";
@@ -41,7 +42,7 @@ const App = () => (
           <PWABanner />
           <BrowserRouter future={routerFuture}>
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/dashboard" element={<DashboardLayout />}>
                 <Route index element={<DashboardHome />} />
