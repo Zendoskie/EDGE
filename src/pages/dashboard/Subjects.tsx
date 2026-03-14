@@ -19,10 +19,9 @@ interface SubjectForm {
   semester: string;
   academic_year: string;
   program_id: string;
-  target_year: string;
 }
 
-const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '', program_id: '', target_year: '' };
+const emptyForm: SubjectForm = { name: '', code: '', semester: '', academic_year: '', program_id: '' };
 
 export default function Subjects() {
   const { user } = useAuth();
@@ -66,7 +65,6 @@ export default function Subjects() {
         semester: form.semester || null,
         academic_year: form.academic_year || null,
         program_id: form.program_id || null,
-        target_year: form.target_year ? parseInt(form.target_year) : null,
         instructor_id: user?.id,
       };
       if (editId) {
@@ -108,7 +106,6 @@ export default function Subjects() {
       semester: s.semester || '',
       academic_year: s.academic_year || '',
       program_id: (s as any).program_id || '',
-      target_year: (s as any).target_year?.toString() || '',
     });
     setOpen(true);
   };
@@ -168,22 +165,6 @@ export default function Subjects() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Target Year (optional)</Label>
-                <Select value={form.target_year || 'none'} onValueChange={v => setForm(f => ({ ...f, target_year: v === 'none' ? '' : v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select year level" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">All Years</SelectItem>
-                    <SelectItem value="1">1st Year</SelectItem>
-                    <SelectItem value="2">2nd Year</SelectItem>
-                    <SelectItem value="3">3rd Year</SelectItem>
-                    <SelectItem value="4">4th Year</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Restrict enrollment to students in this specific year level
-                </p>
-              </div>
               <Button type="submit" className="w-full" disabled={upsert.isPending}>
                 {upsert.isPending ? 'Saving...' : editId ? 'Update' : 'Create'}
               </Button>
@@ -239,7 +220,6 @@ export default function Subjects() {
                   <div className="flex gap-2">
                     {s.semester && <Badge variant="secondary" className="text-xs">{s.semester}</Badge>}
                     {s.academic_year && <Badge variant="outline" className="text-xs">{s.academic_year}</Badge>}
-                    {(s as any).target_year && <Badge variant="default" className="text-xs bg-gradient-to-r from-primary to-primary/80">Year {(s as any).target_year}</Badge>}
                   </div>
                   <Button 
                     variant="ghost" 

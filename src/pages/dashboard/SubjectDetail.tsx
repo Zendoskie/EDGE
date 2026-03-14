@@ -320,46 +320,21 @@ function SubjectStudents({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const enrolledIds = enrollments.map((e: any) => e.student_id);
+  const activeEnrollments = enrollments.filter((e: any) => e.status === 'active');
+  const pendingEnrollments = enrollments.filter((e: any) => e.status === 'pending');
+  const enrolledIds = activeEnrollments.map((e: any) => e.student_id);
   const availableStudents = allStudents.filter(s => !enrolledIds.includes(s.user_id));
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">Enrolled Students</CardTitle>
-        <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm"><UserPlus className="mr-2 h-4 w-4" /> Enroll</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Enroll Student</DialogTitle></DialogHeader>
-            <form className="space-y-4" onSubmit={e => { e.preventDefault(); enroll.mutate(); }}>
-              <div className="space-y-2">
-                <Label>Student</Label>
-                <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-                  <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-                  <SelectContent>
-                    {availableStudents.map(s => (
-                      <SelectItem key={s.user_id} value={s.user_id}>{s.full_name} ({s.email})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full" disabled={enroll.isPending || !selectedStudent}>
-                {enroll.isPending ? 'Enrolling...' : 'Enroll'}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
           <p className="p-6 text-muted-foreground text-sm">Loading...</p>
-        ) : enrollments.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground text-sm">No students enrolled yet.</p>
-          </div>
+        ) : activeEnrollments.length === 0 ? (
+          <div className="p-6 text-muted-foreground text-sm">No students enrolled yet.</div>
         ) : (
           <Table>
             <TableHeader>
@@ -372,7 +347,7 @@ function SubjectStudents({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrollments.map((e: any) => {
+              {activeEnrollments.map((e: any) => {
                 const profile = e.profile as any;
                 const programLabel = programCode
                   ? `${programCode}${programName ? ` — ${programName}` : ''}`
@@ -399,6 +374,70 @@ function SubjectStudents({
             </TableBody>
           </Table>
         )}
+
+        {/* Pending enrollment requests */}
+        {pendingEnrollments.length > 0 && (
+          <div className="border-t border-border mt-4 pt-4">
+            <h3 className="px-6 pb-2 text-sm font-medium text-muted-foreground">Pending enrollment requests</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Student ID</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead className="w-40">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingEnrollments.map((e: any) => {
+                  const profile = e.profile as any;
+                  const programLabel = programCode
+                    ? `${programCode}${programName ? ` — ${programName}` : ''}`
+                    : '—';
+                  return (
+                    <TableRow key={e.id}>
+                      <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                      <TableCell>{profile?.email || '—'}</TableCell>
+                      <TableCell>{profile?.student_id || '—'}</TableCell>
+                      <TableCell>{programLabel}</TableCell>
+                      <TableCell className="space-x-2">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            supabase
+                              .from('enrollments')
+                              .update({ status: 'active' })
+                              .eq('id', e.id)
+                              .then(({ error }) => {
+                                if (error) {
+                                  toast.error(error.message);
+                                } else {
+                                  queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+                                  toast.success('Enrollment approved');
+                                }
+                              })
+                          }
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            unenroll.mutate(e.id)
+                          }
+                        >
+                          Reject
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -421,7 +460,11 @@ function SubjectAttendance({
   const { data: enrollments = [] } = useQuery({
     queryKey: ['enrollments', subjectId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('enrollments').select('*').eq('subject_id', subjectId);
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('subject_id', subjectId)
+        .eq('status', 'active');
       if (error) throw error;
       if (!data.length) return [];
       const studentIds = data.map(e => e.student_id).filter(Boolean) as string[];

@@ -36,7 +36,7 @@ export default function MySubjects() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('enrollments')
-        .select('id, enrolled_at, subject_id, subjects(id, code, name, semester, academic_year, instructor_id)')
+        .select('id, enrolled_at, status, subject_id, subjects(id, code, name, semester, academic_year, instructor_id)')
         .eq('student_id', user.id)
         .order('enrolled_at', { ascending: false });
       if (error) throw error;
@@ -70,7 +70,7 @@ export default function MySubjects() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('subjects')
-        .select('id, code, name, semester, academic_year, instructor_id, program_id, target_year, programs(code, name)')
+        .select('id, code, name, semester, academic_year, instructor_id, program_id, programs(code, name)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       const rows = data || [];
@@ -96,53 +96,67 @@ export default function MySubjects() {
       // First, get the subject details to check restrictions
       const { data: subject, error: findError } = await supabase
         .from('subjects')
-        .select('id, code, name, program_id, target_year, programs(code, name)')
+        .select('id, code, name, program_id, programs(code, name)')
         .ilike('code', trimmed)
         .maybeSingle();
       if (findError) throw findError;
       if (!subject) throw new Error(`No course found with code "${code.trim()}".`);
       
-      // Check if student can enroll based on restrictions
-      if (subject.program_id || subject.target_year) {
-        const { data: studentProgram } = await supabase
+      // Check if student can enroll based on program restriction
+      if (subject.program_id) {
+        let { data: studentProgram } = await supabase
           .from('student_programs')
           .select('program_id, year_level, is_irregular, programs(code, name)')
           .eq('student_id', user!.id)
           .maybeSingle();
         
+        // If student has no program record yet but their auth metadata course matches
+        // this subject's program code, auto-create a student_programs row for them.
+        if (!studentProgram) {
+          const metaCourseCode = (user!.user_metadata as any)?.course as string | undefined;
+          if (metaCourseCode && subject.programs?.code === metaCourseCode) {
+            const { data: created, error: createError } = await supabase
+              .from('student_programs')
+              .insert({
+                student_id: user!.id,
+                program_id: subject.program_id,
+              })
+              .select('program_id, year_level, is_irregular, programs(code, name)')
+              .single();
+            if (!createError) {
+              studentProgram = created;
+            }
+          }
+        }
+
         // If student is irregular, allow enrollment
         if (studentProgram?.is_irregular) {
           // Irregular students can enroll in any course
-        } else if (!studentProgram && (subject.program_id || subject.target_year)) {
+        } else if (!studentProgram && subject.program_id) {
           throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
         } else if (studentProgram) {
           // Check program restriction
           if (subject.program_id && studentProgram.program_id !== subject.program_id) {
             throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
           }
-          
-          // Check year restriction
-          if (subject.target_year && studentProgram.year_level !== subject.target_year) {
-            throw new Error(`This course is only available for Year ${subject.target_year} students.`);
-          }
         }
       }
       
-      // If all checks pass, proceed with enrollment
+      // If all checks pass, create a pending enrollment request
       const { error: insertError } = await supabase.from('enrollments').insert({
         student_id: user!.id,
         subject_id: subject.id,
-        status: 'active',
+        status: 'pending',
       });
       if (insertError) {
-        if (insertError.code === '23505') throw new Error('You are already enrolled in this course.');
+        if (insertError.code === '23505') throw new Error('You already have an enrollment or pending request for this course.');
         throw insertError;
       }
       return subject;
     },
     onSuccess: (subject) => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
-      toast.success(`Enrolled in ${subject.code} — ${subject.name}`);
+      toast.success(`Enrollment request sent for ${subject.code} — ${subject.name}. Waiting for instructor approval.`);
       setEnrollCode('');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -170,52 +184,66 @@ export default function MySubjects() {
       // First, get the subject details to check restrictions
       const { data: subject, error: findError } = await supabase
         .from('subjects')
-        .select('id, code, name, program_id, target_year, programs(code, name)')
+        .select('id, code, name, program_id, programs(code, name)')
         .eq('id', subjectId)
         .maybeSingle();
       if (findError) throw findError;
       if (!subject) throw new Error('Course not found.');
       
-      // Check if student can enroll based on restrictions
-      if (subject.program_id || subject.target_year) {
-        const { data: studentProgram } = await supabase
+      // Check if student can enroll based on program restriction
+      if (subject.program_id) {
+        let { data: studentProgram } = await supabase
           .from('student_programs')
           .select('program_id, year_level, is_irregular, programs(code, name)')
           .eq('student_id', user!.id)
           .maybeSingle();
         
+        // If student has no program record yet but their auth metadata course matches
+        // this subject's program code, auto-create a student_programs row for them.
+        if (!studentProgram) {
+          const metaCourseCode = (user!.user_metadata as any)?.course as string | undefined;
+          if (metaCourseCode && subject.programs?.code === metaCourseCode) {
+            const { data: created, error: createError } = await supabase
+              .from('student_programs')
+              .insert({
+                student_id: user!.id,
+                program_id: subject.program_id,
+              })
+              .select('program_id, year_level, is_irregular, programs(code, name)')
+              .single();
+            if (!createError) {
+              studentProgram = created;
+            }
+          }
+        }
+
         // If student is irregular, allow enrollment
         if (studentProgram?.is_irregular) {
           // Irregular students can enroll in any course
-        } else if (!studentProgram && (subject.program_id || subject.target_year)) {
+        } else if (!studentProgram && subject.program_id) {
           throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
         } else if (studentProgram) {
           // Check program restriction
           if (subject.program_id && studentProgram.program_id !== subject.program_id) {
             throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
           }
-          
-          // Check year restriction
-          if (subject.target_year && studentProgram.year_level !== subject.target_year) {
-            throw new Error(`This course is only available for Year ${subject.target_year} students.`);
-          }
         }
       }
       
-      // If all checks pass, proceed with enrollment
+      // If all checks pass, create a pending enrollment request
       const { error } = await supabase.from('enrollments').insert({
         student_id: user!.id,
         subject_id: subjectId,
-        status: 'active',
+        status: 'pending',
       });
       if (error) {
-        if (error.code === '23505') throw new Error('You are already enrolled in this course.');
+        if (error.code === '23505') throw new Error('You already have an enrollment or pending request for this course.');
         throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
-      toast.success('Enrolled successfully');
+      toast.success('Enrollment request sent. Waiting for instructor approval.');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -224,6 +252,9 @@ export default function MySubjects() {
     enrollmentsWithSubjects
       .map((row: any) => row.subject_id)
       .filter(Boolean),
+  );
+  const pendingOrRejected = enrollmentsWithSubjects.filter(
+    (row: any) => row.status && row.status !== 'active',
   );
   const availableSubjects = (allSubjects as any[]).filter(s => !enrolledSubjectIds.has(s.id));
 
@@ -270,7 +301,7 @@ export default function MySubjects() {
             Browse available subjects
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enroll directly from the list below. Use the code above only if your subject is hidden from this list.
+            Request enrollment from the list below. Use the code above only if your subject is hidden from this list.
           </p>
         </CardHeader>
         <CardContent>
@@ -283,7 +314,7 @@ export default function MySubjects() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {availableSubjects.map((s: any) => {
-                const isRestricted = s.program_id || s.target_year;
+                const isRestricted = s.program_id;
                 return (
                   <Card key={s.id} className={`border-dashed ${isRestricted ? 'border-amber-200 bg-amber-50/50' : ''}`}>
                     <CardContent className="p-4 space-y-2">
@@ -303,8 +334,6 @@ export default function MySubjects() {
                         {isRestricted && (
                           <div className="text-xs text-amber-600 mt-1">
                             {s.program_id && <span>{s.programs?.code} only</span>}
-                            {s.program_id && s.target_year && <span> • </span>}
-                            {s.target_year && <span>Year {s.target_year} only</span>}
                           </div>
                         )}
                       </div>
@@ -312,14 +341,13 @@ export default function MySubjects() {
                         <div className="flex gap-2">
                           {s.semester && <Badge variant="secondary">{s.semester}</Badge>}
                           {s.academic_year && <Badge variant="outline">{s.academic_year}</Badge>}
-                          {s.target_year && <Badge variant="default">Year {s.target_year}</Badge>}
                         </div>
                         <Button
                           size="sm"
                           onClick={() => quickEnroll.mutate(s.id)}
                           disabled={quickEnroll.isPending}
                         >
-                          Enroll
+                          Request
                         </Button>
                       </div>
                     </CardContent>
@@ -348,7 +376,7 @@ export default function MySubjects() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground text-sm">Loading...</p>
-          ) : enrollmentsWithSubjects.length === 0 ? (
+          ) : enrollmentsWithSubjects.filter((row: any) => row.status === 'active').length === 0 ? (
             <div className="py-12 text-center">
               <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
               <p className="text-muted-foreground text-sm">You are not enrolled in any subjects yet.</p>
@@ -356,7 +384,7 @@ export default function MySubjects() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {enrollmentsWithSubjects.map((row: any) => {
+              {enrollmentsWithSubjects.filter((row: any) => row.status === 'active').map((row: any) => {
                 const sub = row.subjects;
                 if (!sub) return null;
                 return (
@@ -409,6 +437,50 @@ export default function MySubjects() {
           )}
         </CardContent>
       </Card>
+
+      {/* Enrollment requests */}
+      {pendingOrRejected.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Enrollment requests</CardTitle>
+            <p className="text-muted-foreground text-sm">
+              Requests that are waiting for instructor approval or have been decided.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
+              {pendingOrRejected.map((row: any) => {
+                const sub = row.subjects;
+                if (!sub) return null;
+                const statusLabel =
+                  row.status === 'pending'
+                    ? 'Pending approval'
+                    : row.status === 'rejected'
+                      ? 'Rejected'
+                      : row.status ?? 'Unknown';
+                const statusVariant =
+                  row.status === 'pending'
+                    ? 'secondary'
+                    : row.status === 'rejected'
+                      ? 'destructive'
+                      : 'outline';
+                return (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between py-1 border-b border-border/50 last:border-0"
+                  >
+                    <div>
+                      <span className="font-medium">{sub.code}</span>{' '}
+                      <span className="text-muted-foreground">— {sub.name}</span>
+                    </div>
+                    <Badge variant={statusVariant}>{statusLabel}</Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

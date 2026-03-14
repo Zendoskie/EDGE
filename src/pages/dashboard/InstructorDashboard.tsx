@@ -66,10 +66,12 @@ export default function InstructorDashboard() {
         return { totalStudents: 0, activeSubjects: 0, predictionsRun: 0, atRiskStudents: 0, criticalStudents: 0 };
       }
       const [enrollmentsRes, predictionsRes] = await Promise.all([
-        supabase.from('enrollments').select('student_id').eq('status', 'active').in('subject_id', subjectIds),
+        supabase.from('enrollments').select('student_id, status').in('subject_id', subjectIds),
         supabase.from('predictions').select('id, risk_level').in('subject_id', subjectIds),
       ]);
-      const uniqueStudents = new Set(enrollmentsRes.data?.map(e => e.student_id) ?? []).size;
+      const activeStudents = (enrollmentsRes.data ?? []).filter(e => e.status === 'active');
+      const uniqueStudents = new Set(activeStudents.map(e => e.student_id) ?? []).size;
+      const pendingCount = (enrollmentsRes.data ?? []).filter(e => e.status === 'pending').length;
       const atRisk = predictionsRes.data?.filter(p => p.risk_level === 'at_risk').length ?? 0;
       const critical = predictionsRes.data?.filter(p => p.risk_level === 'critical').length ?? 0;
       return {
@@ -78,6 +80,7 @@ export default function InstructorDashboard() {
         predictionsRun: predictionsRes.data?.length ?? 0,
         atRiskStudents: atRisk,
         criticalStudents: critical,
+        pendingEnrollments: pendingCount,
       };
     },
     enabled: !!user?.id && !!subjectsWithPrograms,
@@ -193,8 +196,8 @@ export default function InstructorDashboard() {
     { title: 'Total Students', value: stats?.totalStudents ?? '—', icon: Users, color: 'text-primary' },
     { title: 'Active Subjects', value: stats?.activeSubjects ?? '—', icon: BookOpen, color: 'text-accent-foreground' },
     { title: 'Predictions Run', value: stats?.predictionsRun ?? '—', icon: Brain, color: 'text-success' },
+    { title: 'Pending Requests', value: stats?.pendingEnrollments ?? '0', icon: Calendar, color: 'text-amber-500' },
     { title: 'Critical', value: stats?.criticalStudents ?? '—', icon: AlertOctagon, color: 'text-destructive' },
-    { title: 'At Risk', value: stats?.atRiskStudents ?? '—', icon: AlertTriangle, color: 'text-amber-500' },
   ];
 
   const chartConfig = { count: { label: 'Students' }, level: { label: 'Risk Level' } };

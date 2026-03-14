@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
@@ -85,7 +85,11 @@ export default function Settings() {
             <SettingsIcon className="h-5 w-5" />
             Profile
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Update your name and optional student ID (e.g. school ID number).</p>
+          <p className="text-muted-foreground text-sm">
+            {role === 'student'
+              ? 'Update your name and optional student ID (e.g. school ID number).'
+              : 'Update your name.'}
+          </p>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -103,11 +107,20 @@ export default function Settings() {
                 <Input id="email" value={profile?.email ?? user?.email ?? ''} disabled className="bg-muted" />
                 <p className="text-xs text-muted-foreground">Email is managed by your account and cannot be changed here.</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="student_id">Student ID (optional)</Label>
-                <Input id="student_id" placeholder="e.g. 2024-001" value={studentId} onChange={e => setStudentId(e.target.value)} />
-                <p className="text-xs text-muted-foreground">Your school or institution student number. Visible to instructors.</p>
-              </div>
+              {role === 'student' && (
+                <div className="space-y-2">
+                  <Label htmlFor="student_id">Student ID (optional)</Label>
+                  <Input
+                    id="student_id"
+                    placeholder="e.g. 2024-001"
+                    value={studentId}
+                    onChange={e => setStudentId(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Your school or institution student number. Visible to instructors.
+                  </p>
+                </div>
+              )}
               <Button type="submit" disabled={updateProfile.isPending}>
                 {updateProfile.isPending ? 'Saving...' : 'Save changes'}
               </Button>
