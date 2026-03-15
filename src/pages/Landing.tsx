@@ -1,9 +1,37 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { GraduationCap, Brain, TrendingUp, Users, BookOpen, Shield, Zap, Activity, Target, AlertTriangle } from 'lucide-react';
+import { GraduationCap, Brain, TrendingUp, Users, BookOpen, Activity, Target } from 'lucide-react';
+
+/** Wrapper that animates children to "pop up" when they enter the viewport on scroll */
+function PopInSection({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible(true);
+      },
+      { rootMargin: '0px 0px -60px 0px', threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function Landing() {
   const { user, loading } = useAuth();
@@ -29,29 +57,33 @@ export default function Landing() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background/50 to-secondary/20">
-      {/* Hero Section */}
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
-          <div className="flex items-center justify-center mb-6">
-            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
-              <GraduationCap className="h-8 w-8 text-primary-foreground" />
-            </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/80 dark:from-background dark:via-background dark:to-secondary/10">
+      <div className="h-1 w-full bg-gradient-to-r from-primary via-primary/80 to-primary" />
+
+      <div className="container mx-auto px-4 py-12 md:py-20 max-w-6xl">
+        {/* Hero — pops in on load */}
+        <PopInSection>
+        <header className="text-center mb-20">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-primary/10 dark:bg-primary/20 border border-primary/20 mb-8">
+            <GraduationCap className="h-10 w-10 text-primary" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold font-display mb-4 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+          <h1 className="text-5xl md:text-6xl font-bold font-display tracking-tight text-foreground mb-3">
             EDGE
           </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground font-medium mb-8">
+          <p className="text-xl md:text-2xl text-muted-foreground font-medium mb-4">
             Early Detection of Grade Evaluation
           </p>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            An advanced deep learning system that predicts academic challenges and enables proactive student support
+          <p className="text-base text-muted-foreground max-w-xl mx-auto leading-relaxed">
+            Predictive analytics and early intervention for academic success.
           </p>
-        </div>
+        </header>
+        </PopInSection>
 
         {/* Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16 max-w-6xl mx-auto">
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+        <PopInSection>
+        <h2 className="text-2xl font-semibold text-center text-foreground mb-10 font-display">What EDGE Offers</h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20 max-w-5xl mx-auto">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-4">
                 <Brain className="h-6 w-6 text-white" />
@@ -63,7 +95,7 @@ export default function Landing() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center mx-auto mb-4">
                 <TrendingUp className="h-6 w-6 text-white" />
@@ -75,7 +107,7 @@ export default function Landing() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
                 <Users className="h-6 w-6 text-white" />
@@ -87,7 +119,7 @@ export default function Landing() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4">
                 <BookOpen className="h-6 w-6 text-white" />
@@ -99,7 +131,7 @@ export default function Landing() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center mx-auto mb-4">
                 <Activity className="h-6 w-6 text-white" />
@@ -111,7 +143,7 @@ export default function Landing() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <Card className="border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300">
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center mx-auto mb-4">
                 <Target className="h-6 w-6 text-white" />
@@ -123,10 +155,12 @@ export default function Landing() {
             </CardContent>
           </Card>
         </div>
+        </PopInSection>
 
         {/* How It Works Section */}
-        <div className="max-w-4xl mx-auto mb-16">
-          <h2 className="text-3xl font-bold text-center mb-12 font-display">How EDGE Works</h2>
+        <PopInSection>
+        <div className="max-w-4xl mx-auto mb-20 text-center">
+          <h2 className="text-2xl font-semibold text-foreground mb-12 font-display">How EDGE Works</h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 text-2xl font-bold text-primary-foreground">
@@ -157,24 +191,21 @@ export default function Landing() {
             </div>
           </div>
         </div>
-
-        {/* CTA Section */}
-        <div className="text-center">
-          <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-2xl p-12 max-w-2xl mx-auto border border-primary/20">
-            <h2 className="text-2xl font-bold mb-4 font-display">Ready to Transform Academic Success?</h2>
-            <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
-              Join thousands of students and instructors leveraging deep learning to improve academic outcomes through predictive analytics and early intervention.
-            </p>
-            <Button 
-              size="lg" 
-              className="text-lg px-8 py-3 h-auto shadow-lg hover:shadow-xl transition-shadow duration-300"
-              onClick={() => navigate('/login')}
-            >
-              Get Started Now
-            </Button>
-          </div>
-        </div>
+        </PopInSection>
       </div>
+
+      {/* Single Get Started at the very bottom of the page */}
+      <PopInSection className="flex justify-center">
+      <div className="container mx-auto px-4 pb-16 pt-8 max-w-6xl flex justify-center">
+        <Button
+          size="lg"
+          className="text-base px-10 py-6 h-auto rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all"
+          onClick={() => navigate('/login')}
+        >
+          Get Started
+        </Button>
+      </div>
+      </PopInSection>
     </div>
   );
 }
