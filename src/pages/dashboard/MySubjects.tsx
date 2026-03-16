@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,12 +23,27 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function MySubjects() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [enrollCode, setEnrollCode] = useState('');
 
   const programCode = (user?.user_metadata as any)?.course as string | undefined;
+
+  const { data: studentProgram } = useQuery({
+    queryKey: ['student-program', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('student_programs')
+        .select('id')
+        .eq('student_id', user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id && role === 'student',
+  });
 
   const { data: enrollmentsWithSubjects = [], isLoading } = useQuery({
     queryKey: ['my-enrollments', user?.id],
@@ -104,12 +119,13 @@ export default function MySubjects() {
       
       // Check if student can enroll based on program restriction
       if (subject.program_id) {
-        let { data: studentProgram } = await supabase
+        const { data: studentPrograms, error: programError } = await supabase
           .from('student_programs')
           .select('program_id, year_level, is_irregular, programs(code, name)')
-          .eq('student_id', user!.id)
-          .maybeSingle();
-        
+          .eq('student_id', user!.id);
+        if (programError) throw programError;
+        let studentProgram = studentPrograms?.[0] ?? null;
+
         // If student has no program record yet but their auth metadata course matches
         // this subject's program code, auto-create a student_programs row for them.
         if (!studentProgram) {
@@ -129,19 +145,18 @@ export default function MySubjects() {
           }
         }
 
-        // If student is irregular, allow enrollment
-        if (studentProgram?.is_irregular) {
-          // Irregular students can enroll in any course
-        } else if (!studentProgram && subject.program_id) {
-          throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
+        // If student has a program record, check if any allows enrollment (irregular or matching program)
+        const isIrregular = studentProgram?.is_irregular === true;
+        const programMatches = studentProgram && subject.program_id && String(studentProgram.program_id) === String(subject.program_id);
+        if (isIrregular || programMatches) {
+          // Allow enrollment
         } else if (studentProgram) {
-          // Check program restriction
-          if (subject.program_id && studentProgram.program_id !== subject.program_id) {
-            throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
-          }
+          throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
+        } else {
+          throw new Error('To enroll in this course, complete your academic profile first: go to Settings and fill in "Academic Information" (program and year level), then try again.');
         }
       }
-      
+
       // If all checks pass, create a pending enrollment request
       const { error: insertError } = await supabase.from('enrollments').insert({
         student_id: user!.id,
@@ -156,6 +171,7 @@ export default function MySubjects() {
     },
     onSuccess: (subject) => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
       toast.success(`Enrollment request sent for ${subject.code} — ${subject.name}. Waiting for instructor approval.`);
       setEnrollCode('');
     },
@@ -192,12 +208,13 @@ export default function MySubjects() {
       
       // Check if student can enroll based on program restriction
       if (subject.program_id) {
-        let { data: studentProgram } = await supabase
+        const { data: studentPrograms, error: programError } = await supabase
           .from('student_programs')
           .select('program_id, year_level, is_irregular, programs(code, name)')
-          .eq('student_id', user!.id)
-          .maybeSingle();
-        
+          .eq('student_id', user!.id);
+        if (programError) throw programError;
+        let studentProgram = studentPrograms?.[0] ?? null;
+
         // If student has no program record yet but their auth metadata course matches
         // this subject's program code, auto-create a student_programs row for them.
         if (!studentProgram) {
@@ -217,19 +234,18 @@ export default function MySubjects() {
           }
         }
 
-        // If student is irregular, allow enrollment
-        if (studentProgram?.is_irregular) {
-          // Irregular students can enroll in any course
-        } else if (!studentProgram && subject.program_id) {
-          throw new Error('This course has enrollment restrictions. Please complete your profile information first.');
+        // If student has a program record, check if any allows enrollment (irregular or matching program)
+        const isIrregular = studentProgram?.is_irregular === true;
+        const programMatches = studentProgram && subject.program_id && String(studentProgram.program_id) === String(subject.program_id);
+        if (isIrregular || programMatches) {
+          // Allow enrollment
         } else if (studentProgram) {
-          // Check program restriction
-          if (subject.program_id && studentProgram.program_id !== subject.program_id) {
-            throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
-          }
+          throw new Error(`This course is only available for ${subject.programs?.code || 'specific program'} students.`);
+        } else {
+          throw new Error('To enroll in this course, complete your academic profile first: go to Settings and fill in "Academic Information" (program and year level), then try again.');
         }
       }
-      
+
       // If all checks pass, create a pending enrollment request
       const { error } = await supabase.from('enrollments').insert({
         student_id: user!.id,
@@ -243,6 +259,7 @@ export default function MySubjects() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
       toast.success('Enrollment request sent. Waiting for instructor approval.');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -261,6 +278,19 @@ export default function MySubjects() {
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">My Subjects</h1>
+
+      {role === 'student' && user?.id && studentProgram === null && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="pt-6">
+            <p className="text-sm text-amber-800">
+              To enroll in program-restricted courses, complete your <strong>Academic Information</strong> first (program and year level).
+            </p>
+            <Button variant="outline" size="sm" className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100" asChild>
+              <Link to="/dashboard/settings">Go to Settings → Academic profile</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Enroll with course code */}
       <Card>

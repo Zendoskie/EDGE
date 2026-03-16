@@ -32,7 +32,7 @@ export default function StudentProfileSetup() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from('student_programs')
-        .select('program_id, year_level, programs(code, name)')
+        .select('program_id, year_level, is_irregular, programs(code, name)')
         .eq('student_id', user.id)
         .maybeSingle();
       if (error) throw error;

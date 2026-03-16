@@ -10,6 +10,7 @@ import { Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
+import StudentProfileSetup from '@/components/StudentProfileSetup';
 
 export default function Settings() {
   const { user, role } = useAuth();
@@ -128,6 +129,10 @@ export default function Settings() {
           )}
         </CardContent>
       </Card>
+
+      {role === 'student' && (
+        <StudentProfileSetup />
+      )}
     </div>
   );
 }
