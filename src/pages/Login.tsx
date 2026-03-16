@@ -38,6 +38,7 @@ export default function Login() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<'login' | 'signup'>('login');
 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -127,6 +128,10 @@ export default function Login() {
           : undefined;
 
       await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
+
+      // After successful signup, switch to Sign In tab and prefill email.
+      setTab('login');
+      setLoginEmail(signupEmail);
       toast.success('Account created! You can now sign in.');
     } catch (err: any) {
       toast.error(err.message || 'Signup failed');
@@ -149,7 +154,7 @@ export default function Login() {
         </div>
 
         <Card className="shadow-lg border-border/50">
-          <Tabs defaultValue="login">
+          <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
             <CardHeader className="pb-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Sign In</TabsTrigger>
