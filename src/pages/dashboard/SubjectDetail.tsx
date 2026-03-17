@@ -791,7 +791,6 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
         <TableHeader>
           <TableRow>
             <TableHead>Student</TableHead>
-            <TableHead>Program</TableHead>
             <TableHead className="w-32">Score (/ {maxScore})</TableHead>
             <TableHead className="w-24">%</TableHead>
           </TableRow>
@@ -799,9 +798,6 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
         <TableBody>
           {enrollments.map((e: any) => {
             const profile = e.profile as any;
-            const programLabel = (programCode && programName)
-              ? `${programCode} — ${programName}`
-              : programCode || '—';
             const scoreStr =
               scores[e.student_id] ??
               submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
@@ -812,7 +808,6 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
             return (
               <TableRow key={e.student_id}>
                 <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
-                <TableCell>{programLabel}</TableCell>
                 <TableCell>
                   <Input
                     type="number"
@@ -974,29 +969,39 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       return;
     }
     setBulkNotifyPreparing(true);
-    const body = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
-    let sent = 0;
-    for (const p of withEmail) {
-      try {
-        const { error: invokeError } = await supabase.functions.invoke('send-notification', {
-          body: {
+    const msg = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('send-notification', {
+        body: {
+          subject_code: subjectCode,
+          subject_name: subjectName,
+          body: msg,
+          recipients: withEmail.map((p: any) => ({
             to: p.profile.email,
             student_id: p.student_id,
             subject_id: subjectId,
             risk_level: p.risk_level,
-            subject_code: subjectCode,
-            subject_name: subjectName,
-            body,
-          },
-        });
-        if (!invokeError) sent++;
-      } catch {}
+          })),
+        },
+      });
+      if (invokeError) throw new Error(invokeError.message || 'Failed to send emails');
+
+      const sent = (data as any)?.sent ?? 0;
+      const failed = (data as any)?.failed ?? 0;
+      const errors = (data as any)?.errors as Array<{ index: number; message: string }> | undefined;
+
+      setBulkNotifyOpen(false);
+      setBulkNotifyMessage('');
+      toast.success(`Sent notifications to ${sent} of ${withEmail.length} at-risk students`);
+      if (failed > 0) {
+        const first = errors?.[0]?.message;
+        toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check Resend settings.');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Bulk email failed');
+    } finally {
+      setBulkNotifyPreparing(false);
     }
-    setBulkNotifyPreparing(false);
-    setBulkNotifyOpen(false);
-    setBulkNotifyMessage('');
-    toast.success(`Sent notifications to ${sent} of ${withEmail.length} at-risk students`);
-    if (sent < withEmail.length) toast.error('Some emails failed. Check RESEND_API_KEY / Resend settings.');
   };
 
   return (

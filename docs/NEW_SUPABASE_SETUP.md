@@ -99,6 +99,12 @@ npx supabase functions deploy send-notification
 npx supabase secrets set RESEND_API_KEY=re_your_key --env prod
 ```
 
+3. (Recommended) Set a verified sender and update secrets:
+
+```bash
+npx supabase secrets set RESEND_FROM="EDGE <noreply@yourdomain.com>" --env prod
+```
+
 Notes:
 - To email arbitrary Gmail recipients reliably, you typically need a **verified sending domain** in Resend and update the `from` address in the functions.
 
