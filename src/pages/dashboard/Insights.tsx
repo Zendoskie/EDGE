@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -5,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { AICoachPopup } from '@/components/AICoachPopup';
 import { 
   Brain, 
   MessageSquare, 
@@ -19,103 +21,149 @@ import {
   Activity
 } from 'lucide-react';
 
-export default function Insights() {
-  const { user } = useAuth();
+type CanonicalRiskLevel = 'critical' | 'at_risk' | 'stable' | 'excelling';
 
-  const { data: predictions = [], isLoading: predictionsLoading } = useQuery({
-    queryKey: ['my-predictions', user?.id],
+function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
+  if (typeof level !== 'string') return 'stable';
+  const normalized = level.trim().toLowerCase().replace(/\s+/g, '_');
+  if (normalized === 'critical') return 'critical';
+  if (normalized === 'at_risk' || normalized === 'at-risk' || normalized === 'atrisk') return 'at_risk';
+  if (normalized === 'excelling') return 'excelling';
+  if (normalized === 'stable') return 'stable';
+  // Back-compat for older schema values like "At Risk"
+  if (normalized === 'at_risk') return 'at_risk';
+  return 'stable';
+}
+
+const riskLabel = (level: CanonicalRiskLevel) => {
+  if (level === 'critical') return 'Critical';
+  if (level === 'at_risk') return 'At Risk';
+  if (level === 'excelling') return 'Excelling';
+  return 'Stable';
+};
+
+const riskVariant = (level: CanonicalRiskLevel): 'destructive' | 'default' | 'secondary' => {
+  if (level === 'critical' || level === 'at_risk') return 'destructive';
+  if (level === 'excelling') return 'default';
+  return 'secondary';
+};
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{body}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Insights() {
+  const { user, role } = useAuth();
+
+  if (!user?.id) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+        <EmptyState
+          title="Sign in required"
+          body="Please sign in to view performance insights."
+        />
+      </div>
+    );
+  }
+
+  if (role === 'instructor') {
+    return <InstructorInsights instructorId={user.id} />;
+  }
+  return <StudentInsights userId={user.id} />;
+}
+
+function StudentInsights({ userId }: { userId: string }) {
+  const { data: predictions = [], isLoading: predictionsLoading, isError: predictionsIsError } = useQuery({
+    queryKey: ['my-predictions', userId],
     queryFn: async () => {
-      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('predictions')
         .select('*, subjects(id, code, name)')
-        .eq('student_id', user.id)
+        .eq('student_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!user?.id,
+    enabled: !!userId,
   });
 
-  const { data: interventions = [], isLoading: interventionsLoading } = useQuery({
-    queryKey: ['my-interventions', user?.id],
+  const { data: interventions = [], isLoading: interventionsLoading, isError: interventionsIsError } = useQuery({
+    queryKey: ['my-interventions', userId],
     queryFn: async () => {
-      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('interventions')
         .select('id, type, message, sent_at, subject_id, subjects(code, name)')
-        .eq('student_id', user.id)
+        .eq('student_id', userId)
         .order('sent_at', { ascending: false })
         .limit(10);
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!user?.id,
+    enabled: !!userId,
   });
 
-  const { data: subjects = [], isLoading: subjectsLoading } = useQuery({
-    queryKey: ['my-subjects', user?.id],
+  const { data: subjects = [], isLoading: subjectsLoading, isError: subjectsIsError } = useQuery({
+    queryKey: ['my-subjects', userId],
     queryFn: async () => {
-      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('enrollments')
         .select('subjects(id, code, name)')
-        .eq('student_id', user.id);
+        .eq('student_id', userId)
+        .eq('status', 'active');
       if (error) throw error;
-      return data?.map(e => e.subjects) ?? [];
+      return (data ?? []).map((e: { subjects: unknown }) => (e as { subjects: any }).subjects).filter(Boolean) ?? [];
     },
-    enabled: !!user?.id,
+    enabled: !!userId,
   });
 
-  const { data: attendance = [], isLoading: attendanceLoading } = useQuery({
-    queryKey: ['my-attendance-stats', user?.id],
+  const { data: attendance = [], isLoading: attendanceLoading, isError: attendanceIsError } = useQuery({
+    queryKey: ['my-attendance-stats', userId],
     queryFn: async () => {
-      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('attendance')
-        .select('status, subjects(code, name)')
-        .eq('student_id', user.id);
+        .select('status, subject_id')
+        .eq('student_id', userId);
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!user?.id,
+    enabled: !!userId,
   });
 
-  const { data: scores = [], isLoading: scoresLoading } = useQuery({
-    queryKey: ['my-scores-stats', user?.id],
+  const { data: scores = [], isLoading: scoresLoading, isError: scoresIsError } = useQuery({
+    queryKey: ['my-scores-stats', userId],
     queryFn: async () => {
-      if (!user?.id) return [];
       const { data, error } = await supabase
         .from('submissions')
         .select('score, activities(name, subject_id, max_score)')
-        .eq('student_id', user.id);
+        .eq('student_id', userId);
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!user?.id,
+    enabled: !!userId,
   });
 
-  const riskLabel = (level: string) => {
-    if (level === 'critical') return 'Critical';
-    if (level === 'at_risk') return 'At Risk';
-    if (level === 'excelling') return 'Excelling';
-    return 'Stable';
-  };
+  const latestBySubject = useMemo(() => {
+    return predictions.reduce((acc: Record<string, any>, p: any) => {
+      const sid = p.subject_id;
+      if (!sid) return acc;
+      if (!acc[sid] || new Date(p.created_at) > new Date(acc[sid].created_at)) acc[sid] = p;
+      return acc;
+    }, {});
+  }, [predictions]);
 
-  const riskVariant = (level: string): 'destructive' | 'default' | 'secondary' => {
-    if (level === 'critical' || level === 'at_risk') return 'destructive';
-    if (level === 'excelling') return 'default';
-    return 'secondary';
-  };
+  const latestOverall = predictions.length > 0 ? predictions[0] : null;
 
-  const latestBySubject = predictions.reduce((acc: Record<string, any>, p) => {
-    const sid = p.subject_id;
-    if (!acc[sid] || new Date(p.created_at) > new Date(acc[sid].created_at)) acc[sid] = p;
-    return acc;
-  }, {});
-
-  // Calculate statistics
-  const attendanceStats = attendance.reduce((acc, record) => {
+  const attendanceStats = attendance.reduce((acc: { total: number; present: number }, record: any) => {
     acc.total++;
     if (record.status === 'present') acc.present++;
     return acc;
@@ -123,7 +171,7 @@ export default function Insights() {
 
   const attendanceRate = attendanceStats.total > 0 ? (attendanceStats.present / attendanceStats.total) * 100 : 0;
 
-  const scoreStats = scores.reduce((acc, submission: any) => {
+  const scoreStats = scores.reduce((acc: { total: number; count: number }, submission: any) => {
     if (submission.score !== null) {
       const max = submission.activities?.max_score ?? 100;
       if (max <= 0) return acc;
@@ -136,14 +184,37 @@ export default function Insights() {
 
   const averageScore = scoreStats.count > 0 ? scoreStats.total / scoreStats.count : 0;
 
-  const riskDistribution = Object.values(latestBySubject).reduce((acc, p) => {
-    acc[p.risk_level] = (acc[p.risk_level] || 0) + 1;
+  const riskDistribution = Object.values(latestBySubject).reduce((acc: Record<CanonicalRiskLevel, number>, p: any) => {
+    const lvl = canonicalRiskLevel(p?.risk_level);
+    acc[lvl] = (acc[lvl] || 0) + 1;
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as Record<CanonicalRiskLevel, number>);
+
+  const hasAnyError = predictionsIsError || interventionsIsError || subjectsIsError || attendanceIsError || scoresIsError;
+  const anyLoading = predictionsLoading || interventionsLoading || subjectsLoading || attendanceLoading || scoresLoading;
 
   return (
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+
+      <AICoachPopup
+        riskLevel={latestOverall?.risk_level ?? null}
+        recommendation={latestOverall?.recommendation ?? null}
+        subjectLabel={
+          (latestOverall as any)?.subjects?.code
+            ? `${(latestOverall as any)?.subjects?.code} — ${(latestOverall as any)?.subjects?.name ?? ''}`.trim()
+            : null
+        }
+        storageKey="edge_ai_coach_dismissed_insights_v1"
+        variant="detailed"
+      />
+
+      {hasAnyError && (
+        <EmptyState
+          title="Some insights failed to load"
+          body="Your dashboard can still work, but some sections may be empty. This is usually caused by missing data or database permissions (RLS)."
+        />
+      )}
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
@@ -166,6 +237,8 @@ export default function Insights() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
+          {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -213,10 +286,7 @@ export default function Insights() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {Object.keys(latestBySubject).length > 0 
-                    ? riskLabel(Object.values(latestBySubject)[0].risk_level)
-                    : 'No Data'
-                  }
+                  {latestOverall ? riskLabel(canonicalRiskLevel(latestOverall.risk_level)) : 'No Data'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Latest prediction
@@ -237,8 +307,8 @@ export default function Insights() {
                 <div className="space-y-3">
                   {Object.entries(riskDistribution).map(([level, count]) => (
                     <div key={level} className="flex items-center justify-between">
-                      <Badge variant={riskVariant(level)} className="capitalize">
-                        {riskLabel(level)}
+                      <Badge variant={riskVariant(level as CanonicalRiskLevel)} className="capitalize">
+                        {riskLabel(level as CanonicalRiskLevel)}
                       </Badge>
                       <span className="text-sm font-medium">{count} subject{count !== 1 ? 's' : ''}</span>
                     </div>
@@ -377,7 +447,9 @@ export default function Insights() {
                     <div key={p.id} className="border rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{(p.subjects as any)?.code} — {(p.subjects as any)?.name}</span>
-                        <Badge variant={riskVariant(p.risk_level)}>{riskLabel(p.risk_level)}</Badge>
+                        <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))}>
+                          {riskLabel(canonicalRiskLevel(p.risk_level))}
+                        </Badge>
                       </div>
                       {p.recommendation && (
                         <p className="text-sm text-muted-foreground">{p.recommendation}</p>
@@ -413,6 +485,269 @@ export default function Insights() {
                     <li key={i.id} className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0 text-sm">
                       <Badge variant="outline" className="capitalize shrink-0">{i.type}</Badge>
                       <div>
+                        <span className="text-muted-foreground">{(i.subjects as any)?.code}</span>
+                        {i.message && <p className="mt-0.5">{i.message}</p>}
+                        <p className="text-xs text-muted-foreground">{i.sent_at ? new Date(i.sent_at).toLocaleString() : ''}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function InstructorInsights({ instructorId }: { instructorId: string }) {
+  const { data: subjects = [], isLoading: subjectsLoading } = useQuery({
+    queryKey: ['instructor-insights-subjects', instructorId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('id, code, name')
+        .eq('instructor_id', instructorId)
+        .order('code');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!instructorId,
+  });
+
+  const subjectIds = useMemo(() => subjects.map((s: any) => s.id).filter(Boolean) as string[], [subjects]);
+
+  const { data: enrollments = [], isLoading: enrollmentsLoading } = useQuery({
+    queryKey: ['instructor-insights-enrollments', instructorId, subjectIds.join(',')],
+    queryFn: async () => {
+      if (subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select('student_id, subject_id, status')
+        .in('subject_id', subjectIds)
+        .eq('status', 'active');
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: subjectIds.length > 0,
+  });
+
+  const { data: predictions = [], isLoading: predictionsLoading } = useQuery({
+    queryKey: ['instructor-insights-predictions', instructorId, subjectIds.join(',')],
+    queryFn: async () => {
+      if (subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('predictions')
+        .select('id, created_at, risk_level, recommendation, subject_id, student_id, subjects(code, name)')
+        .in('subject_id', subjectIds)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: subjectIds.length > 0,
+  });
+
+  const { data: interventions = [], isLoading: interventionsLoading } = useQuery({
+    queryKey: ['instructor-insights-interventions', instructorId, subjectIds.join(',')],
+    queryFn: async () => {
+      if (subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('interventions')
+        .select('id, type, message, sent_at, student_id, subject_id, subjects(code, name)')
+        .in('subject_id', subjectIds)
+        .order('sent_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: subjectIds.length > 0,
+  });
+
+  const uniqueStudents = useMemo(() => new Set((enrollments ?? []).map((e: any) => e.student_id)).size, [enrollments]);
+
+  const latestByStudentSubject = useMemo(() => {
+    const acc = new Map<string, any>();
+    for (const p of predictions as any[]) {
+      const key = `${p.student_id}:${p.subject_id}`;
+      if (!acc.has(key)) acc.set(key, p);
+    }
+    return Array.from(acc.values());
+  }, [predictions]);
+
+  const distribution = useMemo(() => {
+    const d: Record<CanonicalRiskLevel, number> = { critical: 0, at_risk: 0, stable: 0, excelling: 0 };
+    for (const p of latestByStudentSubject) d[canonicalRiskLevel(p?.risk_level)]++;
+    return d;
+  }, [latestByStudentSubject]);
+
+  const anyLoading = subjectsLoading || enrollmentsLoading || predictionsLoading || interventionsLoading;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+
+      {subjects.length === 0 && !subjectsLoading ? (
+        <EmptyState
+          title="No subjects yet"
+          body="Once you create subjects and enroll students, you’ll see performance insights here."
+        />
+      ) : null}
+
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Analytics
+          </TabsTrigger>
+          <TabsTrigger value="predictions" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            AI Predictions
+          </TabsTrigger>
+          <TabsTrigger value="interventions" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Interventions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6">
+          {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Subjects</CardTitle>
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{subjects.length}</div>
+                <p className="text-xs text-muted-foreground">Active subjects</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Students</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{uniqueStudents}</div>
+                <p className="text-xs text-muted-foreground">Across your subjects</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">At Risk</CardTitle>
+                <TrendingDown className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{distribution.at_risk}</div>
+                <p className="text-xs text-muted-foreground">Latest predictions</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Critical</CardTitle>
+                <Brain className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{distribution.critical}</div>
+                <p className="text-xs text-muted-foreground">Latest predictions</p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Risk distribution (latest per student & subject)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {subjectIds.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Create subjects and enroll students to see analytics.</p>
+              ) : latestByStudentSubject.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {(Object.keys(distribution) as CanonicalRiskLevel[]).map((k) => (
+                    <div key={k} className="border rounded-lg p-3 flex items-center justify-between">
+                      <Badge variant={riskVariant(k)}>{riskLabel(k)}</Badge>
+                      <span className="text-sm font-medium">{distribution[k]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="predictions" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Brain className="h-5 w-5" />
+                Recent AI predictions
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">Most recent predictions across your subjects.</p>
+            </CardHeader>
+            <CardContent>
+              {predictionsLoading ? (
+                <p className="text-muted-foreground text-sm">Loading predictions…</p>
+              ) : predictions.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {predictions.slice(0, 20).map((p: any) => (
+                    <li key={p.id} className="flex items-start justify-between gap-3 border-b border-border/50 py-2 last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {(p.subjects as any)?.code} — {(p.subjects as any)?.name}
+                        </p>
+                        {p.recommendation ? (
+                          <p className="text-xs text-muted-foreground line-clamp-2">{p.recommendation}</p>
+                        ) : null}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
+                        </p>
+                      </div>
+                      <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))} className="shrink-0">
+                        {riskLabel(canonicalRiskLevel(p.risk_level))}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="interventions" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MessageSquare className="h-5 w-5" />
+                Recent interventions
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">Logged outreach actions (email, meeting, counseling, etc.).</p>
+            </CardHeader>
+            <CardContent>
+              {interventionsLoading ? (
+                <p className="text-muted-foreground text-sm">Loading interventions…</p>
+              ) : interventions.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No interventions recorded yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {interventions.map((i: any) => (
+                    <li key={i.id} className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0 text-sm">
+                      <Badge variant="outline" className="capitalize shrink-0">{i.type}</Badge>
+                      <div className="min-w-0">
                         <span className="text-muted-foreground">{(i.subjects as any)?.code}</span>
                         {i.message && <p className="mt-0.5">{i.message}</p>}
                         <p className="text-xs text-muted-foreground">{i.sent_at ? new Date(i.sent_at).toLocaleString() : ''}</p>

@@ -114,6 +114,36 @@ Notes:
 
 ---
 
+## Step 4B (Optional): AI Coach popup for at-risk students (Gemini)
+
+EDGE can show an **AI Coach** popup in the student dashboard/insights when the latest risk prediction is **Critical** or **At Risk**.
+
+1. Create a Gemini API key (Google AI Studio).
+
+2. Deploy the Edge Function:
+
+```bash
+npx supabase functions deploy ai-coach
+```
+
+3. Set secrets (Supabase secrets):
+
+```bash
+npx supabase secrets set GEMINI_API_KEY=your_gemini_key --env prod
+```
+
+Optional toggle (defaults to enabled):
+
+```bash
+npx supabase secrets set AI_COACH_ENABLED=true --env prod
+```
+
+Notes:
+- The AI coach only responds when the student is currently flagged as `critical` or `at_risk` (based on the latest row in `predictions`).
+- If you rotate keys, update `GEMINI_API_KEY` and re-try; no code changes needed.
+
+---
+
 ## Step 5: Create your first users
 
 1. Open the app (e.g. `http://localhost:5173`).

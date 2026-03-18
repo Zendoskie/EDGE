@@ -6,6 +6,7 @@ import { BookOpen, CalendarCheck, BarChart3, Brain } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { AICoachPopup } from '@/components/AICoachPopup';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -63,7 +64,7 @@ export default function StudentDashboard() {
 
       const { data: pred } = await supabase
         .from('predictions')
-        .select('risk_level')
+        .select('risk_level, recommendation, created_at, subjects(code, name)')
         .eq('student_id', user!.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -74,6 +75,9 @@ export default function StudentDashboard() {
         attendanceRate: attendanceRate != null ? `${attendanceRate}%` : '—',
         overallAverage: overallAvg != null ? `${overallAvg}%` : '—',
         riskStatus: pred?.risk_level ? (pred.risk_level === 'critical' ? 'Critical' : pred.risk_level === 'at_risk' ? 'At Risk' : pred.risk_level === 'excelling' ? 'Excelling' : 'Stable') : '—',
+        riskLevel: pred?.risk_level ?? null,
+        recommendation: (pred as any)?.recommendation ?? null,
+        subjectLabel: (pred as any)?.subjects?.code ? `${(pred as any)?.subjects?.code} — ${(pred as any)?.subjects?.name ?? ''}`.trim() : null,
       };
     },
     enabled: !!user?.id,
@@ -102,6 +106,13 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <AICoachPopup
+        riskLevel={(stats as any)?.riskLevel}
+        recommendation={(stats as any)?.recommendation}
+        subjectLabel={(stats as any)?.subjectLabel}
+        storageKey="edge_ai_coach_dismissed_dashboard_v1"
+        variant="compact"
+      />
       <div>
         <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
