@@ -25,64 +25,56 @@ function safeRiskLevel(s: unknown): RiskLevel | null {
   return null;
 }
 
-async function sendResendEmail(opts: { to: string; subject: string; html: string }) {
-  const resendKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendKey) throw new Error("Email not configured. Add RESEND_API_KEY to Edge Function secrets.");
+async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
+  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
 
-  const from = Deno.env.get("RESEND_FROM") || "EDGE <onboarding@resend.dev>";
-  const res = await fetch("https://api.resend.com/emails", {
+  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
+  const match = fromRaw.match(/^(.*)<(.+)>$/);
+  const fromName = match ? match[1].trim() : "EDGE";
+  const fromEmail = match ? match[2].trim() : fromRaw;
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${resendKey}`,
+      "api-key": brevoKey,
     },
     body: JSON.stringify({
-      // Use a verified domain here if you have one, e.g. "EDGE <noreply@yourdomain.com>"
-      from,
-      to: [opts.to],
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: opts.to }],
       subject: opts.subject,
-      html: opts.html,
+      htmlContent: opts.html,
     }),
   });
 
   const result = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Resend error (${res.status})`;
+    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
     throw new Error(msg);
   }
-  return result as { id: string };
+  return result as { messageId?: string };
 }
 
-async function sendResendBatch(emails: Array<{ to: string; subject: string; html: string }>) {
-  const resendKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendKey) throw new Error("Email not configured. Add RESEND_API_KEY to Edge Function secrets.");
-  const from = Deno.env.get("RESEND_FROM") || "EDGE <onboarding@resend.dev>";
+async function sendBrevoBatch(emails: Array<{ to: string; subject: string; html: string }>) {
+  const results: { index: number; success: boolean; error?: string }[] = [];
 
-  const payload = emails.map((e) => ({
-    from,
-    to: [e.to],
-    subject: e.subject,
-    html: e.html,
-  }));
-
-  const res = await fetch("https://api.resend.com/emails/batch", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resendKey}`,
-      // Allow partial success (don't fail the entire batch due to one bad email)
-      "x-batch-validation": "permissive",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Resend error (${res.status})`;
-    throw new Error(msg);
+  for (let i = 0; i < emails.length; i++) {
+    const e = emails[i];
+    try {
+      await sendBrevoEmail(e);
+      results.push({ index: i, success: true });
+    } catch (err) {
+      results.push({ index: i, success: false, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
-  return result as {
+  const data = results.filter((r) => r.success).map(() => ({ id: crypto.randomUUID ? crypto.randomUUID() : "" }));
+  const errors = results
+    .filter((r) => !r.success)
+    .map((r) => ({ index: r.index, message: r.error || "Unknown error" }));
+
+  return { data, errors } as {
     data?: Array<{ id: string }>;
     errors?: Array<{ index: number; message: string }>;
   };
@@ -137,7 +129,7 @@ serve(async (req) => {
 
       if (recipients.length === 0) throw new Error("recipients must include at least one valid to email");
 
-      const batch = await sendResendBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
+      const batch = await sendBrevoBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
 
       const sentCount = batch.data?.length ?? 0;
       const failedCount = batch.errors?.length ?? 0;
@@ -177,7 +169,7 @@ serve(async (req) => {
 
     if (!to) throw new Error("to (student email) is required");
 
-    const result = await sendResendEmail({ to, subject: emailSubject, html });
+    const result = await sendBrevoEmail({ to, subject: emailSubject, html });
 
     if (studentId && subjectId && (riskLevel === "critical" || riskLevel === "at_risk")) {
       await supabase.from("email_notifications").insert({

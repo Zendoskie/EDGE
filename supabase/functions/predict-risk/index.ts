@@ -100,31 +100,35 @@ function classifyStudent(metrics: StudentMetrics): { risk_level: RiskLevel; conf
   return { risk_level: "stable", confidence: 0.75, recommendation: stableRecommendation };
 }
 
-async function sendResendEmail(opts: { to: string; subject: string; html: string }) {
-  const resendKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendKey) throw new Error("Email not configured. Add RESEND_API_KEY to Edge Function secrets.");
+async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
+  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
 
-  const res = await fetch("https://api.resend.com/emails", {
+  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
+  const match = fromRaw.match(/^(.*)<(.+)>$/);
+  const fromName = match ? match[1].trim() : "EDGE";
+  const fromEmail = match ? match[2].trim() : fromRaw;
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${resendKey}`,
+      "api-key": brevoKey,
     },
     body: JSON.stringify({
-      // Use a verified domain here if you have one, e.g. "EDGE <noreply@yourdomain.com>"
-      from: "EDGE <onboarding@resend.dev>",
-      to: [opts.to],
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: opts.to }],
       subject: opts.subject,
-      html: opts.html,
+      htmlContent: opts.html,
     }),
   });
 
   const result = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Resend error (${res.status})`;
+    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
     throw new Error(msg);
   }
-  return result as { id: string };
+  return result as { messageId?: string };
 }
 
 serve(async (req) => {
@@ -279,7 +283,7 @@ serve(async (req) => {
         `;
 
         try {
-          await sendResendEmail({ to: studentEmail, subject: subj, html });
+          await sendBrevoEmail({ to: studentEmail, subject: subj, html });
           await supabase.from("email_notifications").insert({
             student_id: n.student_id,
             subject_id,

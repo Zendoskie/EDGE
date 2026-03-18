@@ -82,31 +82,35 @@ After this, “Generate Predictions” in the app will use the new project’s f
 
 ---
 
-## Step 4 (Optional): Automatic email notifications (Resend)
+## Step 4 (Optional): Automatic email notifications (Brevo)
 
-EDGE can automatically email students when they are flagged as **Critical** or **At Risk** during prediction generation.
+EDGE can automatically email students when they are flagged as **Critical** or **At Risk** during prediction generation, using **Brevo** as the email provider.
 
-1. Deploy the functions:
+1. In your Brevo account:
+   - Create an API key (under **SMTP & API → API keys**).
+   - Add and verify a sender email (e.g. your Gmail or a future `noreply@yourdomain.com`).
+
+2. Deploy the functions:
 
 ```bash
 npx supabase functions deploy predict-risk
 npx supabase functions deploy send-notification
 ```
 
-2. Set the Resend API key (Supabase secrets):
+3. Set the Brevo API key (Supabase secrets):
 
 ```bash
-npx supabase secrets set RESEND_API_KEY=re_your_key --env prod
+npx supabase secrets set BREVO_API_KEY=your_brevo_api_key --env prod
 ```
 
-3. (Recommended) Set a verified sender and update secrets:
+4. Set a verified sender and update secrets (must match a verified Brevo sender):
 
 ```bash
-npx supabase secrets set RESEND_FROM="EDGE <noreply@yourdomain.com>" --env prod
+npx supabase secrets set BREVO_FROM="EDGE <youremail@example.com>" --env prod
 ```
 
 Notes:
-- To email arbitrary Gmail recipients reliably, you typically need a **verified sending domain** in Resend and update the `from` address in the functions.
+- For best deliverability, use a sender email that is verified in Brevo (and ideally on a domain you control).
 
 ---
 
