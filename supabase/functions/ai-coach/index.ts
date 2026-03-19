@@ -1,11 +1,59 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Constants
+const MAX_MESSAGE_HISTORY = 12;
+const MAX_OUTPUT_TOKENS = 350;
+const MAX_MESSAGE_LENGTH = 1000;
+const RATE_LIMIT_REQUESTS = 10;
+const RATE_LIMIT_WINDOW = 60; // seconds
+
+// Simple in-memory rate limiting (for production, use Redis or similar)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function getCorsHeaders(): Record<string, string> {
+  const origin = Deno.env.get("FRONTEND_URL") || "http://localhost:3000";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const windowMs = RATE_LIMIT_WINDOW * 1000;
+  const userLimit = rateLimitMap.get(userId);
+  
+  if (!userLimit || now > userLimit.resetTime) {
+    rateLimitMap.set(userId, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  
+  if (userLimit.count >= RATE_LIMIT_REQUESTS) {
+    return false;
+  }
+  
+  userLimit.count++;
+  return true;
+}
+
+function sanitizeMessage(message: string): string {
+  return message
+    .trim()
+    .slice(0, MAX_MESSAGE_LENGTH)
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/data:/gi, '');
+}
+
+function validateMessage(message: unknown): string | null {
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  if (!trimmed || trimmed.length > MAX_MESSAGE_LENGTH) return null;
+  return sanitizeMessage(trimmed);
+}
 
 type CanonicalRiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 
@@ -16,8 +64,6 @@ function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
   if (normalized === "at_risk" || normalized === "at-risk" || normalized === "atrisk") return "at_risk";
   if (normalized === "excelling") return "excelling";
   if (normalized === "stable") return "stable";
-  // Back-compat for older schema values like "At Risk"
-  if (normalized === "at_risk") return "at_risk";
   return "stable";
 }
 
@@ -26,11 +72,12 @@ function safeString(s: unknown): string | null {
 }
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
+type ApiResponse = { reply?: string; risk_level?: string; subject?: { code?: string | null; name?: string | null } | null; error?: string };
 
 function toGeminiContents(messages: ChatMessage[]) {
   return messages
     .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
-    .slice(-12)
+    .slice(-MAX_MESSAGE_HISTORY)
     .map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
@@ -42,7 +89,7 @@ async function geminiReply(opts: {
   system: string;
   messages: ChatMessage[];
   temperature?: number;
-}) {
+}): Promise<string> {
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
 
@@ -54,50 +101,96 @@ async function geminiReply(opts: {
       contents: toGeminiContents(opts.messages),
       generationConfig: {
         temperature: opts.temperature ?? 0.6,
-        maxOutputTokens: 350,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
     }),
   });
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (json && (json.error?.message || json.message)) ? (json.error?.message || json.message) : `Gemini error (${res.status})`;
+    const msg = (json && (json.error?.message || json.message)) ? (json.error?.message || json.message) : `AI service error (${res.status})`;
     throw new Error(msg);
   }
 
   const parts: Array<{ text?: string }> = json?.candidates?.[0]?.content?.parts ?? [];
   const text = parts.map((p) => p?.text).filter((t): t is string => typeof t === "string" && !!t.trim()).join("");
-  return (typeof text === "string" ? text.trim() : "") || "I’m here with you. What feels hardest right now—attendance, missing work, or understanding the lessons?";
+  return (typeof text === "string" ? text.trim() : "") || "I'm here to help. What feels hardest right now—attendance, missing work, or understanding the lessons?";
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const corsHeaders = getCorsHeaders();
+  
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error("Service configuration error");
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) throw new Error("Unauthorized");
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid authentication" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rate limiting
+    if (!checkRateLimit(user.id)) {
+      return new Response(JSON.stringify({ error: "Too many requests. Please try again later." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const body = await req.json().catch(() => ({}));
-    const userMessage = safeString(body?.message);
+    const userMessage = validateMessage(body?.message);
     const messages = Array.isArray(body?.messages) ? (body.messages as ChatMessage[]) : [];
 
-    const hasUserTurn = messages.some((m) => m?.role === "user" && typeof m?.content === "string" && m.content.trim());
+    // Validate messages array
+    const validMessages = messages.filter(m => 
+      m && 
+      (m.role === "user" || m.role === "assistant") && 
+      typeof m.content === "string" && 
+      m.content.trim() && 
+      m.content.length <= MAX_MESSAGE_LENGTH
+    );
+
+    const hasUserTurn = validMessages.some((m) => m.role === "user");
     const effectiveMessages: ChatMessage[] = hasUserTurn
-      ? messages
+      ? validMessages
       : userMessage
-        ? [...messages, { role: "user", content: userMessage }]
-        : messages;
+        ? [...validMessages, { role: "user", content: userMessage }]
+        : validMessages;
 
     if (effectiveMessages.length === 0) {
-      return new Response(JSON.stringify({ reply: "Hi—I'm your study coach. What’s going on this week and what subject feels toughest right now?" }), {
+      const response: ApiResponse = {
+        reply: "Hi—I'm your study coach. What's going on this week and what subject feels toughest right now?",
+        risk_level: "stable"
+      };
+      return new Response(JSON.stringify(response), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -121,14 +214,22 @@ serve(async (req) => {
 
     const enabled = (Deno.env.get("AI_COACH_ENABLED") || "true").toLowerCase();
     if (enabled !== "true" && enabled !== "1" && enabled !== "yes") {
-      return new Response(JSON.stringify({
+      const response: ApiResponse = {
         reply: "The AI coach is currently disabled by the system.",
-        risk_level: risk,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        risk_level: risk
+      };
+      return new Response(JSON.stringify(response), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY secret");
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "AI service temporarily unavailable" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const subjectCode = pred?.subjects?.code ?? null;
     const subjectName = pred?.subjects?.name ?? null;
@@ -149,14 +250,21 @@ serve(async (req) => {
 
     const reply = await geminiReply({ apiKey, system, messages: effectiveMessages, temperature: 0.6 });
 
-    return new Response(JSON.stringify({
+    const response: ApiResponse = {
       reply,
       risk_level: risk,
       subject: subjectCode || subjectName ? { code: subjectCode, name: subjectName } : null,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    };
+    
+    return new Response(JSON.stringify(response), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e) {
     console.error("ai-coach error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const response: ApiResponse = {
+      error: e instanceof Error ? "Service temporarily unavailable" : "Unknown error occurred"
+    };
+    return new Response(JSON.stringify(response), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

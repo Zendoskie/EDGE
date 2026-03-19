@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { AICoachPopup } from '@/components/AICoachPopup';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { 
   Brain, 
   MessageSquare, 
@@ -20,33 +21,47 @@ import {
   BookOpen,
   Activity
 } from 'lucide-react';
+import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 
-type CanonicalRiskLevel = 'critical' | 'at_risk' | 'stable' | 'excelling';
-
-function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
-  if (typeof level !== 'string') return 'stable';
-  const normalized = level.trim().toLowerCase().replace(/\s+/g, '_');
-  if (normalized === 'critical') return 'critical';
-  if (normalized === 'at_risk' || normalized === 'at-risk' || normalized === 'atrisk') return 'at_risk';
-  if (normalized === 'excelling') return 'excelling';
-  if (normalized === 'stable') return 'stable';
-  // Back-compat for older schema values like "At Risk"
-  if (normalized === 'at_risk') return 'at_risk';
-  return 'stable';
+interface Prediction {
+  id: string;
+  risk_level: string;
+  recommendation?: string;
+  created_at: string;
+  subject_id: string;
+  subjects?: {
+    code: string;
+    name: string;
+  };
 }
 
-const riskLabel = (level: CanonicalRiskLevel) => {
-  if (level === 'critical') return 'Critical';
-  if (level === 'at_risk') return 'At Risk';
-  if (level === 'excelling') return 'Excelling';
-  return 'Stable';
-};
+interface Intervention {
+  id: string;
+  type: string;
+  message?: string;
+  sent_at?: string;
+  subject_id: string;
+  subjects?: {
+    code: string;
+    name: string;
+  };
+}
 
-const riskVariant = (level: CanonicalRiskLevel): 'destructive' | 'default' | 'secondary' => {
-  if (level === 'critical' || level === 'at_risk') return 'destructive';
-  if (level === 'excelling') return 'default';
-  return 'secondary';
-};
+interface Subject {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface StudentStats {
+  enrolledSubjects: number;
+  attendanceRate: string;
+  overallAverage: string;
+  riskStatus: string;
+  riskLevel: string | null;
+  recommendation: string | null;
+  subjectLabel: string | null;
+}
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -197,17 +212,19 @@ function StudentInsights({ userId }: { userId: string }) {
     <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
 
-      <AICoachPopup
-        riskLevel={latestOverall?.risk_level ?? null}
-        recommendation={latestOverall?.recommendation ?? null}
-        subjectLabel={
-          (latestOverall as any)?.subjects?.code
-            ? `${(latestOverall as any)?.subjects?.code} — ${(latestOverall as any)?.subjects?.name ?? ''}`.trim()
-            : null
-        }
-        storageKey="edge_ai_coach_dismissed_insights_v1"
-        variant="detailed"
-      />
+      <ErrorBoundary>
+        <AICoachPopup
+          riskLevel={latestOverall?.risk_level ?? null}
+          recommendation={latestOverall?.recommendation ?? null}
+          subjectLabel={
+            latestOverall?.subjects?.code
+              ? `${latestOverall.subjects.code} — ${latestOverall.subjects.name ?? ''}`.trim()
+              : null
+          }
+          storageKey="edge_ai_coach_dismissed_insights_v1"
+          variant="detailed"
+        />
+      </ErrorBoundary>
 
       {hasAnyError && (
         <EmptyState
@@ -310,7 +327,7 @@ function StudentInsights({ userId }: { userId: string }) {
                       <Badge variant={riskVariant(level as CanonicalRiskLevel)} className="capitalize">
                         {riskLabel(level as CanonicalRiskLevel)}
                       </Badge>
-                      <span className="text-sm font-medium">{count} subject{count !== 1 ? 's' : ''}</span>
+                      <span className="text-sm font-medium">{typeof count === 'number' ? count : 0} subject{typeof count === 'number' && count !== 1 ? 's' : ''}</span>
                     </div>
                   ))}
                   {Object.keys(riskDistribution).length === 0 && (

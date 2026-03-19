@@ -7,6 +7,33 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AICoachPopup } from '@/components/AICoachPopup';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { canonicalRiskLevel } from '@/lib/risk-utils';
+
+interface StudentStats {
+  enrolledSubjects: number;
+  attendanceRate: string;
+  overallAverage: string;
+  riskStatus: string;
+  riskLevel: string | null;
+  recommendation: string | null;
+  subjectLabel: string | null;
+}
+
+interface RecentActivity {
+  score: number | null;
+  graded_at: string | null;
+  activity_id: string;
+  activities: {
+    id: string;
+    title: string;
+    type: string;
+    max_score: number;
+    subjects: {
+      code: string;
+    };
+  };
+}
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -106,13 +133,15 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <AICoachPopup
-        riskLevel={(stats as any)?.riskLevel}
-        recommendation={(stats as any)?.recommendation}
-        subjectLabel={(stats as any)?.subjectLabel}
-        storageKey="edge_ai_coach_dismissed_dashboard_v1"
-        variant="compact"
-      />
+      <ErrorBoundary>
+        <AICoachPopup
+          riskLevel={stats?.riskLevel}
+          recommendation={stats?.recommendation}
+          subjectLabel={stats?.subjectLabel}
+          storageKey="edge_ai_coach_dismissed_dashboard_v1"
+          variant="compact"
+        />
+      </ErrorBoundary>
       <div>
         <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
@@ -160,7 +189,7 @@ export default function StudentDashboard() {
             <p className="text-muted-foreground text-sm">No activity yet. Your performance data will appear here once your instructor records grades.</p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {recentActivity.map((s: any) => {
+              {recentActivity.map((s) => {
                 const act = s.activities;
                 const subj = act?.subjects;
                 const maxScore = act?.max_score ?? 100;

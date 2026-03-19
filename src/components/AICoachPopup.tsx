@@ -8,33 +8,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Brain, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from "@/lib/risk-utils";
 
-type CanonicalRiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 type ChatMsg = { role: "user" | "assistant"; content: string };
-type AICoachResponse = { reply?: string; risk_level?: string; subject?: { code?: string | null; name?: string | null } | null };
-
-function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
-  if (typeof level !== "string") return "stable";
-  const normalized = level.trim().toLowerCase().replace(/\s+/g, "_");
-  if (normalized === "critical") return "critical";
-  if (normalized === "at_risk" || normalized === "at-risk" || normalized === "atrisk") return "at_risk";
-  if (normalized === "excelling") return "excelling";
-  if (normalized === "stable") return "stable";
-  return "stable";
-}
-
-function riskLabel(level: CanonicalRiskLevel) {
-  if (level === "critical") return "Critical";
-  if (level === "at_risk") return "At Risk";
-  if (level === "excelling") return "Excelling";
-  return "Stable";
-}
-
-function riskVariant(level: CanonicalRiskLevel): "destructive" | "default" | "secondary" {
-  if (level === "critical" || level === "at_risk") return "destructive";
-  if (level === "excelling") return "default";
-  return "secondary";
-}
+type AICoachResponse = { reply?: string; risk_level?: string; subject?: { code?: string | null; name?: string | null } | null; error?: string };
 
 const defaultStarter: ChatMsg[] = [
   {
@@ -76,12 +53,17 @@ export function AICoachPopup(props: {
 
   useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
-    return () => window.clearTimeout(t);
-  }, [open, messages.length]);
+    const timeoutId = setTimeout(() => {
+      listEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 30);
+    return () => clearTimeout(timeoutId);
+  }, [open]); // Remove messages.length dependency to prevent frequent re-renders
 
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
+      // Optimistically add user message
+      setMessages(prev => [...prev, { role: "user", content: text }]);
+      
       const payloadMessages: ChatMsg[] = [
         ...messages,
         { role: "user", content: text },
@@ -93,24 +75,49 @@ export function AICoachPopup(props: {
       const { data, error } = await supabase.functions.invoke<AICoachResponse>("ai-coach", {
         body: { messages: payloadMessages },
       });
-      if (error) throw new Error(error.message || "Failed to reach AI coach");
+      
+      if (error) {
+        throw new Error(error.message || "Failed to reach AI coach");
+      }
+      
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+      
       const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
-      if (!reply) throw new Error("AI coach returned an empty response");
+      if (!reply) {
+        throw new Error("AI coach returned an empty response");
+      }
+      
       return reply;
     },
-    onSuccess: (reply, text) => {
-      setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: reply }]);
+    onSuccess: (reply) => {
+      // Add assistant response
+      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     },
-    onError: (e) => {
-      setMessages((prev) => [
-        ...prev,
-        {
+    onError: (error) => {
+      // Remove the optimistic user message and add error message
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // Remove the last user message (optimistic addition)
+        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === "user") {
+          newMessages.pop();
+        }
+        // Add error message
+        newMessages.push({
           role: "assistant",
-          content:
-            "I couldn’t respond right now (network or configuration issue). Try again in a moment, or ask your instructor for help directly.",
-        },
-      ]);
-      console.error(e);
+          content: "I couldn't respond right now (network or configuration issue). Try again in a moment, or ask your instructor for help directly.",
+        });
+        return newMessages;
+      });
+      console.error(error);
+    },
+    retry: (failureCount, error) => {
+      // Only retry on network errors, not on validation errors
+      if (error.message.includes("Failed to reach AI coach") || error.message.includes("network")) {
+        return failureCount < 2; // Max 2 retries
+      }
+      return false;
     },
   });
 
