@@ -127,12 +127,20 @@ export default function Login() {
             }
           : undefined;
 
-      await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
+      const result = await signUp(signupEmail, signupPassword, signupName, signupRole, extras, true);
 
-      // After successful signup, switch to Sign In tab and prefill email.
-      setTab('login');
-      setLoginEmail(signupEmail);
-      toast.success('Account created! You can now sign in.');
+      if (result.user && result.session) {
+        // Auto sign-in successful, switch to sign-in tab with credentials
+        setTab('login');
+        setLoginEmail(signupEmail);
+        setLoginPassword(signupPassword);
+        toast.success('Account created! You are now signed in.');
+      } else {
+        // Email confirmation required or auto sign-in failed
+        setTab('login');
+        setLoginEmail(signupEmail);
+        toast.success('Account created! Please check your email to confirm, then sign in.');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Signup failed');
     } finally {

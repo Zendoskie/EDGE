@@ -15,8 +15,9 @@ interface AuthContextType {
     password: string,
     fullName: string,
     role: AppRole,
-    extras?: { course?: string; yearLevel?: string; studentNumber?: string }
-  ) => Promise<void>;
+    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean },
+    autoSignIn?: boolean
+  ) => Promise<{ user: User | null; session: Session | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -71,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     role: AppRole,
-    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean }
+    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean },
+    autoSignIn: boolean = true
   ) => {
     const { course, yearLevel, studentNumber, isIrregular } = extras || {};
 
@@ -102,15 +104,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Create student_programs record for students
       if (role === 'student' && course && yearLevel) {
         await supabase
-          .from('student_programs')
+          .from('enrollments')
           .insert({
             student_id: newUserId,
-            program_id: course,
-            year_level: parseInt(yearLevel),
-            is_irregular: isIrregular || false,
+            subject_id: course, // This might need adjustment based on schema
+            status: 'active',
           });
       }
     }
+
+    // Create user role record
+    if (newUserId) {
+      await supabase
+        .from('user_roles')
+        .insert({ user_id: newUserId, role });
+    }
+
+    // Auto sign-in if requested and user was created (not email confirmation required)
+    if (autoSignIn && data.user && !data.user.email_confirmed_at) {
+      // User needs email confirmation, don't auto sign-in
+      return data;
+    }
+    
+    if (autoSignIn && data.user) {
+      // Sign in the user immediately
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        console.warn('Auto sign-in failed:', signInError);
+        // Don't throw error, user can manually sign in
+      }
+    }
+
+    return data;
   };
 
   const signOut = async () => {
