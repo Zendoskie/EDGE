@@ -91,7 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailRedirectTo: window.location.origin,
       },
     });
-    if (error) throw error;
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
+        throw new Error('This Student ID/No. is already in use. Please use your own unique Student ID.');
+      }
+      throw error;
+    }
 
     const newUserId = data.user?.id;
     if (newUserId && studentNumber) {

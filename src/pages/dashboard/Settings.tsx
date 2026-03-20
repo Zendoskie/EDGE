@@ -49,14 +49,23 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
       toast.success('Profile updated');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
+        toast.error('This Student ID is already used by another account.');
+        return;
+      }
+      toast.error(e.message);
+    },
   });
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-display font-bold">Settings</h1>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+        <h1 className="text-2xl font-display font-bold">Settings</h1>
+      </div>
 
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <SettingsIcon className="h-5 w-5" />
@@ -80,7 +89,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <SettingsIcon className="h-5 w-5" />

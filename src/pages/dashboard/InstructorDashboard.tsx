@@ -204,14 +204,14 @@ export default function InstructorDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
         <h1 className="text-2xl font-display font-bold">Instructor Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Manage your courses organized by program and year level</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {statCards.map((stat) => (
-          <Card key={stat.title}>
+          <Card key={stat.title} className="bg-card/90">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
@@ -224,7 +224,7 @@ export default function InstructorDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="courses">Courses by Program</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -232,7 +232,7 @@ export default function InstructorDashboard() {
 
         <TabsContent value="overview" className="mt-6">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Brain className="h-5 w-5" />
@@ -261,7 +261,7 @@ export default function InstructorDashboard() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <GraduationCap className="h-5 w-5" />
@@ -286,7 +286,7 @@ export default function InstructorDashboard() {
           </div>
 
           {analyticsData?.needIntervention?.length ? (
-            <Card className="mt-6">
+            <Card className="mt-6 bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <AlertOctagon className="h-5 w-5 text-destructive" />
@@ -315,7 +315,7 @@ export default function InstructorDashboard() {
             </Card>
           ) : null}
 
-          <Card className="mt-6">
+          <Card className="mt-6 bg-card/90">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Recent Predictions</CardTitle>
               <Button variant="outline" size="sm" asChild>
@@ -342,7 +342,7 @@ export default function InstructorDashboard() {
         <TabsContent value="courses" className="mt-6">
           <div className="space-y-8">
             {Object.entries(groupedByProgramAndYear).map(([programCode, years]) => (
-              <Card key={programCode}>
+              <Card key={programCode} className="bg-card/90">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <GraduationCap className="h-5 w-5" />
@@ -367,7 +367,7 @@ export default function InstructorDashboard() {
                             {subjects.map((subject) => {
                               const stats = subjectStats?.[subject.id] || { students: 0, atRisk: 0, critical: 0, predictions: 0 };
                               return (
-                                <Card key={subject.id} className="hover:shadow-md transition-shadow">
+                                <Card key={subject.id} className="bg-card/95 hover:shadow-md transition-shadow">
                                   <CardHeader className="pb-3">
                                     <div className="flex items-start justify-between">
                                       <div>
@@ -426,7 +426,7 @@ export default function InstructorDashboard() {
               </Card>
             ))}
             {Object.keys(groupedByProgramAndYear).length === 0 && (
-              <Card>
+              <Card className="bg-card/90">
                 <CardContent className="py-12 text-center">
                   <GraduationCap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">No Courses Assigned</h3>
@@ -442,7 +442,7 @@ export default function InstructorDashboard() {
 
         <TabsContent value="analytics" className="mt-6">
           <div className="grid gap-6">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <TrendingUp className="h-5 w-5" />

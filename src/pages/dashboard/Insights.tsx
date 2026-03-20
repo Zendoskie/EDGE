@@ -65,7 +65,7 @@ interface StudentStats {
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <Card>
+    <Card className="bg-card/90">
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
@@ -82,7 +82,9 @@ export default function Insights() {
   if (!user?.id) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+        <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+        </div>
         <EmptyState
           title="Sign in required"
           body="Please sign in to view performance insights."
@@ -210,7 +212,9 @@ function StudentInsights({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+      </div>
 
       <ErrorBoundary>
         <AICoachPopup
@@ -234,7 +238,7 @@ function StudentInsights({ userId }: { userId: string }) {
       )}
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Overview
@@ -257,7 +261,7 @@ function StudentInsights({ userId }: { userId: string }) {
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Subjects</CardTitle>
                 <BookOpen className="h-4 w-4 text-muted-foreground" />
@@ -268,7 +272,7 @@ function StudentInsights({ userId }: { userId: string }) {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Attendance</CardTitle>
                 <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -282,7 +286,7 @@ function StudentInsights({ userId }: { userId: string }) {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Average Score</CardTitle>
                 <Award className="h-4 w-4 text-muted-foreground" />
@@ -296,7 +300,7 @@ function StudentInsights({ userId }: { userId: string }) {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Risk Status</CardTitle>
                 <Brain className="h-4 w-4 text-muted-foreground" />
@@ -313,7 +317,7 @@ function StudentInsights({ userId }: { userId: string }) {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Target className="h-5 w-5" />
@@ -337,7 +341,7 @@ function StudentInsights({ userId }: { userId: string }) {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
@@ -370,7 +374,7 @@ function StudentInsights({ userId }: { userId: string }) {
 
         <TabsContent value="analytics" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5" />
@@ -445,7 +449,7 @@ function StudentInsights({ userId }: { userId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Brain className="h-5 w-5" />
@@ -483,7 +487,7 @@ function StudentInsights({ userId }: { userId: string }) {
         </TabsContent>
 
         <TabsContent value="interventions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <MessageSquare className="h-5 w-5" />
@@ -603,7 +607,9 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+      </div>
 
       {subjects.length === 0 && !subjectsLoading ? (
         <EmptyState
@@ -613,7 +619,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
       ) : null}
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Overview
@@ -635,7 +641,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         <TabsContent value="overview" className="mt-6">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Subjects</CardTitle>
                 <BookOpen className="h-4 w-4 text-muted-foreground" />
@@ -645,7 +651,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 <p className="text-xs text-muted-foreground">Active subjects</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Students</CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -655,7 +661,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 <p className="text-xs text-muted-foreground">Across your subjects</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">At Risk</CardTitle>
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
@@ -665,7 +671,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 <p className="text-xs text-muted-foreground">Latest predictions</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Critical</CardTitle>
                 <Brain className="h-4 w-4 text-muted-foreground" />
@@ -679,7 +685,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Target className="h-5 w-5" />
@@ -706,7 +712,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Brain className="h-5 w-5" />
@@ -746,7 +752,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         </TabsContent>
 
         <TabsContent value="interventions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <MessageSquare className="h-5 w-5" />

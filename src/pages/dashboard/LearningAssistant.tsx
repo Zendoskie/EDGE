@@ -9,9 +9,9 @@ export default function LearningAssistant() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Learning Assistant</h1>
+          <h1 className="text-2xl font-display font-bold">Learning Assistant</h1>
           <p className="text-muted-foreground">Your AI-powered academic companion</p>
         </div>
         <Badge className="flex items-center gap-2">
@@ -21,7 +21,7 @@ export default function LearningAssistant() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="assistant" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
             Assistant

@@ -112,7 +112,7 @@ export default function Subjects() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">Subjects</h1>
           <p className="text-muted-foreground">Manage and organize your academic subjects</p>
@@ -181,7 +181,7 @@ export default function Subjects() {
           <p className="text-muted-foreground text-sm ml-3">Loading subjects...</p>
         </div>
       ) : subjects.length === 0 ? (
-        <Card className="card-shadow-lg border-dashed">
+        <Card className="card-shadow-lg border-dashed bg-card/90">
           <CardContent className="p-16 text-center">
             <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-6">
               <BookOpen className="h-8 w-8 text-muted-foreground/60" />
@@ -198,7 +198,7 @@ export default function Subjects() {
           {subjects.map(s => (
             <Card
               key={s.id}
-              className="card-shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group border-0 bg-gradient-to-br from-card to-card/80"
+              className="card-shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group border border-border/60 bg-card/90"
               onClick={() => navigate(`/dashboard/subjects/${s.id}`)}
             >
               <CardContent className="p-6">

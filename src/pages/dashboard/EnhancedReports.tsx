@@ -15,15 +15,15 @@ export default function EnhancedReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Advanced Reports</h1>
+          <h1 className="text-2xl font-display font-bold">Advanced Reports</h1>
           <p className="text-muted-foreground">Comprehensive academic reporting and analytics</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
             <FileText className="h-8 w-8 mx-auto mb-2 text-blue-600" />
             <CardTitle>Generate Reports</CardTitle>
@@ -35,7 +35,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
             <BarChart3 className="h-8 w-8 mx-auto mb-2 text-green-600" />
             <CardTitle>Analytics</CardTitle>
@@ -47,7 +47,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
             <Download className="h-8 w-8 mx-auto mb-2 text-purple-600" />
             <CardTitle>Export Data</CardTitle>
@@ -59,7 +59,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
             <Settings className="h-8 w-8 mx-auto mb-2 text-orange-600" />
             <CardTitle>Schedule Reports</CardTitle>
@@ -72,7 +72,7 @@ export default function EnhancedReports() {
         </Card>
       </div>
 
-      <div className="bg-white rounded-lg border">
+      <div className="bg-card/90 rounded-xl border border-border/70">
         {activeTab === 'generate' && (
           <div className="p-6">
             <div className="text-center">

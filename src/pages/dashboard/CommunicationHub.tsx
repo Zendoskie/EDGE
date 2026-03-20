@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Bell, MessageCircle, Megaphone, Users } from 'lucide-react';
@@ -12,9 +12,9 @@ export default function CommunicationHub() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Communication Hub</h1>
+          <h1 className="text-2xl font-display font-bold">Communication Hub</h1>
           <p className="text-muted-foreground">Connect with instructors and peers</p>
         </div>
         <div className="flex items-center gap-2">
@@ -25,8 +25,9 @@ export default function CommunicationHub() {
         </div>
       </div>
 
+      <Card className="bg-card/90">
       <Tabs defaultValue="messages" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="messages" className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
             Direct Messages
@@ -53,6 +54,7 @@ export default function CommunicationHub() {
           <DiscussionForum />
         </TabsContent>
       </Tabs>
+      </Card>
     </div>
   );
 }

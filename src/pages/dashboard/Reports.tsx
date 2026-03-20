@@ -162,7 +162,7 @@ export default function Reports() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-display font-bold">Summary Reports</h1>
         <div className="flex gap-2 print:hidden">
           <Button variant="outline" size="sm" onClick={handlePrint}>
@@ -182,12 +182,12 @@ export default function Reports() {
       </div>
 
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="print:hidden">
+        <TabsList className="print:hidden h-11">
           <TabsTrigger value="all">All Courses</TabsTrigger>
           <TabsTrigger value="per-class">Per Class</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <FileText className="h-5 w-5" />
@@ -253,7 +253,7 @@ export default function Reports() {
               <p className="text-muted-foreground text-sm py-8 text-center">No subjects yet.</p>
             ) : (
               subjects.map(({ subject, rows, program }) => (
-                <Card key={subject.id}>
+                <Card key={subject.id} className="bg-card/90">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-2 text-lg">
                       <span>{subject.code} — {subject.name}</span>

@@ -142,7 +142,7 @@ export default function StudentDashboard() {
           variant="compact"
         />
       </ErrorBoundary>
-      <div>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
         <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
         {(programCode || yearLevel) && (
@@ -165,7 +165,7 @@ export default function StudentDashboard() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat) => (
-          <Card key={stat.title}>
+          <Card key={stat.title} className="bg-card/90">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
@@ -177,7 +177,7 @@ export default function StudentDashboard() {
         ))}
       </div>
 
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Recent Activity</CardTitle>
           <Button variant="outline" size="sm" asChild>

@@ -277,7 +277,9 @@ export default function MySubjects() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-display font-bold">My Subjects</h1>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+        <h1 className="text-2xl font-display font-bold">My Subjects</h1>
+      </div>
 
       {role === 'student' && user?.id && studentProgram === null && (
         <Card className="border-amber-200 bg-amber-50/50">
@@ -293,7 +295,7 @@ export default function MySubjects() {
       )}
 
       {/* Enroll with course code */}
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <KeyRound className="h-5 w-5" />
@@ -324,7 +326,7 @@ export default function MySubjects() {
       </Card>
 
       {/* Browse & enroll from available subjects */}
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <BookOpen className="h-5 w-5" />
@@ -390,7 +392,7 @@ export default function MySubjects() {
       </Card>
 
       {/* Enrolled subjects */}
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle>Enrolled subjects</CardTitle>
           <p className="text-muted-foreground text-sm">
@@ -470,7 +472,7 @@ export default function MySubjects() {
 
       {/* Enrollment requests */}
       {pendingOrRejected.length > 0 && (
-        <Card>
+        <Card className="bg-card/90">
           <CardHeader>
             <CardTitle className="text-lg">Enrollment requests</CardTitle>
             <p className="text-muted-foreground text-sm">

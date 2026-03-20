@@ -66,9 +66,11 @@ export default function MyAttendance() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-display font-bold">My Attendance</h1>
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
+        <h1 className="text-2xl font-display font-bold">My Attendance</h1>
+      </div>
 
-      <Card>
+      <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <CalendarCheck className="h-5 w-5" />
@@ -84,7 +86,7 @@ export default function MyAttendance() {
           ) : (
             <div className="space-y-6">
               {bySubject.map(({ subjectId, code, name, records, total, present, rate }) => (
-                <div key={subjectId} className="border rounded-lg p-4 space-y-3">
+                <div key={subjectId} className="border border-border/70 rounded-xl bg-card/70 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-semibold">{code} — {name}</p>

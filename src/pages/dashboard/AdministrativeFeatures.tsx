@@ -223,9 +223,9 @@ export default function AdministrativeFeatures() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Administrative Features</h1>
+          <h1 className="text-2xl font-display font-bold">Administrative Features</h1>
           <p className="text-muted-foreground">System management and bulk operations</p>
         </div>
         
@@ -236,7 +236,7 @@ export default function AdministrativeFeatures() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="bulk-operations" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Bulk Operations
@@ -256,7 +256,7 @@ export default function AdministrativeFeatures() {
         </TabsList>
 
         <TabsContent value="bulk-operations" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
@@ -376,7 +376,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
@@ -464,7 +464,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5" />
@@ -524,7 +524,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />

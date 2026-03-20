@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { usePWA } from '@/hooks/usePWA';
+import { toast } from 'sonner';
 import { 
   Download, 
   Wifi, 
@@ -18,10 +19,18 @@ export default function PWABanner() {
     isInstalled, 
     isOnline, 
     install, 
-    requestNotificationPermission 
+    requestNotificationPermission,
+    showNotification,
   } = usePWA();
   
   const [notificationRequested, setNotificationRequested] = useState(false);
+  const NOTIFICATION_PREF_KEY = 'edge_notifications_enabled';
+
+  useEffect(() => {
+    const browserGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const savedPreference = localStorage.getItem(NOTIFICATION_PREF_KEY) === 'true';
+    setNotificationRequested(browserGranted || savedPreference);
+  }, []);
 
   const handleInstall = async () => {
     const success = await install();
@@ -32,9 +41,17 @@ export default function PWABanner() {
 
   const handleEnableNotifications = async () => {
     const granted = await requestNotificationPermission();
-    setNotificationRequested(true);
     if (granted) {
-      console.log('Notifications enabled');
+      localStorage.setItem(NOTIFICATION_PREF_KEY, 'true');
+      setNotificationRequested(true);
+      showNotification('Notifications enabled', {
+        body: 'You will now receive EDGE alerts and updates.',
+      });
+      toast.success('Notifications enabled');
+    } else {
+      localStorage.setItem(NOTIFICATION_PREF_KEY, 'false');
+      setNotificationRequested(false);
+      toast.error('Notification permission was not granted');
     }
   };
 

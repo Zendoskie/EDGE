@@ -205,9 +205,9 @@ export default function EnhancedUX() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Enhanced User Experience</h1>
+          <h1 className="text-2xl font-display font-bold">Enhanced User Experience</h1>
           <p className="text-muted-foreground">Personalize your academic experience</p>
         </div>
         
@@ -232,7 +232,7 @@ export default function EnhancedUX() {
       </div>
 
       <Tabs defaultValue="accessibility" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="accessibility" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Accessibility
@@ -248,7 +248,7 @@ export default function EnhancedUX() {
         </TabsList>
 
         <TabsContent value="accessibility" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
@@ -285,7 +285,7 @@ export default function EnhancedUX() {
         </TabsContent>
 
         <TabsContent value="preferences" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
@@ -336,7 +336,7 @@ export default function EnhancedUX() {
         </TabsContent>
 
         <TabsContent value="shortcuts" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />

@@ -293,9 +293,9 @@ export default function EnhancedSecurity() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Enhanced Security</h1>
+          <h1 className="text-2xl font-display font-bold">Enhanced Security</h1>
           <p className="text-muted-foreground">Advanced security and access control</p>
         </div>
         
@@ -315,7 +315,7 @@ export default function EnhancedSecurity() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="authentication" className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
             Authentication
@@ -335,7 +335,7 @@ export default function EnhancedSecurity() {
         </TabsList>
 
         <TabsContent value="authentication" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5" />
@@ -433,7 +433,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="permissions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <UserCheck className="h-5 w-5" />
@@ -526,7 +526,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="sessions" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
@@ -595,7 +595,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="audit" className="mt-6">
-          <Card>
+          <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />
