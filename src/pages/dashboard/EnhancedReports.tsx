@@ -25,7 +25,7 @@ export default function EnhancedReports() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
         <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
-            <FileText className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+            <FileText className="h-8 w-8 mx-auto mb-2 text-primary" />
             <CardTitle>Generate Reports</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
@@ -37,7 +37,7 @@ export default function EnhancedReports() {
 
         <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
-            <BarChart3 className="h-8 w-8 mx-auto mb-2 text-green-600" />
+            <BarChart3 className="h-8 w-8 mx-auto mb-2 text-success" />
             <CardTitle>Analytics</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
@@ -49,7 +49,7 @@ export default function EnhancedReports() {
 
         <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
-            <Download className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+            <Download className="h-8 w-8 mx-auto mb-2 text-primary" />
             <CardTitle>Export Data</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
@@ -61,7 +61,7 @@ export default function EnhancedReports() {
 
         <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader className="text-center">
-            <Settings className="h-8 w-8 mx-auto mb-2 text-orange-600" />
+            <Settings className="h-8 w-8 mx-auto mb-2 text-warning-foreground" />
             <CardTitle>Schedule Reports</CardTitle>
           </CardHeader>
           <CardContent className="text-center">

@@ -39,7 +39,10 @@ export default function MySubjects() {
         .select('id')
         .eq('student_id', user.id)
         .maybeSingle();
-      if (error) throw error;
+      if (error) {
+        console.warn('MySubjects: student program query failed', error);
+        return null;
+      }
       return data;
     },
     enabled: !!user?.id && role === 'student',
@@ -54,7 +57,10 @@ export default function MySubjects() {
         .select('id, enrolled_at, status, subject_id, subjects(id, code, name, semester, academic_year, instructor_id)')
         .eq('student_id', user.id)
         .order('enrolled_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('MySubjects: enrollments query failed', error);
+        return [];
+      }
       const instructorIds = Array.from(
         new Set(
           (data ?? [])
@@ -87,7 +93,10 @@ export default function MySubjects() {
         .from('subjects')
         .select('id, code, name, semester, academic_year, instructor_id, program_id, programs(code, name)')
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('MySubjects: all subjects query failed', error);
+        return [];
+      }
       const rows = data || [];
       const instructorIds = Array.from(new Set(rows.map((s: any) => s.instructor_id).filter(Boolean))) as string[];
       if (instructorIds.length === 0) return rows;
@@ -282,12 +291,12 @@ export default function MySubjects() {
       </div>
 
       {role === 'student' && user?.id && studentProgram === null && (
-        <Card className="border-amber-200 bg-amber-50/50">
+        <Card className="border-warning/40 bg-warning/15">
           <CardContent className="pt-6">
-            <p className="text-sm text-amber-800">
+            <p className="text-sm text-foreground">
               To enroll in program-restricted courses, complete your <strong>Academic Information</strong> first (program and year level).
             </p>
-            <Button variant="outline" size="sm" className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100" asChild>
+            <Button variant="outline" size="sm" className="mt-3 border-warning/50 text-foreground hover:bg-warning/25" asChild>
               <Link to="/dashboard/settings">Go to Settings → Academic profile</Link>
             </Button>
           </CardContent>
@@ -348,13 +357,13 @@ export default function MySubjects() {
               {availableSubjects.map((s: any) => {
                 const isRestricted = s.program_id;
                 return (
-                  <Card key={s.id} className={`border-dashed ${isRestricted ? 'border-amber-200 bg-amber-50/50' : ''}`}>
+                  <Card key={s.id} className={`border-dashed ${isRestricted ? 'border-warning/45 bg-warning/15' : ''}`}>
                     <CardContent className="p-4 space-y-2">
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-semibold">{s.code}</p>
                           {isRestricted && (
-                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                            <Badge variant="outline" className="text-xs text-foreground border-warning/50 bg-warning/20">
                               Restricted
                             </Badge>
                           )}
@@ -364,7 +373,7 @@ export default function MySubjects() {
                           Instructor: {((s as any).instructor_profile?.full_name ?? '').trim() || (s as any).instructor_profile?.email || '—'}
                         </p>
                         {isRestricted && (
-                          <div className="text-xs text-amber-600 mt-1">
+                          <div className="text-xs text-foreground/80 mt-1">
                             {s.program_id && <span>{s.programs?.code} only</span>}
                           </div>
                         )}

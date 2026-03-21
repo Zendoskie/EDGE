@@ -125,10 +125,10 @@ export default function EnhancedUX() {
 
   if (showOnboarding) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/30 flex items-center justify-center p-4">
         <Card className="w-full max-w-2xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-blue-600">
+            <CardTitle className="text-2xl font-bold text-primary">
               Welcome to Academic Guardian
             </CardTitle>
             <p className="text-muted-foreground mt-2">
@@ -142,7 +142,7 @@ export default function EnhancedUX() {
                   <div
                     key={step.id}
                     className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      index <= currentStep ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'
+                      index <= currentStep ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                     }`}
                   >
                     {step.completed ? (
@@ -182,7 +182,7 @@ export default function EnhancedUX() {
                   )}
                   
                   {currentStep === onboardingSteps.length - 1 && (
-                    <Button onClick={completeOnboarding} className="bg-green-600 hover:bg-green-700">
+                    <Button onClick={completeOnboarding} className="bg-success text-success-foreground hover:bg-success/90">
                       Get Started
                       <Check className="h-4 w-4 ml-2" />
                     </Button>
@@ -349,22 +349,22 @@ export default function EnhancedUX() {
                   <h4 className="font-medium mb-2">Navigation</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ K</span>
                       <span>Dashboard</span>
                     </div>
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ A</span>
                       <span>Analytics</span>
                     </div>
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ C</span>
                       <span>Communication</span>
                     </div>
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ R</span>
                       <span>Reports</span>
                     </div>
@@ -375,17 +375,17 @@ export default function EnhancedUX() {
                   <h4 className="font-medium mb-2">Actions</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ N</span>
                       <span>New Message</span>
                     </div>
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Ctrl</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Ctrl</kbd>
                       <span>+ S</span>
                       <span>Search</span>
                     </div>
                     <div className="flex justify-between">
-                      <kbd className="px-2 py-1 bg-gray-100 rounded">Esc</kbd>
+                      <kbd className="px-2 py-1 bg-muted rounded">Esc</kbd>
                       <span>Close Modal</span>
                     </div>
                   </div>

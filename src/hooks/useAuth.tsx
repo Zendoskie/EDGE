@@ -102,10 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const newUserId = data.user?.id;
     if (newUserId && studentNumber) {
       // Update profiles table
-      await supabase
+      const { error: profileUpdateError } = await supabase
         .from('profiles')
         .update({ student_id: studentNumber })
         .eq('user_id', newUserId);
+      if (profileUpdateError) {
+        const msg = (profileUpdateError.message || '').toLowerCase();
+        if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
+          throw new Error('This Student ID/No. is already in use. Please use your own unique Student ID.');
+        }
+        throw profileUpdateError;
+      }
       
       // Create student_programs record for students
       if (role === 'student' && course && yearLevel) {

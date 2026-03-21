@@ -203,10 +203,10 @@ export default function AdministrativeFeatures() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'processing': return 'bg-blue-100 text-blue-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'completed': return 'bg-success/15 text-success border border-success/30';
+      case 'processing': return 'bg-primary/15 text-primary border border-primary/30';
+      case 'failed': return 'bg-destructive/15 text-destructive border border-destructive/30';
+      default: return 'bg-muted text-muted-foreground border border-border';
     }
   };
 
@@ -353,16 +353,16 @@ export default function AdministrativeFeatures() {
                           <span>Progress: {operation.processedItems}/{operation.totalItems}</span>
                           <span>{operation.progress}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-muted rounded-full h-2">
                           <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            className="bg-primary h-2 rounded-full transition-all duration-300"
                             style={{ width: `${operation.progress}%` }}
                           />
                         </div>
                       </div>
                       
                       {operation.errorMessage && (
-                        <div className="text-sm text-red-600 mt-2">
+                        <div className="text-sm text-destructive mt-2">
                           <AlertCircle className="h-4 w-4 inline mr-1" />
                           {operation.errorMessage}
                         </div>

@@ -25,7 +25,10 @@ export default function MyScores() {
         .select('subject_id, subjects(id, code, name)')
         .eq('student_id', user.id)
         .eq('status', 'active');
-      if (error) throw error;
+      if (error) {
+        console.warn('MyScores: enrollments query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!user?.id,
@@ -42,7 +45,10 @@ export default function MyScores() {
         .select('*')
         .in('subject_id', subjectIds)
         .order('due_date', { ascending: true, nullsFirst: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('MyScores: activities query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: subjectIds.length > 0,
@@ -56,7 +62,10 @@ export default function MyScores() {
         .from('submissions')
         .select('activity_id, score')
         .eq('student_id', user.id);
-      if (error) throw error;
+      if (error) {
+        console.warn('MyScores: submissions query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!user?.id,
@@ -67,7 +76,10 @@ export default function MyScores() {
     queryFn: async () => {
       if (subjectIds.length === 0) return [];
       const { data, error } = await supabase.from('subjects').select('id, code, name').in('id', subjectIds);
-      if (error) throw error;
+      if (error) {
+        console.warn('MyScores: subjects list query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: subjectIds.length > 0,

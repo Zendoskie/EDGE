@@ -62,15 +62,15 @@ export default function PWABanner() {
   return (
     <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 space-y-2">
       {!isOnline && (
-        <Card className="border-orange-200 bg-orange-50">
+        <Card className="border-warning/30 bg-warning/10">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <WifiOff className="h-5 w-5 text-orange-600" />
+              <WifiOff className="h-5 w-5 text-warning-foreground" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-orange-800">
+                <p className="text-sm font-medium text-warning-foreground">
                   You're offline
                 </p>
-                <p className="text-xs text-orange-600">
+                <p className="text-xs text-warning-foreground/80">
                   Some features may be limited
                 </p>
               </div>
@@ -80,7 +80,7 @@ export default function PWABanner() {
       )}
 
       {isInstallable && !isInstalled && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-primary/30 bg-primary/10">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Smartphone className="h-4 w-4" />
@@ -88,7 +88,7 @@ export default function PWABanner() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <p className="text-xs text-blue-700 mb-3">
+            <p className="text-xs text-primary mb-3">
               Get instant access and offline support by installing our app
             </p>
             <Button 
@@ -104,7 +104,7 @@ export default function PWABanner() {
       )}
 
       {!notificationRequested && isOnline && (
-        <Card className="border-purple-200 bg-purple-50">
+        <Card className="border-primary/25 bg-primary/10">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Bell className="h-4 w-4" />
@@ -112,7 +112,7 @@ export default function PWABanner() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <p className="text-xs text-purple-700 mb-3">
+            <p className="text-xs text-primary mb-3">
               Stay updated with grades, attendance, and important alerts
             </p>
             <Button 
@@ -128,11 +128,11 @@ export default function PWABanner() {
       )}
 
       {isInstalled && (
-        <Card className="border-green-200 bg-green-50">
+        <Card className="border-success/30 bg-success/10">
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium text-green-800">
+              <CheckCircle className="h-4 w-4 text-success" />
+              <span className="text-xs font-medium text-success">
                 App installed & ready
               </span>
               {isOnline ? (

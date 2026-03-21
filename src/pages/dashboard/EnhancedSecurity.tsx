@@ -265,29 +265,29 @@ export default function EnhancedSecurity() {
   });
 
   const getRiskColor = (score: number) => {
-    if (score < 20) return 'text-green-600';
-    if (score < 40) return 'text-yellow-600';
-    if (score < 60) return 'text-orange-600';
-    return 'text-red-600';
+    if (score < 20) return 'text-success';
+    if (score < 40) return 'text-warning';
+    if (score < 60) return 'text-warning';
+    return 'text-destructive';
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'info': return 'text-blue-600';
-      case 'warning': return 'text-yellow-600';
-      case 'error': return 'text-red-600';
-      case 'critical': return 'text-red-800';
-      default: return 'text-gray-600';
+      case 'info': return 'bg-primary/15 text-primary border border-primary/30';
+      case 'warning': return 'bg-warning/20 text-warning-foreground border border-warning/30';
+      case 'error': return 'bg-destructive/15 text-destructive border border-destructive/30';
+      case 'critical': return 'bg-destructive/20 text-destructive border border-destructive/40';
+      default: return 'bg-muted text-muted-foreground border border-border';
     }
   };
 
   const getRiskLevelColor = (level: string) => {
     switch (level) {
-      case 'low': return 'bg-green-100 text-green-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'high': return 'bg-orange-100 text-orange-800';
-      case 'critical': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'low': return 'bg-success/15 text-success border border-success/30';
+      case 'medium': return 'bg-warning/20 text-warning-foreground border border-warning/30';
+      case 'high': return 'bg-warning/20 text-warning-foreground border border-warning/30';
+      case 'critical': return 'bg-destructive/15 text-destructive border border-destructive/30';
+      default: return 'bg-muted text-muted-foreground border border-border';
     }
   };
 

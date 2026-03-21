@@ -109,6 +109,22 @@ export default function Login() {
           toast.error('Student No. must match the format: 22-1-7-0008');
           return;
         }
+
+        // Prevent duplicate Student ID before creating auth user.
+        // This avoids creating an account that later fails profile update.
+        const { data: existingStudentId, error: studentIdCheckError } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('student_id', studentNo)
+          .maybeSingle();
+        if (studentIdCheckError) {
+          toast.error('Unable to validate Student No. right now. Please try again.');
+          return;
+        }
+        if (existingStudentId) {
+          toast.error('This Student No. is already registered. Use a unique Student No.');
+          return;
+        }
       }
 
       // Check if student is irregular based on year selection

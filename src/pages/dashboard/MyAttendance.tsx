@@ -24,7 +24,10 @@ export default function MyAttendance() {
         .select('subject_id, subjects(id, code, name)')
         .eq('student_id', user.id)
         .eq('status', 'active');
-      if (error) throw error;
+      if (error) {
+        console.warn('MyAttendance: enrollments query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!user?.id,
@@ -39,7 +42,10 @@ export default function MyAttendance() {
         .select('subject_id, date, status')
         .eq('student_id', user.id)
         .order('date', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('MyAttendance: attendance query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!user?.id,

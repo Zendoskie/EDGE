@@ -108,7 +108,10 @@ function StudentInsights({ userId }: { userId: string }) {
         .select('*, subjects(id, code, name)')
         .eq('student_id', userId)
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: predictions query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!userId,
@@ -123,7 +126,10 @@ function StudentInsights({ userId }: { userId: string }) {
         .eq('student_id', userId)
         .order('sent_at', { ascending: false })
         .limit(10);
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: interventions query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!userId,
@@ -137,7 +143,10 @@ function StudentInsights({ userId }: { userId: string }) {
         .select('subjects(id, code, name)')
         .eq('student_id', userId)
         .eq('status', 'active');
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: subjects query failed', error);
+        return [];
+      }
       return (data ?? []).map((e: { subjects: unknown }) => (e as { subjects: any }).subjects).filter(Boolean) ?? [];
     },
     enabled: !!userId,
@@ -150,7 +159,10 @@ function StudentInsights({ userId }: { userId: string }) {
         .from('attendance')
         .select('status, subject_id')
         .eq('student_id', userId);
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: attendance query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!userId,
@@ -163,7 +175,10 @@ function StudentInsights({ userId }: { userId: string }) {
         .from('submissions')
         .select('score, activities(name, subject_id, max_score)')
         .eq('student_id', userId);
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: scores query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!userId,
@@ -207,7 +222,6 @@ function StudentInsights({ userId }: { userId: string }) {
     return acc;
   }, {} as Record<CanonicalRiskLevel, number>);
 
-  const hasAnyError = predictionsIsError || interventionsIsError || subjectsIsError || attendanceIsError || scoresIsError;
   const anyLoading = predictionsLoading || interventionsLoading || subjectsLoading || attendanceLoading || scoresLoading;
 
   return (
@@ -229,13 +243,6 @@ function StudentInsights({ userId }: { userId: string }) {
           variant="detailed"
         />
       </ErrorBoundary>
-
-      {hasAnyError && (
-        <EmptyState
-          title="Some insights failed to load"
-          body="Your dashboard can still work, but some sections may be empty. This is usually caused by missing data or database permissions (RLS)."
-        />
-      )}
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">
@@ -531,7 +538,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         .select('id, code, name')
         .eq('instructor_id', instructorId)
         .order('code');
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: instructor subjects query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: !!instructorId,
@@ -548,7 +558,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         .select('student_id, subject_id, status')
         .in('subject_id', subjectIds)
         .eq('status', 'active');
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: instructor enrollments query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: subjectIds.length > 0,
@@ -564,7 +577,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         .in('subject_id', subjectIds)
         .order('created_at', { ascending: false })
         .limit(200);
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: instructor predictions query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: subjectIds.length > 0,
@@ -580,7 +596,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         .in('subject_id', subjectIds)
         .order('sent_at', { ascending: false })
         .limit(20);
-      if (error) throw error;
+      if (error) {
+        console.warn('Insights: instructor interventions query failed', error);
+        return [];
+      }
       return data ?? [];
     },
     enabled: subjectIds.length > 0,

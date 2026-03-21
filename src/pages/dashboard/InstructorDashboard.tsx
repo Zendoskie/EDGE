@@ -196,7 +196,7 @@ export default function InstructorDashboard() {
     { title: 'Total Students', value: stats?.totalStudents ?? '—', icon: Users, color: 'text-primary' },
     { title: 'Active Subjects', value: stats?.activeSubjects ?? '—', icon: BookOpen, color: 'text-accent-foreground' },
     { title: 'Predictions Run', value: stats?.predictionsRun ?? '—', icon: Brain, color: 'text-success' },
-    { title: 'Pending Requests', value: stats?.pendingEnrollments ?? '0', icon: Calendar, color: 'text-amber-500' },
+    { title: 'Pending Requests', value: stats?.pendingEnrollments ?? '0', icon: Calendar, color: 'text-warning-foreground' },
     { title: 'Critical', value: stats?.criticalStudents ?? '—', icon: AlertOctagon, color: 'text-destructive' },
   ];
 
@@ -354,7 +354,7 @@ export default function InstructorDashboard() {
                     {Object.entries(years)
                       .sort(([a], [b]) => parseInt(a) - parseInt(b))
                       .map(([year, subjects]) => (
-                        <div key={`${programCode}-${year}`} className="border-l-4 border-blue-500 pl-4">
+                        <div key={`${programCode}-${year}`} className="border-l-4 border-primary/60 pl-4">
                           <div className="flex items-center gap-2 mb-4">
                             <Badge variant="outline" className="text-lg px-3 py-1">
                               Year {year}
@@ -397,7 +397,7 @@ export default function InstructorDashboard() {
                                       {(stats.atRisk > 0 || stats.critical > 0) && (
                                         <div className="flex gap-2 mt-2">
                                           {stats.atRisk > 0 && (
-                                            <Badge variant="outline" className="text-xs text-amber-600">
+                                            <Badge variant="outline" className="text-xs text-warning-foreground">
                                               {stats.atRisk} At Risk
                                             </Badge>
                                           )}
@@ -482,7 +482,7 @@ export default function InstructorDashboard() {
                                   {(totalAtRisk > 0 || totalCritical > 0) && (
                                     <>
                                       {totalAtRisk > 0 && (
-                                        <Badge variant="outline" className="text-xs text-amber-600">
+                                        <Badge variant="outline" className="text-xs text-warning-foreground">
                                           {totalAtRisk} at risk
                                         </Badge>
                                       )}

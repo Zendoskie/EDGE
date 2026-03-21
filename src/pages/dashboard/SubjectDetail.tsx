@@ -1120,7 +1120,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 </Label>
               </div>
               {sendEmailNotification && !interventionPrediction?.profile?.email && (
-                <p className="text-xs text-amber-600">Student has no email on file. Notification will not be sent.</p>
+                <p className="text-xs text-warning-foreground">Student has no email on file. Notification will not be sent.</p>
               )}
               <Button type="submit" disabled={logIntervention.isPending}>{logIntervention.isPending ? 'Saving...' : 'Save'}</Button>
             </form>

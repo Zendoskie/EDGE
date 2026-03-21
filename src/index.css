@@ -98,6 +98,13 @@
     --sidebar-accent-foreground: 210 33% 96%;
     --sidebar-border: 217 22% 24%;
     --sidebar-ring: 217 91% 65%;
+
+    --success: 142 68% 45%;
+    --success-foreground: 210 33% 96%;
+    --warning: 42 96% 58%;
+    --warning-foreground: 222 47% 11%;
+    --risk: 0 74% 56%;
+    --risk-foreground: 210 33% 96%;
   }
 }
 
