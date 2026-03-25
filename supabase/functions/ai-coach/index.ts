@@ -1,18 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Constants
 const MAX_MESSAGE_HISTORY = 12;
 const MAX_OUTPUT_TOKENS = 350;
+const MAX_INSIGHT_TOKENS = 500;
 const MAX_MESSAGE_LENGTH = 1000;
-const RATE_LIMIT_REQUESTS = 10;
-const RATE_LIMIT_WINDOW = 60; // seconds
+const RATE_LIMIT_REQUESTS = 20;
+const RATE_LIMIT_WINDOW = 60;
 
-// Simple in-memory rate limiting (for production, use Redis or similar)
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
-function getCorsHeaders(): Record<string, string> {
-  const origin = Deno.env.get("FRONTEND_URL") || "http://localhost:3000";
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") || Deno.env.get("FRONTEND_URL") || "*";
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers":
@@ -25,16 +26,11 @@ function checkRateLimit(userId: string): boolean {
   const now = Date.now();
   const windowMs = RATE_LIMIT_WINDOW * 1000;
   const userLimit = rateLimitMap.get(userId);
-  
   if (!userLimit || now > userLimit.resetTime) {
     rateLimitMap.set(userId, { count: 1, resetTime: now + windowMs });
     return true;
   }
-  
-  if (userLimit.count >= RATE_LIMIT_REQUESTS) {
-    return false;
-  }
-  
+  if (userLimit.count >= RATE_LIMIT_REQUESTS) return false;
   userLimit.count++;
   return true;
 }
@@ -43,9 +39,9 @@ function sanitizeMessage(message: string): string {
   return message
     .trim()
     .slice(0, MAX_MESSAGE_LENGTH)
-    .replace(/[<>]/g, '')
-    .replace(/javascript:/gi, '')
-    .replace(/data:/gi, '');
+    .replace(/[<>]/g, "")
+    .replace(/javascript:/gi, "")
+    .replace(/data:/gi, "");
 }
 
 function validateMessage(message: unknown): string | null {
@@ -72,54 +68,77 @@ function safeString(s: unknown): string | null {
 }
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
-type ApiResponse = { reply?: string; risk_level?: string; subject?: { code?: string | null; name?: string | null } | null; error?: string };
+type ApiResponse = {
+  reply?: string;
+  insight?: string;
+  risk_level?: string;
+  subject?: { code?: string | null; name?: string | null } | null;
+  error?: string;
+  hint?: string;
+};
 
-function toGeminiContents(messages: ChatMessage[]) {
-  return messages
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
-    .slice(-MAX_MESSAGE_HISTORY)
-    .map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
-}
+type OpenRouterMessage = { role: "system" | "user" | "assistant"; content: string };
 
-async function geminiReply(opts: {
+async function openRouterChat(opts: {
   apiKey: string;
+  model: string;
   system: string;
   messages: ChatMessage[];
   temperature?: number;
+  maxTokens?: number;
 }): Promise<string> {
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
+  const payloadMessages: OpenRouterMessage[] = [
+    { role: "system", content: opts.system },
+    ...opts.messages
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
+      .slice(-MAX_MESSAGE_HISTORY)
+      .map((m) => ({
+        role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+        content: m.content,
+      })),
+  ];
 
-  const res = await fetch(url, {
+  const referer = Deno.env.get("OPENROUTER_HTTP_REFERER") || "http://localhost:5173";
+  const title = Deno.env.get("OPENROUTER_APP_TITLE") || "EDGE Academic Guardian";
+
+  const res = await fetch(OPENROUTER_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.apiKey}`,
+      "HTTP-Referer": referer,
+      "X-Title": title,
+    },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: opts.system }] },
-      contents: toGeminiContents(opts.messages),
-      generationConfig: {
-        temperature: opts.temperature ?? 0.6,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
-      },
+      model: opts.model,
+      messages: payloadMessages,
+      temperature: opts.temperature ?? 0.6,
+      max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
     }),
   });
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (json && (json.error?.message || json.message)) ? (json.error?.message || json.message) : `AI service error (${res.status})`;
+    const msg =
+      json && (json.error?.message || json.message)
+        ? String(json.error?.message || json.message)
+        : `OpenRouter error (${res.status})`;
     throw new Error(msg);
   }
 
-  const parts: Array<{ text?: string }> = json?.candidates?.[0]?.content?.parts ?? [];
-  const text = parts.map((p) => p?.text).filter((t): t is string => typeof t === "string" && !!t.trim()).join("");
-  return (typeof text === "string" ? text.trim() : "") || "I'm here to help. What feels hardest right now—attendance, missing work, or understanding the lessons?";
+  const text = json?.choices?.[0]?.message?.content;
+  return typeof text === "string" ? text.trim() : "";
+}
+
+function getOpenRouterConfig() {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  const model = Deno.env.get("OPENROUTER_MODEL") || "openai/gpt-oss-120b:free";
+  return { apiKey, model };
 }
 
 serve(async (req) => {
-  const corsHeaders = getCorsHeaders();
-  
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -145,19 +164,147 @@ serve(async (req) => {
     if (!supabaseUrl || !supabaseKey) {
       throw new Error("Service configuration error");
     }
-    
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid authentication" }), {
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing bearer token" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Rate limiting
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({
+          error: authError?.message || "Invalid authentication",
+          hint:
+            "Try refreshing the page or signing out and back in. Ensure this app uses the same Supabase project as the deployed ai-coach function.",
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const mode = safeString(body?.mode) || "chat";
+
+    // --- AI insight for Performance Insights tab ---
+    if (mode === "predictions_insight") {
+      if (!checkRateLimit(user.id)) {
+        return new Response(JSON.stringify({ error: "Too many requests. Please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const enabled = (Deno.env.get("AI_COACH_ENABLED") || "true").toLowerCase();
+      if (enabled !== "true" && enabled !== "1" && enabled !== "yes") {
+        return new Response(JSON.stringify({ insight: "AI insights are disabled." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { apiKey, model } = getOpenRouterConfig();
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "Set OPENROUTER_API_KEY in Supabase secrets." }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const role = roleRow?.role;
+      let contextBlock = "";
+
+      if (role === "instructor") {
+        const { data: subjects } = await supabase
+          .from("subjects")
+          .select("id, code, name")
+          .eq("instructor_id", user.id);
+
+        const ids = (subjects ?? []).map((s: { id: string }) => s.id).filter(Boolean);
+        if (ids.length === 0) {
+          return new Response(JSON.stringify({ insight: "Create subjects and run predictions to see an AI summary here." }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const { data: preds } = await supabase
+          .from("predictions")
+          .select("risk_level, recommendation, subject_id, subjects(code, name)")
+          .in("subject_id", ids)
+          .order("created_at", { ascending: false })
+          .limit(80);
+
+        const lines = (preds ?? []).map((p: {
+          risk_level?: string;
+          recommendation?: string | null;
+          subjects?: { code?: string; name?: string | null } | null;
+        }) => {
+          const code = p.subjects?.code ?? "?";
+          const rl = canonicalRiskLevel(p.risk_level);
+          const rec = p.recommendation ? ` Rec: ${String(p.recommendation).slice(0, 120)}` : "";
+          return `- ${code}: ${rl}${rec}`;
+        });
+        contextBlock = `You are helping an INSTRUCTOR. Summarize patterns across recent student risk predictions (do not use individual student names).\n\nData:\n${lines.join("\n")}`;
+      } else {
+        const { data: preds } = await supabase
+          .from("predictions")
+          .select("risk_level, recommendation, created_at, subjects(code, name)")
+          .eq("student_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(30);
+
+        if (!preds?.length) {
+          return new Response(
+            JSON.stringify({
+              insight: "No predictions yet. When your instructor runs risk analysis, an AI summary will appear here.",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const lines = preds.map((p: {
+          risk_level?: string;
+          recommendation?: string | null;
+          subjects?: { code?: string; name?: string | null } | null;
+        }) => {
+          const code = p.subjects?.code ?? "?";
+          const rl = canonicalRiskLevel(p.risk_level);
+          const rec = p.recommendation ? ` ${String(p.recommendation).slice(0, 200)}` : "";
+          return `- ${code}: ${rl}.${rec}`;
+        });
+        contextBlock = `You are helping a STUDENT. Give supportive, practical guidance (2 short paragraphs max) based on these per-subject predictions:\n\n${lines.join("\n")}`;
+      }
+
+      const system =
+        "You are an academic success assistant. Be concise, supportive, and actionable. Do not claim to be a therapist. Do not invent data not in the context.";
+
+      const insight = await openRouterChat({
+        apiKey,
+        model,
+        system,
+        messages: [{ role: "user", content: contextBlock }],
+        temperature: 0.5,
+        maxTokens: MAX_INSIGHT_TOKENS,
+      });
+
+      const response: ApiResponse = {
+        insight: insight || "Could not generate a summary right now. Try again later.",
+      };
+      return new Response(JSON.stringify(response), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // --- AI Coach chat ---
     if (!checkRateLimit(user.id)) {
       return new Response(JSON.stringify({ error: "Too many requests. Please try again later." }), {
         status: 429,
@@ -165,17 +312,16 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
     const userMessage = validateMessage(body?.message);
     const messages = Array.isArray(body?.messages) ? (body.messages as ChatMessage[]) : [];
 
-    // Validate messages array
-    const validMessages = messages.filter(m => 
-      m && 
-      (m.role === "user" || m.role === "assistant") && 
-      typeof m.content === "string" && 
-      m.content.trim() && 
-      m.content.length <= MAX_MESSAGE_LENGTH
+    const validMessages = messages.filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim() &&
+        m.content.length <= MAX_MESSAGE_LENGTH,
     );
 
     const hasUserTurn = validMessages.some((m) => m.role === "user");
@@ -188,14 +334,13 @@ serve(async (req) => {
     if (effectiveMessages.length === 0) {
       const response: ApiResponse = {
         reply: "Hi—I'm your study coach. What's going on this week and what subject feels toughest right now?",
-        risk_level: "stable"
+        risk_level: "stable",
       };
       return new Response(JSON.stringify(response), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Latest prediction for gating + context
     const { data: pred } = await supabase
       .from("predictions")
       .select("risk_level, recommendation, created_at, subject_id, subjects(code, name)")
@@ -206,26 +351,26 @@ serve(async (req) => {
 
     const risk = canonicalRiskLevel(pred?.risk_level);
     if (risk !== "critical" && risk !== "at_risk") {
-      return new Response(JSON.stringify({
-        reply: "You’re not currently flagged as at-risk. If you still want help, tell me the subject and what you’re struggling with (time, attendance, or understanding).",
-        risk_level: risk,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          reply:
+            "You’re not currently flagged as at-risk. If you still want help, tell me the subject and what you’re struggling with (time, attendance, or understanding).",
+          risk_level: risk,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const enabled = (Deno.env.get("AI_COACH_ENABLED") || "true").toLowerCase();
     if (enabled !== "true" && enabled !== "1" && enabled !== "yes") {
-      const response: ApiResponse = {
-        reply: "The AI coach is currently disabled by the system.",
-        risk_level: risk
-      };
-      return new Response(JSON.stringify(response), {
+      return new Response(JSON.stringify({ reply: "The AI coach is currently disabled by the system.", risk_level: risk }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    const { apiKey, model } = getOpenRouterConfig();
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "AI service temporarily unavailable" }), {
+      return new Response(JSON.stringify({ error: "Set OPENROUTER_API_KEY in Supabase secrets." }), {
         status: 503,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -236,38 +381,49 @@ serve(async (req) => {
     const recommendation = safeString(pred?.recommendation);
 
     const system = [
-      "You are an academic support coach chatbot for university students.",
+      "You are an academic support coach for university students.",
       "Goal: help at-risk students take concrete next steps in the next 7 days.",
       "Style: empathetic, supportive, concise, and action-oriented.",
-      "Do NOT mention any internal system names, databases, or that you are an AI model.",
-      "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact local emergency services or a trusted person immediately.",
+      "Do NOT mention internal systems or that you are an AI model.",
+      "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact emergency services or a trusted person.",
       "Ask at most one question per reply.",
       "",
       `Student is flagged as: ${risk === "critical" ? "CRITICAL" : "AT RISK"}.`,
       subjectCode || subjectName ? `Subject: ${[subjectCode, subjectName].filter(Boolean).join(" — ")}` : "",
       recommendation ? `System recommendation: ${recommendation}` : "",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    const reply = await geminiReply({ apiKey, system, messages: effectiveMessages, temperature: 0.6 });
+    const reply = await openRouterChat({
+      apiKey,
+      model,
+      system,
+      messages: effectiveMessages,
+      temperature: 0.6,
+      maxTokens: MAX_OUTPUT_TOKENS,
+    });
+
+    const finalReply =
+      reply ||
+      "I'm here with you. What feels hardest right now—attendance, missing work, or understanding the lessons?";
 
     const response: ApiResponse = {
-      reply,
+      reply: finalReply,
       risk_level: risk,
       subject: subjectCode || subjectName ? { code: subjectCode, name: subjectName } : null,
     };
-    
+
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("ai-coach error:", e);
-    const response: ApiResponse = {
-      error: e instanceof Error ? "Service temporarily unavailable" : "Unknown error occurred"
-    };
+    const message = e instanceof Error ? e.message : String(e);
+    const response: ApiResponse = { error: message || "Unknown error" };
     return new Response(JSON.stringify(response), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
-

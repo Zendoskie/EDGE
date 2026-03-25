@@ -114,33 +114,41 @@ Notes:
 
 ---
 
-## Step 4B (Optional): AI Coach popup for at-risk students (Gemini)
+## Step 4B (Optional): AI via OpenRouter (AI Coach + Performance Insights)
 
-EDGE can show an **AI Coach** popup in the student dashboard/insights when the latest risk prediction is **Critical** or **At Risk**.
+The **`ai-coach`** Edge Function powers:
 
-1. Create a Gemini API key (Google AI Studio).
+- **AI Coach** popup (student dashboard / insights) when the latest prediction is **Critical** or **At Risk**
+- **AI insight** on **Performance Insights → AI Predictions** (student + instructor)
 
-2. Deploy the Edge Function:
+### 1) OpenRouter API key
+
+Create a key at [OpenRouter](https://openrouter.ai/). For testing you can use `openai/gpt-oss-120b:free` as the model.
+
+### 2) Supabase secrets (do not put the key in `VITE_*` env vars)
+
+```bash
+npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-YOUR_KEY --env prod
+npx supabase secrets set OPENROUTER_MODEL=openai/gpt-oss-120b:free --env prod
+```
+
+Optional:
+
+```bash
+npx supabase secrets set OPENROUTER_HTTP_REFERER=http://localhost:5173 --env prod
+npx supabase secrets set FRONTEND_URL=http://localhost:5173 --env prod
+npx supabase secrets set AI_COACH_ENABLED=true --env prod
+```
+
+### 3) Deploy
 
 ```bash
 npx supabase functions deploy ai-coach
 ```
 
-3. Set secrets (Supabase secrets):
-
-```bash
-npx supabase secrets set GEMINI_API_KEY=your_gemini_key --env prod
-```
-
-Optional toggle (defaults to enabled):
-
-```bash
-npx supabase secrets set AI_COACH_ENABLED=true --env prod
-```
-
 Notes:
-- The AI coach only responds when the student is currently flagged as `critical` or `at_risk` (based on the latest row in `predictions`).
-- If you rotate keys, update `GEMINI_API_KEY` and re-try; no code changes needed.
+- The AI coach chat only responds when the student is `critical` or `at_risk` (latest `predictions` row).
+- If you see **Invalid JWT**, refresh the page or sign out/in; ensure `.env` points at the same Supabase project where `ai-coach` is deployed.
 
 ---
 

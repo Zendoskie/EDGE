@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,10 +7,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Brain, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from "@/lib/risk-utils";
+import { canonicalRiskLevel, riskLabel, riskVariant } from "@/lib/risk-utils";
+import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
-type AICoachResponse = { reply?: string; risk_level?: string; subject?: { code?: string | null; name?: string | null } | null; error?: string };
+type AICoachResponse = {
+  reply?: string;
+  risk_level?: string;
+  subject?: { code?: string | null; name?: string | null } | null;
+  error?: string;
+};
 
 const defaultStarter: ChatMsg[] = [
   {
@@ -47,23 +52,17 @@ export function AICoachPopup(props: {
     if (!shouldShow) return;
     const dismissed = localStorage.getItem(storageKey);
     if (dismissed) return;
-    // Auto-open once for at-risk students
     setOpen(true);
   }, [shouldShow, storageKey]);
 
   useEffect(() => {
     if (!open) return;
-    const timeoutId = setTimeout(() => {
-      listEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 30);
-    return () => clearTimeout(timeoutId);
-  }, [open]); // Remove messages.length dependency to prevent frequent re-renders
+    const t = window.setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
+    return () => window.clearTimeout(t);
+  }, [open, messages.length]);
 
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
-      // Optimistically add user message
-      setMessages(prev => [...prev, { role: "user", content: text }]);
-      
       const payloadMessages: ChatMsg[] = [
         ...messages,
         { role: "user", content: text },
@@ -72,52 +71,31 @@ export function AICoachPopup(props: {
           : []),
       ];
 
-      const { data, error } = await supabase.functions.invoke<AICoachResponse>("ai-coach", {
-        body: { messages: payloadMessages },
-      });
-      
-      if (error) {
-        throw new Error(error.message || "Failed to reach AI coach");
-      }
-      
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-      
+      const data = (await invokeAiCoach({ messages: payloadMessages })) as AICoachResponse;
+      if (data?.error) throw new Error(data.error);
       const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
-      if (!reply) {
-        throw new Error("AI coach returned an empty response");
-      }
-      
+      if (!reply) throw new Error("AI coach returned an empty response");
       return reply;
     },
-    onSuccess: (reply) => {
-      // Add assistant response
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+    onMutate: (text: string) => {
+      setMessages((prev) => [...prev, { role: "user", content: text }]);
     },
-    onError: (error) => {
-      // Remove the optimistic user message and add error message
-      setMessages(prev => {
-        const newMessages = [...prev];
-        // Remove the last user message (optimistic addition)
-        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === "user") {
-          newMessages.pop();
+    onSuccess: (reply) => {
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    },
+    onError: (error: Error) => {
+      setMessages((prev) => {
+        const next = [...prev];
+        if (next.length > 0 && next[next.length - 1].role === "user") {
+          next.pop();
         }
-        // Add error message
-        newMessages.push({
+        next.push({
           role: "assistant",
-          content: "I couldn't respond right now (network or configuration issue). Try again in a moment, or ask your instructor for help directly.",
+          content: `Could not get a reply: ${error.message}`,
         });
-        return newMessages;
+        return next;
       });
       console.error(error);
-    },
-    retry: (failureCount, error) => {
-      // Only retry on network errors, not on validation errors
-      if (error.message.includes("Failed to reach AI coach") || error.message.includes("network")) {
-        return failureCount < 2; // Max 2 retries
-      }
-      return false;
     },
   });
 
@@ -167,8 +145,16 @@ export function AICoachPopup(props: {
           <div className="px-6 pt-4">
             {props.variant === "detailed" && (props.subjectLabel || props.recommendation) ? (
               <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground mb-3">
-                {props.subjectLabel ? <div className="mb-1"><span className="font-medium text-foreground">Subject:</span> {props.subjectLabel}</div> : null}
-                {props.recommendation ? <div><span className="font-medium text-foreground">Latest recommendation:</span> {props.recommendation}</div> : null}
+                {props.subjectLabel ? (
+                  <div className="mb-1">
+                    <span className="font-medium text-foreground">Subject:</span> {props.subjectLabel}
+                  </div>
+                ) : null}
+                {props.recommendation ? (
+                  <div>
+                    <span className="font-medium text-foreground">Latest recommendation:</span> {props.recommendation}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -224,13 +210,10 @@ export function AICoachPopup(props: {
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Tip: Press Enter to send, Shift+Enter for a new line.
-            </p>
+            <p className="text-xs text-muted-foreground mt-2">Tip: Press Enter to send, Shift+Enter for a new line.</p>
           </div>
         </DialogContent>
       </Dialog>
     </>
   );
 }
-
