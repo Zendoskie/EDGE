@@ -8,7 +8,7 @@ const MAX_MESSAGE_LENGTH = 1000;
 const RATE_LIMIT_REQUESTS = 20;
 const RATE_LIMIT_WINDOW = 60;
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
@@ -77,9 +77,9 @@ type ApiResponse = {
   hint?: string;
 };
 
-type OpenRouterMessage = { role: "system" | "user" | "assistant"; content: string };
+type ChatCompletionMessage = { role: "system" | "user" | "assistant"; content: string };
 
-async function openRouterChat(opts: {
+async function openAiChatCompletions(opts: {
   apiKey: string;
   model: string;
   system: string;
@@ -87,10 +87,16 @@ async function openRouterChat(opts: {
   temperature?: number;
   maxTokens?: number;
 }): Promise<string> {
-  const payloadMessages: OpenRouterMessage[] = [
+  const payloadMessages: ChatCompletionMessage[] = [
     { role: "system", content: opts.system },
     ...opts.messages
-      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
+      .filter(
+        (m) =>
+          m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string" &&
+          m.content.trim()
+      )
       .slice(-MAX_MESSAGE_HISTORY)
       .map((m) => ({
         role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
@@ -98,41 +104,38 @@ async function openRouterChat(opts: {
       })),
   ];
 
-  const referer = Deno.env.get("OPENROUTER_HTTP_REFERER") || "http://localhost:5173";
-  const title = Deno.env.get("OPENROUTER_APP_TITLE") || "EDGE Academic Guardian";
-
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${opts.apiKey}`,
-      "HTTP-Referer": referer,
-      "X-Title": title,
     },
     body: JSON.stringify({
       model: opts.model,
       messages: payloadMessages,
       temperature: opts.temperature ?? 0.6,
-      max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
+      // Some newer models use `max_completion_tokens` instead of `max_tokens`.
+      max_completion_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
     }),
   });
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg =
-      json && (json.error?.message || json.message)
-        ? String(json.error?.message || json.message)
-        : `OpenRouter error (${res.status})`;
-    throw new Error(msg);
+      json?.error?.message ||
+      json?.message ||
+      `OpenAI error (${res.status})`;
+    throw new Error(String(msg));
   }
 
   const text = json?.choices?.[0]?.message?.content;
   return typeof text === "string" ? text.trim() : "";
 }
 
-function getOpenRouterConfig() {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  const model = Deno.env.get("OPENROUTER_MODEL") || "openai/gpt-oss-120b:free";
+function getOpenAiConfig(): { apiKey: string; model: string } | null {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) return null;
+  const model = Deno.env.get("OPENAI_MODEL") || "gpt-5.4-mini";
   return { apiKey, model };
 }
 
@@ -206,12 +209,17 @@ serve(async (req) => {
         });
       }
 
-      const { apiKey, model } = getOpenRouterConfig();
-      if (!apiKey) {
-        return new Response(JSON.stringify({ error: "Set OPENROUTER_API_KEY in Supabase secrets." }), {
-          status: 503,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const aiConfig = getOpenAiConfig();
+      if (!aiConfig) {
+        return new Response(
+          JSON.stringify({
+            error: "Set OPENAI_API_KEY in Supabase secrets.",
+          }),
+          {
+            status: 503,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
 
       const { data: roleRow } = await supabase
@@ -242,6 +250,15 @@ serve(async (req) => {
           .in("subject_id", ids)
           .order("created_at", { ascending: false })
           .limit(80);
+
+        if (!preds?.length) {
+          return new Response(
+            JSON.stringify({
+              insight: "No predictions yet. Run risk analysis from a subject page to see an AI summary here.",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
 
         const lines = (preds ?? []).map((p: {
           risk_level?: string;
@@ -287,9 +304,9 @@ serve(async (req) => {
       const system =
         "You are an academic success assistant. Be concise, supportive, and actionable. Do not claim to be a therapist. Do not invent data not in the context.";
 
-      const insight = await openRouterChat({
-        apiKey,
-        model,
+      const insight = await openAiChatCompletions({
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
         system,
         messages: [{ role: "user", content: contextBlock }],
         temperature: 0.5,
@@ -368,12 +385,17 @@ serve(async (req) => {
       });
     }
 
-    const { apiKey, model } = getOpenRouterConfig();
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Set OPENROUTER_API_KEY in Supabase secrets." }), {
-        status: 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const aiConfig = getOpenAiConfig();
+    if (!aiConfig) {
+      return new Response(
+        JSON.stringify({
+          error: "Set OPENAI_API_KEY in Supabase secrets.",
+        }),
+        {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const subjectCode = pred?.subjects?.code ?? null;
@@ -395,9 +417,9 @@ serve(async (req) => {
       .filter(Boolean)
       .join("\n");
 
-    const reply = await openRouterChat({
-      apiKey,
-      model,
+    const reply = await openAiChatCompletions({
+      apiKey: aiConfig.apiKey,
+      model: aiConfig.model,
       system,
       messages: effectiveMessages,
       temperature: 0.6,

@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,9 +19,11 @@ import {
   Award,
   Clock,
   BookOpen,
-  Activity
+  Activity,
+  Sparkles
 } from 'lucide-react';
 import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
+import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 
 interface Prediction {
   id: string;
@@ -63,53 +63,6 @@ interface StudentStats {
   riskLevel: string | null;
   recommendation: string | null;
   subjectLabel: string | null;
-}
-
-type PredictionsInsightFnResponse = { insight?: string; error?: string };
-
-function PredictionsAIInsightCard({ queryKey, enabled }: { queryKey: string; enabled: boolean }) {
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['ai-predictions-insight', queryKey],
-    queryFn: async () => {
-      const res = (await invokeAiCoach({ mode: 'predictions_insight' })) as PredictionsInsightFnResponse;
-      if (res?.error) throw new Error(String(res.error));
-      return res?.insight ?? '';
-    },
-    enabled,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  if (!enabled) return null;
-
-  return (
-    <Card className="mb-4 border-primary/15 bg-muted/30 bg-card/90">
-      <CardHeader className="pb-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Brain className="h-4 w-4" />
-              AI insight (OpenRouter)
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Summary from your prediction data. Model is set in Supabase as OPENROUTER_MODEL.
-            </p>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            {isFetching ? 'Refreshing…' : 'Refresh'}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading || isFetching ? (
-          <p className="text-sm text-muted-foreground">Generating insight…</p>
-        ) : error ? (
-          <p className="text-sm text-destructive">{(error as Error).message}</p>
-        ) : (
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{data}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -164,6 +117,15 @@ function StudentInsights({ userId }: { userId: string }) {
       return data ?? [];
     },
     enabled: !!userId,
+  });
+
+  const { data: aiInsight, isLoading: aiInsightLoading } = useQuery({
+    queryKey: ['ai-insight-summary', userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const data = (await invokeAiCoach({ mode: 'predictions_insight' })) as { insight?: unknown };
+      return typeof data?.insight === 'string' && data.insight.trim() ? data.insight : null;
+    },
   });
 
   const { data: interventions = [], isLoading: interventionsLoading, isError: interventionsIsError } = useQuery({
@@ -315,6 +277,25 @@ function StudentInsights({ userId }: { userId: string }) {
 
         <TabsContent value="overview" className="mt-6">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
+
+          <Card className="bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                AI Summary
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">
+                A short, actionable summary based on your latest predictions.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiInsightLoading ? (
+                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{aiInsight ?? 'AI summary unavailable.'}</p>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-card/90">
@@ -505,10 +486,6 @@ function StudentInsights({ userId }: { userId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <PredictionsAIInsightCard
-            queryKey={`student-${userId}`}
-            enabled={!predictionsLoading && Object.keys(latestBySubject).length > 0}
-          />
           <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -658,6 +635,15 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
     enabled: subjectIds.length > 0,
   });
 
+  const { data: aiInsight, isLoading: aiInsightLoading } = useQuery({
+    queryKey: ['ai-insight-summary', instructorId],
+    enabled: !!instructorId,
+    queryFn: async () => {
+      const data = (await invokeAiCoach({ mode: 'predictions_insight' })) as { insight?: unknown };
+      return typeof data?.insight === 'string' && data.insight.trim() ? data.insight : null;
+    },
+  });
+
   const uniqueStudents = useMemo(() => new Set((enrollments ?? []).map((e: any) => e.student_id)).size, [enrollments]);
 
   const latestByStudentSubject = useMemo(() => {
@@ -712,6 +698,26 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
 
         <TabsContent value="overview" className="mt-6">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
+
+          <Card className="bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                AI Summary
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">
+                A short pattern summary to help you plan interventions.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiInsightLoading ? (
+                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{aiInsight ?? 'AI summary unavailable.'}</p>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -784,10 +790,6 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className="mt-6">
-          <PredictionsAIInsightCard
-            queryKey={`instructor-${instructorId}`}
-            enabled={!predictionsLoading && predictions.length > 0}
-          />
           <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">

@@ -114,28 +114,28 @@ Notes:
 
 ---
 
-## Step 4B (Optional): AI via OpenRouter (AI Coach + Performance Insights)
+## Step 4B (Optional): AI via OpenAI (AI Coach + Performance Insights)
 
 The **`ai-coach`** Edge Function powers:
 
 - **AI Coach** popup (student dashboard / insights) when the latest prediction is **Critical** or **At Risk**
 - **AI insight** on **Performance Insights → AI Predictions** (student + instructor)
 
-### 1) OpenRouter API key
+### 1) OpenAI API key
 
-Create a key at [OpenRouter](https://openrouter.ai/). For testing you can use `openai/gpt-oss-120b:free` as the model.
+Create a key at [OpenAI](https://platform.openai.com/).
 
 ### 2) Supabase secrets (do not put the key in `VITE_*` env vars)
 
 ```bash
-npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-YOUR_KEY --env prod
-npx supabase secrets set OPENROUTER_MODEL=openai/gpt-oss-120b:free --env prod
+npx supabase secrets set OPENAI_API_KEY=sk-YOUR_KEY --env prod
+# Optional (defaults to gpt-5.4-mini in the Edge Function)
+npx supabase secrets set OPENAI_MODEL=gpt-5.4-mini --env prod
 ```
 
 Optional:
 
 ```bash
-npx supabase secrets set OPENROUTER_HTTP_REFERER=http://localhost:5173 --env prod
 npx supabase secrets set FRONTEND_URL=http://localhost:5173 --env prod
 npx supabase secrets set AI_COACH_ENABLED=true --env prod
 ```

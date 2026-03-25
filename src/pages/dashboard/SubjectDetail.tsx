@@ -846,6 +846,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const [interventionPrediction, setInterventionPrediction] = useState<any>(null);
+  // DB constraint for interventions.type only allows a limited set of values:
+  // email | meeting | counseling | other
   const [interventionType, setInterventionType] = useState<string>('email');
   const [interventionMessage, setInterventionMessage] = useState('');
   const [sendEmailNotification, setSendEmailNotification] = useState(false);
@@ -918,11 +920,20 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         });
         if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
       }
+      // DB check constraint only allows: email | meeting | counseling | other.
+      const dbInterventionType =
+        interventionType === 'email' ||
+        interventionType === 'meeting' ||
+        interventionType === 'counseling' ||
+        interventionType === 'other'
+          ? interventionType
+          : 'other';
+
       const { error } = await supabase.from('interventions').insert({
         prediction_id: interventionPrediction.id,
         student_id: interventionPrediction.student_id,
         subject_id: subjectId,
-        type: interventionType,
+        type: dbInterventionType,
         message: interventionMessage || null,
       });
       if (error) throw error;
@@ -1098,14 +1109,14 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
               <div className="space-y-2">
                 <Label>Type</Label>
                 <Select value={interventionType} onValueChange={setInterventionType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="meeting">One-on-one Meeting</SelectItem>
-                    <SelectItem value="tutoring">Tutoring</SelectItem>
-                    <SelectItem value="counseling">Counseling</SelectItem>
-                    <SelectItem value="academic_support">Academic Support</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="email">email</SelectItem>
+                    <SelectItem value="meeting">meeting</SelectItem>
+                    <SelectItem value="counseling">counseling</SelectItem>
+                    <SelectItem value="other">other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
