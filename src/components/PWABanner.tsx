@@ -1,14 +1,11 @@
-import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { usePWA } from '@/hooks/usePWA';
-import { toast } from 'sonner';
 import { 
   Download, 
   Wifi, 
   WifiOff, 
-  Bell, 
   Smartphone, 
   CheckCircle 
 } from 'lucide-react';
@@ -19,18 +16,7 @@ export default function PWABanner() {
     isInstalled, 
     isOnline, 
     install, 
-    requestNotificationPermission,
-    showNotification,
   } = usePWA();
-  
-  const [notificationRequested, setNotificationRequested] = useState(false);
-  const NOTIFICATION_PREF_KEY = 'edge_notifications_enabled';
-
-  useEffect(() => {
-    const browserGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    const savedPreference = localStorage.getItem(NOTIFICATION_PREF_KEY) === 'true';
-    setNotificationRequested(browserGranted || savedPreference);
-  }, []);
 
   const handleInstall = async () => {
     const success = await install();
@@ -39,23 +25,7 @@ export default function PWABanner() {
     }
   };
 
-  const handleEnableNotifications = async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      localStorage.setItem(NOTIFICATION_PREF_KEY, 'true');
-      setNotificationRequested(true);
-      showNotification('Notifications enabled', {
-        body: 'You will now receive EDGE alerts and updates.',
-      });
-      toast.success('Notifications enabled');
-    } else {
-      localStorage.setItem(NOTIFICATION_PREF_KEY, 'false');
-      setNotificationRequested(false);
-      toast.error('Notification permission was not granted');
-    }
-  };
-
-  if (isInstalled && isOnline && notificationRequested) {
+  if (isInstalled && isOnline) {
     return null;
   }
 
@@ -79,7 +49,7 @@ export default function PWABanner() {
         </Card>
       )}
 
-      {isInstallable && !isInstalled && (
+      {!isInstalled && isOnline && isInstallable && (
         <Card className="border-primary/30 bg-primary/10">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -103,49 +73,18 @@ export default function PWABanner() {
         </Card>
       )}
 
-      {!notificationRequested && isOnline && (
-        <Card className="border-primary/25 bg-primary/10">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Bell className="h-4 w-4" />
-              Enable Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-primary mb-3">
-              Stay updated with grades, attendance, and important alerts
-            </p>
-            <Button 
-              size="sm" 
-              onClick={handleEnableNotifications}
-              className="w-full"
-              variant="outline"
-            >
-              Enable Notifications
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {isInstalled && (
+      {isInstalled && !isOnline && (
         <Card className="border-success/30 bg-success/10">
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-success" />
               <span className="text-xs font-medium text-success">
-                App installed & ready
+                App installed
               </span>
-              {isOnline ? (
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  <Wifi className="h-3 w-3 mr-1" />
-                  Online
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  <WifiOff className="h-3 w-3 mr-1" />
-                  Offline
-                </Badge>
-              )}
+              <Badge variant="secondary" className="ml-auto text-xs">
+                <WifiOff className="h-3 w-3 mr-1" />
+                Offline
+              </Badge>
             </div>
           </CardContent>
         </Card>

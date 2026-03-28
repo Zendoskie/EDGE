@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -143,45 +143,6 @@ export default function SubjectDetail() {
 
 /* ───── Student read-only view ───── */
 function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: string; subjectCode: string; userId?: string }) {
-  const { data: myAttendance = [] } = useQuery({
-    queryKey: ['my-attendance-subject', subjectId, userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('date, status')
-        .eq('subject_id', subjectId)
-        .eq('student_id', userId)
-        .order('date', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!userId,
-  });
-
-  const { data: activities = [] } = useQuery({
-    queryKey: ['activities', subjectId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('activities').select('*').eq('subject_id', subjectId).order('due_date', { ascending: true, nullsFirst: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: mySubmissions = [] } = useQuery({
-    queryKey: ['my-submissions-subject', subjectId, userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const activityIds = (await supabase.from('activities').select('id').eq('subject_id', subjectId)).data?.map(a => a.id) ?? [];
-      if (activityIds.length === 0) return [];
-      const { data, error } = await supabase.from('submissions').select('activity_id, score').eq('student_id', userId).in('activity_id', activityIds);
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!userId,
-  });
-
   const { data: myPrediction } = useQuery({
     queryKey: ['my-prediction', subjectId, userId],
     queryFn: async () => {
@@ -200,40 +161,26 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
     enabled: !!userId,
   });
 
-  const getScore = (activityId: string) => mySubmissions.find((s: any) => s.activity_id === activityId)?.score;
   const riskLabel = (level: string) => level === 'critical' ? 'Critical' : level === 'at_risk' ? 'At Risk' : level === 'excelling' ? 'Excelling' : 'Stable';
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader><CardTitle className="text-lg">My attendance</CardTitle></CardHeader>
-        <CardContent>
-          {myAttendance.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No attendance records yet.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {myAttendance.map((a: any) => (
-                <Badge key={a.date} variant={a.status === 'present' || a.status === 'late' ? 'default' : 'secondary'}>{a.date} — {a.status}</Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle className="text-lg">My scores</CardTitle></CardHeader>
-        <CardContent>
-          {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activities yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {activities.map((a: any) => (
-                <li key={a.id} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
-                  <span>{a.title} ({a.type})</span>
-                  <span>{getScore(a.id) != null ? `${getScore(a.id)} / ${a.max_score}` : '—'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Attendance &amp; scores</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          <p>
+            Detailed attendance and grades for <span className="font-medium text-foreground">{subjectCode}</span> are on the{' '}
+            <Link to="/dashboard/my-attendance" className="text-primary font-medium underline-offset-4 hover:underline">
+              My Attendance
+            </Link>{' '}
+            and{' '}
+            <Link to="/dashboard/my-scores" className="text-primary font-medium underline-offset-4 hover:underline">
+              Scores
+            </Link>{' '}
+            pages.
+          </p>
         </CardContent>
       </Card>
       {myPrediction && (
@@ -570,7 +517,7 @@ function SubjectAttendance({
 function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: string }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', type: 'quiz', max_score: '100', weight: '1' });
+  const [form, setForm] = useState({ title: '', type: 'quiz', max_score: '100' });
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
 
   const { data: activities = [], isLoading } = useQuery({
@@ -588,7 +535,6 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
         title: form.title,
         type: form.type,
         max_score: Number(form.max_score),
-        weight: Number(form.weight),
         subject_id: subjectId,
         created_by: userId,
       });
@@ -598,7 +544,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
       toast.success('Activity created');
       setOpen(false);
-      setForm({ title: '', type: 'quiz', max_score: '100', weight: '1' });
+      setForm({ title: '', type: 'quiz', max_score: '100' });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -630,7 +576,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                 <Label>Title</Label>
                 <Input placeholder="e.g. Quiz 1" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Type</Label>
                   <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
@@ -646,10 +592,6 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                 <div className="space-y-2">
                   <Label>Max Score</Label>
                   <Input type="number" value={form.max_score} onChange={e => setForm(f => ({ ...f, max_score: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Weight</Label>
-                  <Input type="number" step="0.1" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} />
                 </div>
               </div>
               <Button type="submit" className="w-full" disabled={create.isPending}>
@@ -678,7 +620,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                   <div className="flex-1 flex items-center gap-3">
                     <span className="font-medium">{a.title}</span>
                     <Badge variant="secondary" className="capitalize">{a.type}</Badge>
-                    <span className="text-xs text-muted-foreground">Max: {a.max_score} · Weight: {a.weight}</span>
+                    <span className="text-xs text-muted-foreground">Max score: {a.max_score}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={e => { e.stopPropagation(); remove.mutate(a.id); }}>
@@ -875,28 +817,40 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     setGenerating(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error('Please log in'); return; }
-
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/predict-risk`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ subject_id: subjectId }),
-        }
-      );
-      const result = await resp.json();
-      if (!resp.ok) {
-        toast.error(result.error || 'Failed to generate predictions');
+      if (!session) {
+        toast.error('Please log in');
         return;
       }
-      toast.success(`Generated predictions for ${result.count} students`);
+
+      const { data, error } = await supabase.functions.invoke('predict-risk', {
+        body: { subject_id: subjectId },
+      });
+
+      if (error) {
+        let msg = error.message;
+        const ctx = (error as { context?: Response }).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const j = (await ctx.clone().json()) as { error?: string };
+            if (j?.error) msg = j.error;
+          } catch {
+            /* use msg */
+          }
+        }
+        toast.error(msg || 'Failed to generate predictions');
+        return;
+      }
+
+      if (data && typeof data === 'object' && 'error' in data && (data as { error?: string }).error) {
+        toast.error(String((data as { error: string }).error));
+        return;
+      }
+
+      const count = (data as { count?: number })?.count ?? 0;
+      toast.success(`Generated predictions for ${count} students`);
       queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
-    } catch (e: any) {
-      toast.error(e.message || 'Prediction failed');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Prediction failed');
     } finally {
       setGenerating(false);
     }

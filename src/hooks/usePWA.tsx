@@ -108,6 +108,7 @@ export function usePWA() {
     isOnline,
     install,
     requestNotificationPermission,
+    /** Prefer {@link notifyDesktop} from `@/lib/desktop-notifications` for user-facing alerts. */
     showNotification,
   };
 }

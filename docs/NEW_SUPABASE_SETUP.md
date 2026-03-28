@@ -152,6 +152,55 @@ Notes:
 
 ---
 
+## Step 4b: In-app notification bell (Realtime)
+
+The dashboard bell listens for **database changes** on the student’s own rows. Supabase only sends those events if the tables are part of the **`supabase_realtime` publication** and your **RLS policies** let the student `SELECT` the rows that changed.
+
+### Apply the Realtime migration
+
+From the repo root (linked project):
+
+```bash
+npx supabase db push
+```
+
+That applies `supabase/migrations/20260328000001_realtime_student_notifications.sql`, which runs:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.submissions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.predictions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
+```
+
+If a line errors with “already member of publication”, that table is already enabled; continue with the rest.
+
+### Or run SQL in the Dashboard
+
+1. Open **SQL Editor** for your project.
+2. Paste and run the three `ALTER PUBLICATION` lines above (one at a time if needed).
+
+### Dashboard check (optional)
+
+In some projects you can confirm under **Database → Publications** (or **Replication**) that `submissions`, `predictions`, and `attendance` are included in **`supabase_realtime`**.
+
+### What instructor actions trigger a notification
+
+| Table | When | Student sees (in the bell panel) |
+|--------|------|----------------------------------|
+| `submissions` | Instructor grades or updates a grade | “New grade posted” / “Grade updated” |
+| `attendance` | Instructor records attendance for that student | “Attendance recorded” (date + status) |
+| `predictions` | A new prediction row is inserted for that student | “Academic insight updated” |
+
+The student must be **logged in** with the app open (or the tab loaded); events are not emailed.
+
+### If nothing appears
+
+1. Confirm migrations ran and the three tables are in `supabase_realtime`.
+2. Confirm RLS allows the student to read their own rows in those tables (your existing policies usually do).
+3. In the browser devtools **Network** tab, confirm the WebSocket to Supabase connects after login.
+
+---
+
 ## Step 5: Create your first users
 
 1. Open the app (e.g. `http://localhost:5173`).
@@ -164,7 +213,7 @@ Notes:
 
 ## Checklist
 
-- [ ] All 5 migrations run without errors (tables + RLS + triggers).
+- [ ] All migrations run without errors (tables + RLS + triggers + optional Realtime publication for the notification bell).
 - [ ] `.env` has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for the new project.
 - [ ] Edge function `predict-risk` is deployed (no API keys required).
 - [ ] At least one instructor and one student account created and able to log in.

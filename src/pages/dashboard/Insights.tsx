@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
+import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
 
 interface Prediction {
   id: string;
@@ -278,25 +279,6 @@ function StudentInsights({ userId }: { userId: string }) {
         <TabsContent value="overview" className="mt-6">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
-          <Card className="bg-card/90">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                AI Summary
-              </CardTitle>
-              <p className="text-muted-foreground text-sm">
-                A short, actionable summary based on your latest predictions.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {aiInsightLoading ? (
-                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
-              ) : (
-                <p className="text-sm whitespace-pre-wrap">{aiInsight ?? 'AI summary unavailable.'}</p>
-              )}
-            </CardContent>
-          </Card>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -485,7 +467,31 @@ function StudentInsights({ userId }: { userId: string }) {
           </div>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6">
+        <TabsContent value="predictions" className="mt-6 space-y-6">
+          <Card className="bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                AI Summary
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">
+                A short, actionable summary based on your latest predictions.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiInsightLoading ? (
+                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
+                  <FormattedAssistantContent
+                    text={aiInsight ?? 'AI summary unavailable.'}
+                    className="text-[15px] leading-7"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -699,25 +705,6 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         <TabsContent value="overview" className="mt-6">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
-          <Card className="bg-card/90">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                AI Summary
-              </CardTitle>
-              <p className="text-muted-foreground text-sm">
-                A short pattern summary to help you plan interventions.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {aiInsightLoading ? (
-                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
-              ) : (
-                <p className="text-sm whitespace-pre-wrap">{aiInsight ?? 'AI summary unavailable.'}</p>
-              )}
-            </CardContent>
-          </Card>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -789,7 +776,31 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6">
+        <TabsContent value="predictions" className="mt-6 space-y-6">
+          <Card className="bg-card/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                AI Summary
+              </CardTitle>
+              <p className="text-muted-foreground text-sm">
+                A short pattern summary to help you plan interventions.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiInsightLoading ? (
+                <p className="text-sm text-muted-foreground">Generating AI summary…</p>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
+                  <FormattedAssistantContent
+                    text={aiInsight ?? 'AI summary unavailable.'}
+                    className="text-[15px] leading-7"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-card/90">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">

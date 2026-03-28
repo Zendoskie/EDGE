@@ -7,6 +7,26 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Postgrest and other throws are often plain objects, not `Error` — avoid returning "Unknown error". */
+function serializeError(e: unknown): string {
+  if (e instanceof Error) return e.message || "Error";
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const msg = typeof o.message === "string" ? o.message : "";
+    const details = typeof o.details === "string" ? o.details : "";
+    const hint = typeof o.hint === "string" ? o.hint : "";
+    const code = typeof o.code === "string" ? o.code : "";
+    const parts = [msg, details, hint].filter(Boolean);
+    if (parts.length) return code ? `${parts.join(" — ")} (${code})` : parts.join(" — ");
+  }
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 type RiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 
 interface StudentMetrics {
@@ -156,7 +176,10 @@ serve(async (req) => {
       .select("code, name")
       .eq("id", subject_id)
       .single();
-    if (subjectErr) throw subjectErr;
+    if (subjectErr) {
+      console.error("predict-risk subject fetch:", subjectErr);
+      throw subjectErr;
+    }
 
     const { data: enrollments } = await supabase
       .from("enrollments")
@@ -253,7 +276,10 @@ serve(async (req) => {
     });
 
     const { error: insertError } = await supabase.from("predictions").insert(rows);
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error("predict-risk predictions insert:", insertError);
+      throw insertError;
+    }
 
     // Auto-notify critical / at-risk students (at most once per 24h per subject+risk level)
     const notifyRows = rows.filter((r) => r.risk_level === "critical" || r.risk_level === "at_risk");
@@ -300,8 +326,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("predict-risk error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const message = serializeError(e);
+    console.error("predict-risk error:", message, e);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

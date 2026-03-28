@@ -302,7 +302,7 @@ serve(async (req) => {
       }
 
       const system =
-        "You are an academic success assistant. Be concise, supportive, and actionable. Do not claim to be a therapist. Do not invent data not in the context.";
+        "You are an academic success assistant. Be concise, supportive, and actionable. Do not claim to be a therapist. Do not invent data not in the context. Write plain sentences and short paragraphs only: no markdown, no asterisks, no bold markers, and no bullet punctuation—use numbers (1. 2.) if you need an ordered list.";
 
       const insight = await openAiChatCompletions({
         apiKey: aiConfig.apiKey,
@@ -406,6 +406,7 @@ serve(async (req) => {
       "You are an academic support coach for university students.",
       "Goal: help at-risk students take concrete next steps in the next 7 days.",
       "Style: empathetic, supportive, concise, and action-oriented.",
+      "Formatting: plain text only—no markdown, no asterisks or star bullets, no **bold**. Use short paragraphs; use 1. 2. numbering if steps are needed.",
       "Do NOT mention internal systems or that you are an AI model.",
       "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact emergency services or a trusted person.",
       "Ask at most one question per reply.",
