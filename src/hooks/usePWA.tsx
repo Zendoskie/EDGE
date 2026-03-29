@@ -9,6 +9,11 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+/** iOS Safari standalone PWA flag (non-standard). */
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean;
+}
+
 export function usePWA() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -19,7 +24,7 @@ export function usePWA() {
     // Check if app is already installed
     const checkInstalled = () => {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      const isInWebAppiOS = (window.navigator as any).standalone === true;
+      const isInWebAppiOS = (window.navigator as NavigatorWithStandalone).standalone === true;
       setIsInstalled(isStandalone || isInWebAppiOS);
     };
 

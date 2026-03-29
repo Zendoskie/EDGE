@@ -117,7 +117,7 @@ serve(async (req) => {
 
     // Bulk mode: { recipients: [{ to, student_id, subject_id, risk_level }] }
     if (Array.isArray(body?.recipients) && body.recipients.length > 0) {
-      const recipientsRaw = body.recipients as Array<any>;
+      const recipientsRaw = body.recipients as Array<Record<string, unknown>>;
       const recipients = recipientsRaw
         .map((r) => ({
           to: normalizeEmail(r?.to),

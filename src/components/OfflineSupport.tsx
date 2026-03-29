@@ -22,10 +22,12 @@ import {
   Bell
 } from 'lucide-react';
 
+type Jsonish = Record<string, unknown>;
+
 interface OfflineData {
-  subjects: any[];
-  attendance: any[];
-  scores: any[];
+  subjects: Jsonish[];
+  attendance: Jsonish[];
+  scores: Jsonish[];
   lastSync: string;
 }
 
@@ -82,18 +84,17 @@ export default function OfflineSupport() {
 
   // Cache data for offline use
   useEffect(() => {
-    if (isOnline && (subjects || attendance || scores)) {
+    if (!isOnline || (!subjects && !attendance && !scores)) return;
+    setOfflineData((prev) => {
       const newData = {
-        subjects: subjects || offlineData.subjects,
-        attendance: attendance || offlineData.attendance,
-        scores: scores || offlineData.scores,
-        lastSync: new Date().toISOString()
+        subjects: subjects ?? prev.subjects,
+        attendance: attendance ?? prev.attendance,
+        scores: scores ?? prev.scores,
+        lastSync: new Date().toISOString(),
       };
-      setOfflineData(newData);
-      
-      // Store in localStorage for offline access
-      localStorage.setItem('academic-guardian-offline-data', JSON.stringify(newData));
-    }
+      localStorage.setItem("academic-guardian-offline-data", JSON.stringify(newData));
+      return newData;
+    });
   }, [subjects, attendance, scores, isOnline]);
 
   // Load cached data on mount

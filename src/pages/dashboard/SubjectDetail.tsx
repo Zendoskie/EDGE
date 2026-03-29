@@ -15,6 +15,18 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail } from 'lucide-react';
 import { toast } from 'sonner';
+import type {
+  EmbeddedProgram,
+  EnrollmentListRow,
+  PredictionRow,
+  SendNotificationResponse,
+  SubjectWithInstructor,
+} from '@/types/dashboard';
+
+function firstProgram(programs: SubjectWithInstructor['programs']): EmbeddedProgram | null {
+  if (!programs) return null;
+  return Array.isArray(programs) ? programs[0] ?? null : programs;
+}
 
 export default function SubjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +49,7 @@ export default function SubjectDetail() {
         .select('user_id, full_name, email')
         .eq('user_id', data.instructor_id)
         .maybeSingle();
-      return { ...data, instructor_profile: instructorProfile ?? null } as any;
+      return { ...data, instructor_profile: instructorProfile ?? null } as SubjectWithInstructor;
     },
     enabled: !!id,
   });
@@ -70,12 +82,14 @@ export default function SubjectDetail() {
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
+                {firstProgram(subject.programs)?.name && (
+                  <Badge variant="secondary" className="mr-2">{firstProgram(subject.programs)?.code}</Badge>
+                )}
                 {subject.semester && `${subject.semester} Semester`}
                 {subject.academic_year && ` • ${subject.academic_year}`}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Instructor: {((subject as any).instructor_profile?.full_name ?? '').trim() || (subject as any).instructor_profile?.email || '—'}
+                Instructor: {(subject.instructor_profile?.full_name ?? '').trim() || subject.instructor_profile?.email || '—'}
               </p>
             </div>
           </div>
@@ -100,7 +114,9 @@ export default function SubjectDetail() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              {(subject.programs as any)?.name && <Badge variant="secondary" className="mr-2">{(subject.programs as any).code}</Badge>}
+              {firstProgram(subject.programs)?.name && (
+                <Badge variant="secondary" className="mr-2">{firstProgram(subject.programs)?.code}</Badge>
+              )}
               {subject.semester && `${subject.semester} Semester`}
               {subject.academic_year && ` • ${subject.academic_year}`}
             </p>
@@ -119,15 +135,15 @@ export default function SubjectDetail() {
         <TabsContent value="students">
           <SubjectStudents
             subjectId={id!}
-            programCode={(subject.programs as any)?.code as string | undefined}
-            programName={(subject.programs as any)?.name as string | undefined}
+            programCode={firstProgram(subject.programs)?.code ?? undefined}
+            programName={firstProgram(subject.programs)?.name ?? undefined}
           />
         </TabsContent>
         <TabsContent value="attendance">
           <SubjectAttendance
             subjectId={id!}
-            programCode={(subject.programs as any)?.code as string | undefined}
-            programName={(subject.programs as any)?.name as string | undefined}
+            programCode={firstProgram(subject.programs)?.code ?? undefined}
+            programName={firstProgram(subject.programs)?.name ?? undefined}
           />
         </TabsContent>
         <TabsContent value="activities">
@@ -212,7 +228,7 @@ function SubjectStudents({
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState('');
 
-  const { data: enrollments = [], isLoading } = useQuery({
+  const { data: enrollments = [], isLoading } = useQuery<EnrollmentListRow[]>({
     queryKey: ['enrollments', subjectId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -227,7 +243,7 @@ function SubjectStudents({
       return data.map(e => ({
         ...e,
         profile: profiles?.find(p => p.user_id === e.student_id),
-      }));
+      })) as EnrollmentListRow[];
     },
   });
 
@@ -267,9 +283,9 @@ function SubjectStudents({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const activeEnrollments = enrollments.filter((e: any) => e.status === 'active');
-  const pendingEnrollments = enrollments.filter((e: any) => e.status === 'pending');
-  const enrolledIds = activeEnrollments.map((e: any) => e.student_id);
+  const activeEnrollments = enrollments.filter((e: EnrollmentListRow) => e.status === 'active');
+  const pendingEnrollments = enrollments.filter((e: EnrollmentListRow) => e.status === 'pending');
+  const enrolledIds = activeEnrollments.map((e: EnrollmentListRow) => e.student_id);
   const availableStudents = allStudents.filter(s => !enrolledIds.includes(s.user_id));
 
   return (
@@ -294,8 +310,8 @@ function SubjectStudents({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activeEnrollments.map((e: any) => {
-                const profile = e.profile as any;
+              {activeEnrollments.map((e: EnrollmentListRow) => {
+                const profile = e.profile;
                 const programLabel = programCode
                   ? `${programCode}${programName ? ` — ${programName}` : ''}`
                   : '—';
@@ -337,8 +353,8 @@ function SubjectStudents({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingEnrollments.map((e: any) => {
-                  const profile = e.profile as any;
+                {pendingEnrollments.map((e: EnrollmentListRow) => {
+                  const profile = e.profile;
                   const programLabel = programCode
                     ? `${programCode}${programName ? ` — ${programName}` : ''}`
                     : '—';
@@ -404,7 +420,7 @@ function SubjectAttendance({
   const { user } = useAuth();
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  const { data: enrollments = [] } = useQuery({
+  const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
     queryKey: ['enrollments', subjectId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -416,7 +432,7 @@ function SubjectAttendance({
       if (!data.length) return [];
       const studentIds = data.map(e => e.student_id).filter(Boolean) as string[];
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
-      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) }));
+      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) })) as EnrollmentListRow[];
     },
   });
 
@@ -478,8 +494,8 @@ function SubjectAttendance({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrollments.map((e: any) => {
-                const profile = e.profile as any;
+              {enrollments.map((e: EnrollmentListRow) => {
+                const profile = e.profile;
                 const programLabel = programCode
                   ? `${programCode}${programName ? ` — ${programName}` : ''}`
                   : '—';
@@ -646,7 +662,7 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
   const queryClient = useQueryClient();
   const [scores, setScores] = useState<Record<string, string>>({});
 
-  const { data: enrollments = [] } = useQuery({
+  const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
     queryKey: ['enrollments', subjectId],
     queryFn: async () => {
       const { data, error } = await supabase.from('enrollments').select('*').eq('subject_id', subjectId);
@@ -654,7 +670,7 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
       if (!data.length) return [];
       const studentIds = data.map(e => e.student_id).filter(Boolean) as string[];
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
-      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) }));
+      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) })) as EnrollmentListRow[];
     },
   });
 
@@ -690,8 +706,8 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 
   const saveScores = useMutation({
     mutationFn: async () => {
-      const ops = enrollments.map(async (e: any) => {
-        const studentId = e.student_id as string;
+      const ops = enrollments.map(async (e: EnrollmentListRow) => {
+        const studentId = e.student_id;
         const scoreVal = scores[studentId];
         if (scoreVal === undefined || scoreVal === '') return;
         const numScore = Number(scoreVal);
@@ -738,8 +754,8 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
           </TableRow>
         </TableHeader>
         <TableBody>
-          {enrollments.map((e: any) => {
-            const profile = e.profile as any;
+          {enrollments.map((e: EnrollmentListRow) => {
+            const profile = e.profile;
             const scoreStr =
               scores[e.student_id] ??
               submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
@@ -787,7 +803,7 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId: string; subjectCode: string; subjectName: string }) {
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
-  const [interventionPrediction, setInterventionPrediction] = useState<any>(null);
+  const [interventionPrediction, setInterventionPrediction] = useState<PredictionRow | null>(null);
   // DB constraint for interventions.type only allows a limited set of values:
   // email | meeting | counseling | other
   const [interventionType, setInterventionType] = useState<string>('email');
@@ -797,7 +813,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
   const [bulkNotifyPreparing, setBulkNotifyPreparing] = useState(false);
 
-  const { data: predictions = [], isLoading } = useQuery({
+  const { data: predictions = [], isLoading } = useQuery<PredictionRow[]>({
     queryKey: ['predictions', subjectId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -809,7 +825,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       if (!data.length) return [];
       const studentIds = data.map(p => p.student_id).filter(Boolean) as string[];
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
-      return data.map(p => ({ ...p, profile: profiles?.find(pr => pr.user_id === p.student_id) }));
+      return data.map(p => ({ ...p, profile: profiles?.find(pr => pr.user_id === p.student_id) })) as PredictionRow[];
     },
   });
 
@@ -917,18 +933,23 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   };
 
   const riskOrder = { critical: 0, at_risk: 1, stable: 2, excelling: 3 };
-  const sorted = [...predictions].sort((a: any, b: any) => (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1));
+  const sorted = [...predictions].sort(
+    (a: PredictionRow, b: PredictionRow) =>
+      (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1),
+  );
 
   const summary = {
-    critical: predictions.filter((p: any) => p.risk_level === 'critical').length,
-    at_risk: predictions.filter((p: any) => p.risk_level === 'at_risk').length,
-    stable: predictions.filter((p: any) => p.risk_level === 'stable').length,
-    excelling: predictions.filter((p: any) => p.risk_level === 'excelling').length,
+    critical: predictions.filter((p: PredictionRow) => p.risk_level === 'critical').length,
+    at_risk: predictions.filter((p: PredictionRow) => p.risk_level === 'at_risk').length,
+    stable: predictions.filter((p: PredictionRow) => p.risk_level === 'stable').length,
+    excelling: predictions.filter((p: PredictionRow) => p.risk_level === 'excelling').length,
   };
 
-  const atRiskPredictions = predictions.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
+  const atRiskPredictions = predictions.filter(
+    (p: PredictionRow) => p.risk_level === 'critical' || p.risk_level === 'at_risk',
+  );
   const sendBulkNotifications = async () => {
-    const withEmail = atRiskPredictions.filter((p: any) => p.profile?.email);
+    const withEmail = atRiskPredictions.filter((p: PredictionRow) => p.profile?.email);
     if (withEmail.length === 0) {
       toast.error('No at-risk students have email on file');
       return;
@@ -941,8 +962,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
           subject_code: subjectCode,
           subject_name: subjectName,
           body: msg,
-          recipients: withEmail.map((p: any) => ({
-            to: p.profile.email,
+          recipients: withEmail.map((p: PredictionRow) => ({
+            to: p.profile?.email,
             student_id: p.student_id,
             subject_id: subjectId,
             risk_level: p.risk_level,
@@ -951,9 +972,10 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       });
       if (invokeError) throw new Error(invokeError.message || 'Failed to send emails');
 
-      const sent = (data as any)?.sent ?? 0;
-      const failed = (data as any)?.failed ?? 0;
-      const errors = (data as any)?.errors as Array<{ index: number; message: string }> | undefined;
+      const payload = data as SendNotificationResponse | null;
+      const sent = payload?.sent ?? 0;
+      const failed = payload?.failed ?? 0;
+      const errors = payload?.errors;
 
       setBulkNotifyOpen(false);
       setBulkNotifyMessage('');
@@ -962,8 +984,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         const first = errors?.[0]?.message;
         toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check Resend settings.');
       }
-    } catch (e: any) {
-      toast.error(e?.message || 'Bulk email failed');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Bulk email failed');
     } finally {
       setBulkNotifyPreparing(false);
     }
@@ -1016,7 +1038,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sorted.map((p: any) => (
+                  {sorted.map((p: PredictionRow) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
                       <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
@@ -1039,7 +1061,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Notify at-risk students</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: any) => p.profile?.email).length} at-risk/critical students for {subjectCode}.</p>
+          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: PredictionRow) => p.profile?.email).length} at-risk/critical students for {subjectCode}.</p>
           <div className="space-y-2">
             <Label>Message (optional)</Label>
             <Input

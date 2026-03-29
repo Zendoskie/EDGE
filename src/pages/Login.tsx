@@ -83,8 +83,8 @@ export default function Login() {
     try {
       await signIn(loginEmail, loginPassword);
       navigate('/dashboard');
-    } catch (err: any) {
-      toast.error(err.message || 'Login failed');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -157,8 +157,8 @@ export default function Login() {
         setLoginEmail(signupEmail);
         toast.success('Account created! Please check your email to confirm, then sign in.');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Signup failed');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Signup failed');
     } finally {
       setLoading(false);
     }

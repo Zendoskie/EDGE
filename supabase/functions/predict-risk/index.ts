@@ -211,7 +211,7 @@ serve(async (req) => {
 
     const activityIds = (activities || []).map((a) => a.id);
 
-    let submissions: any[] = [];
+    let submissions: Array<{ student_id: string; activity_id: string; score: number | null }> = [];
     if (activityIds.length > 0) {
       const { data } = await supabase
         .from("submissions")
@@ -291,7 +291,9 @@ serve(async (req) => {
         .eq("subject_id", subject_id)
         .gte("sent_at", since);
 
-      const sentSet = new Set((alreadySent || []).map((n: any) => `${n.student_id}:${n.risk_level}`));
+      const sentSet = new Set(
+        (alreadySent ?? []).map((n: { student_id: string; risk_level: string }) => `${n.student_id}:${n.risk_level}`),
+      );
 
       for (const n of notifyRows) {
         const key = `${n.student_id}:${n.risk_level}`;

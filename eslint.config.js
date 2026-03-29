@@ -21,6 +21,14 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // Dynamic Supabase selects / joined rows are easier to model incrementally than `any` everywhere.
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}", "src/contexts/**/*.tsx", "src/hooks/useAuth.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
 );
