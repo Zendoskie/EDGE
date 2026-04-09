@@ -1,5 +1,5 @@
 import { Outlet, Navigate } from "react-router-dom";
-import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useEdgeRealtimeNotifications } from "@/hooks/useEdgeRealtimeNotifications";
@@ -15,8 +15,11 @@ function DashboardHeader() {
   const isSidebarOpen = state === "expanded";
 
   return (
-    <header className="h-16 flex items-center border-b bg-card/80 backdrop-blur-sm px-6 shadow-sm">
-      <div className="flex items-center gap-4">
+    <header className="h-16 flex items-center border-b bg-card/80 backdrop-blur-sm px-3 md:px-6 shadow-sm">
+      <div className="flex items-center gap-3 md:gap-4">
+        <div className="md:hidden">
+          <SidebarTrigger aria-label="Open navigation" />
+        </div>
         {!isSidebarOpen && (
           <>
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/80 flex items-center justify-center flex-shrink-0">
