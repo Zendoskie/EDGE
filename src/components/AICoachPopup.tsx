@@ -3,15 +3,15 @@ import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Brain, History, Send, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { canonicalRiskLevel, riskLabel, riskVariant } from "@/lib/risk-utils";
+import { canonicalRiskLevel, riskLabel, riskVariant, type CanonicalRiskLevel } from "@/lib/risk-utils";
 import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 import { FormattedAssistantContent } from "@/components/FormattedAssistantContent";
+import { AI_COACH_MODEL_LABEL } from "@/lib/ai-model";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; ts?: number };
 type AICoachResponse = {
@@ -21,13 +21,44 @@ type AICoachResponse = {
   error?: string;
 };
 
-const defaultStarter: ChatMsg[] = [
-  {
-    role: "assistant",
-    content:
-      "Hi—I'm here to help you get back on track. What’s the biggest challenge right now: attendance, missing work, or understanding the lessons?",
-  },
-];
+/** Legacy UI opener — drop stored chats that only contain this so we can show contextual copy. */
+const LEGACY_STARTER_SNIPPET = "biggest challenge right now";
+
+function buildContextualStarter(
+  canonical: CanonicalRiskLevel,
+  recommendation?: string | null,
+  subjectLabel?: string | null,
+): ChatMsg[] {
+  const status = riskLabel(canonical);
+  const rec = recommendation?.trim();
+  const subj = subjectLabel?.trim();
+
+  let content: string;
+  if (rec && subj) {
+    content = [
+      `Hi—I've already reviewed your latest assessment. You're marked ${status} for ${subj}.`,
+      `Here's what your record flags:`,
+      "",
+      rec,
+      "",
+      "I'll use that as our focus—you don't need to explain the problem from scratch. Ask a question, or tell me when you want a concrete first step.",
+    ].join("\n");
+  } else if (rec) {
+    content = [
+      `Hi—I've reviewed your latest assessment (${status}). Your record indicates:`,
+      "",
+      rec,
+      "",
+      "We can work from that directly. Ask anything, or say when you're ready for a simple plan.",
+    ].join("\n");
+  } else if (subj) {
+    content = `Hi—I've reviewed your record: you're ${status} in ${subj}. I'm here to help with specific next steps based on what your instructors already see. What would you like to tackle first?`;
+  } else {
+    content = `Hi—I've reviewed your academic record: your current status is ${status}. I'm here to help with concrete next steps—you don't need to re-explain everything from scratch. What would help most right now?`;
+  }
+
+  return [{ role: "assistant", content, ts: Date.now() }];
+}
 
 function messagesStorageKey(dismissKey: string) {
   return `edge_ai_coach_msgs_${dismissKey}`;
@@ -56,13 +87,23 @@ function parseStoredMessages(raw: string | null): ChatMsg[] | null {
   }
 }
 
-function initialMessages(dismissKey: string): ChatMsg[] {
-  if (typeof window === "undefined") {
-    return defaultStarter.map((m, i) => ({ ...m, ts: Date.now() - (defaultStarter.length - i) * 1000 }));
-  }
+function readStoredMessages(dismissKey: string): ChatMsg[] | null {
+  if (typeof window === "undefined") return null;
   const saved = parseStoredMessages(localStorage.getItem(messagesStorageKey(dismissKey)));
-  if (saved) return saved;
-  return defaultStarter.map((m, i) => ({ ...m, ts: Date.now() - (defaultStarter.length - i) * 1000 }));
+  if (!saved?.length) return null;
+  if (
+    saved.length === 1 &&
+    saved[0].role === "assistant" &&
+    saved[0].content.includes(LEGACY_STARTER_SNIPPET)
+  ) {
+    try {
+      localStorage.removeItem(messagesStorageKey(dismissKey));
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+  return saved;
 }
 
 export function AICoachPopup(props: {
@@ -79,7 +120,7 @@ export function AICoachPopup(props: {
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<ChatMsg[]>(() => initialMessages(storageKey));
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,10 +134,31 @@ export function AICoachPopup(props: {
 
   const contextHint = useMemo(() => {
     const bits: string[] = [];
+    bits.push(`Risk level: ${riskLabel(canonical)}`);
     if (props.subjectLabel) bits.push(`Subject: ${props.subjectLabel}`);
     if (props.recommendation) bits.push(`Recommendation: ${props.recommendation}`);
     return bits.join("\n");
-  }, [props.subjectLabel, props.recommendation]);
+  }, [canonical, props.subjectLabel, props.recommendation]);
+
+  useEffect(() => {
+    const saved = readStoredMessages(storageKey);
+    const nextStarter = buildContextualStarter(canonical, props.recommendation, props.subjectLabel);
+
+    if (saved?.some((m) => m.role === "user")) {
+      setMessages(saved);
+      return;
+    }
+    if (saved && saved.length > 1) {
+      setMessages(saved);
+      return;
+    }
+
+    setMessages((prev) => {
+      if (prev.some((m) => m.role === "user")) return prev;
+      if (prev.length > 1) return prev;
+      return nextStarter;
+    });
+  }, [storageKey, canonical, props.recommendation, props.subjectLabel]);
 
   useEffect(() => {
     if (!shouldShow) return;
@@ -118,7 +180,7 @@ export function AICoachPopup(props: {
       const payloadMessages: { role: "user" | "assistant"; content: string }[] = [
         ...toApiMessages(messages),
         { role: "user", content: text },
-        ...(props.variant === "detailed" && contextHint
+        ...(contextHint
           ? [{ role: "user" as const, content: `Context (do not quote verbatim):\n${contextHint}` }]
           : []),
       ];
@@ -162,7 +224,7 @@ export function AICoachPopup(props: {
   );
 
   const resetChat = () => {
-    const fresh = defaultStarter.map((m, i) => ({ ...m, ts: Date.now() - (defaultStarter.length - i) * 1000 }));
+    const fresh = buildContextualStarter(canonical, props.recommendation, props.subjectLabel);
     setMessages(fresh);
     try {
       localStorage.removeItem(persistKey);
@@ -198,7 +260,7 @@ export function AICoachPopup(props: {
           if (!next) localStorage.setItem(storageKey, "1");
         }}
       >
-        <DialogContent className="p-0 overflow-hidden max-h-[90vh] flex flex-col">
+        <DialogContent className="gap-0 p-0 overflow-hidden max-h-[90vh] flex flex-col min-h-0">
           <div className="p-6 pb-4 border-b shrink-0">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -206,10 +268,15 @@ export function AICoachPopup(props: {
                 AI Coach
                 <Badge variant={riskVariant(canonical)}>{riskLabel(canonical)}</Badge>
               </DialogTitle>
-              <DialogDescription>
-                {canonical === "critical"
-                  ? "Let’s make a simple plan for the next 24–48 hours."
-                  : "Let’s make a simple plan for the next 7 days."}
+              <DialogDescription className="space-y-1">
+                <span className="block">
+                  {canonical === "critical"
+                    ? "Let’s make a simple plan for the next 24–48 hours."
+                    : "Let’s make a simple plan for the next 7 days."}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Model: <span className="font-medium text-foreground">{AI_COACH_MODEL_LABEL}</span>
+                </span>
               </DialogDescription>
             </DialogHeader>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -272,7 +339,11 @@ export function AICoachPopup(props: {
             ) : null}
           </div>
 
-          <ScrollArea className="flex-1 min-h-[200px] max-h-[360px] px-6">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 overscroll-contain touch-pan-y"
+            role="log"
+            aria-label="Chat messages"
+          >
             <div className="space-y-4 pb-4 pt-1">
               {messages.map((m, idx) => (
                 <div
@@ -306,7 +377,7 @@ export function AICoachPopup(props: {
               ))}
               <div ref={listEndRef} />
             </div>
-          </ScrollArea>
+          </div>
 
           <div className="p-4 border-t bg-background shrink-0">
             <div className="flex gap-2 items-end">

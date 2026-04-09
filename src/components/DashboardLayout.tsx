@@ -23,7 +23,7 @@ function DashboardHeader() {
               <GraduationCap className="w-4 h-4 text-sidebar-primary-foreground" />
             </div>
             <h2 className="text-lg font-semibold text-foreground font-display leading-none">
-              EDGE – Early Detection of Grade Evaluation
+              EDGE – Student Risk Analysis and AI Coaching System
             </h2>
           </>
         )}

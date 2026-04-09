@@ -350,7 +350,8 @@ serve(async (req) => {
 
     if (effectiveMessages.length === 0) {
       const response: ApiResponse = {
-        reply: "Hi—I'm your study coach. What's going on this week and what subject feels toughest right now?",
+        reply:
+          "Hi—I'm your study coach. Tell me which subject you want to work on and what you'd like to improve, and we'll make a short plan.",
         risk_level: "stable",
       };
       return new Response(JSON.stringify(response), {
@@ -410,6 +411,7 @@ serve(async (req) => {
       "Do NOT mention internal systems or that you are an AI model.",
       "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact emergency services or a trusted person.",
       "Ask at most one question per reply.",
+      "The student's risk level and system recommendation are already known—do NOT open by asking them to choose among attendance, missing work, or understanding lessons as if the problem were unknown. Build on the recommendation and conversation.",
       "",
       `Student is flagged as: ${risk === "critical" ? "CRITICAL" : "AT RISK"}.`,
       subjectCode || subjectName ? `Subject: ${[subjectCode, subjectName].filter(Boolean).join(" — ")}` : "",
@@ -429,7 +431,9 @@ serve(async (req) => {
 
     const finalReply =
       reply ||
-      "I'm here with you. What feels hardest right now—attendance, missing work, or understanding the lessons?";
+      (recommendation
+        ? `I'm having trouble responding right now. Your record highlights: ${recommendation.slice(0, 280)}${recommendation.length > 280 ? "…" : ""} Please try again in a moment.`
+        : "I'm having trouble responding right now. Please try again in a moment.");
 
     const response: ApiResponse = {
       reply: finalReply,

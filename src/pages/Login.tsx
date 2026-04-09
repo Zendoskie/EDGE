@@ -173,7 +173,7 @@ export default function Login() {
           </div>
           <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
           <p className="text-muted-foreground mt-2 text-sm">
-            Early Detection of Grade Evaluation
+            Student Risk Analysis and AI Coaching System
           </p>
         </div>
 

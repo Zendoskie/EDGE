@@ -46,7 +46,7 @@ export default function EnhancedUX() {
     {
       id: 'welcome',
       title: 'Welcome to EDGE',
-      description: 'Early Detection of Grade Evaluation - AI-powered academic performance monitoring',
+      description: 'Student Risk Analysis and AI Coaching System — risk insight and AI support for academic success',
       icon: <Target className="h-8 w-8" />,
       completed: false
     },
