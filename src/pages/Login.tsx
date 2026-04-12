@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -165,8 +166,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background via-background to-secondary/20 p-4">
-      <div className="w-full max-w-md animate-fade-in">
+    <div className="min-h-app w-full overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-b from-background via-background to-secondary/20 px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12">
+      <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-md mb-4">
             <Shield className="w-8 h-8 text-primary-foreground" />
@@ -195,7 +196,14 @@ export default function Login() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
-                    <Input id="login-password" type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required placeholder="••••••••" />
+                    <PasswordInput
+                      id="login-password"
+                      autoComplete="current-password"
+                      value={loginPassword}
+                      onChange={e => setLoginPassword(e.target.value)}
+                      required
+                      placeholder="••••••••"
+                    />
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? 'Signing in...' : 'Sign In'}
@@ -215,7 +223,15 @@ export default function Login() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Password</Label>
-                    <Input id="signup-password" type="password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
+                    <PasswordInput
+                      id="signup-password"
+                      autoComplete="new-password"
+                      value={signupPassword}
+                      onChange={e => setSignupPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      placeholder="••••••••"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Role</Label>
