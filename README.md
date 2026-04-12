@@ -68,6 +68,18 @@ This app can be deployed to static hosting providers that support Vite apps, inc
 
 If you use Supabase, ensure your environment variables are configured in the deployment settings and that the Supabase Edge Functions are deployed.
 
+#### Vercel
+
+1. Connect the repository in the Vercel dashboard (or use the Vercel CLI).
+2. Set the same `VITE_*` variables in **Project → Settings → Environment Variables** as in your local `.env`.
+3. Use the default **Framework Preset: Vite** (build command `npm run build`, output directory `dist`).
+
+This project includes `vercel.json` with a rewrite so every path serves `index.html`. That is required for **React Router** client routes: without it, opening or reloading a deep link such as `/dashboard` returns a **404** from the CDN because no file exists at that URL. Vercel still serves real static assets (for example under `assets/`) before applying the rewrite.
+
+#### Other hosts
+
+Configure your host so unknown paths fall back to `index.html` (for example Netlify `_redirects` or Cloudflare Pages **SPA** / `_routes.json` behavior).
+
 ### Notes
 
 - The frontend relies on Supabase auth and database access.
