@@ -113,9 +113,15 @@
     @apply border-border;
   }
 
+  html {
+    /* Improves readability across the whole app (all pages) */
+    font-size: 17px;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    line-height: 1.5;
     background-image: 
       radial-gradient(at 35% 80%, hsl(221 100% 96% / 0.45), transparent 52%),
       radial-gradient(at 78% 15%, hsl(210 70% 94% / 0.35), transparent 50%);

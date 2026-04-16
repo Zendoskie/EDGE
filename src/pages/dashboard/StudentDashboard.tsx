@@ -6,8 +6,6 @@ import { BookOpen, CalendarCheck, BarChart3, Brain } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AICoachPopup } from '@/components/AICoachPopup';
-import ErrorBoundary from '@/components/ErrorBoundary';
 import { canonicalRiskLevel } from '@/lib/risk-utils';
 
 interface StudentStats {
@@ -133,15 +131,6 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <ErrorBoundary>
-        <AICoachPopup
-          riskLevel={stats?.riskLevel}
-          recommendation={stats?.recommendation}
-          subjectLabel={stats?.subjectLabel}
-          storageKey="edge_ai_coach_dismissed_dashboard_v1"
-          variant="compact"
-        />
-      </ErrorBoundary>
       <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
         <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>

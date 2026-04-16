@@ -6,8 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { AICoachPopup } from '@/components/AICoachPopup';
-import ErrorBoundary from '@/components/ErrorBoundary';
 import { 
   Brain, 
   MessageSquare, 
@@ -241,20 +239,6 @@ function StudentInsights({ userId }: { userId: string }) {
       <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
         <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
       </div>
-
-      <ErrorBoundary>
-        <AICoachPopup
-          riskLevel={latestOverall?.risk_level ?? null}
-          recommendation={latestOverall?.recommendation ?? null}
-          subjectLabel={
-            latestOverall?.subjects?.code
-              ? `${latestOverall.subjects.code} — ${latestOverall.subjects.name ?? ''}`.trim()
-              : null
-          }
-          storageKey="edge_ai_coach_dismissed_insights_v1"
-          variant="detailed"
-        />
-      </ErrorBoundary>
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">

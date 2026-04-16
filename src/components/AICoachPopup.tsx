@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -114,7 +115,7 @@ export function AICoachPopup(props: {
   variant?: "compact" | "detailed";
 }) {
   const canonical = canonicalRiskLevel(props.riskLevel);
-  const shouldShow = canonical === "critical" || canonical === "at_risk";
+  const shouldAutoOpen = canonical === "critical" || canonical === "at_risk";
   const storageKey = props.storageKey || "edge_ai_coach_dismissed_v1";
   const persistKey = messagesStorageKey(storageKey);
 
@@ -123,6 +124,13 @@ export function AICoachPopup(props: {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    // Portal the AI Coach trigger into the dashboard header (so it doesn't overlap cards/content).
+    const el = typeof window !== "undefined" ? document.getElementById("ai-coach-header-slot") : null;
+    setHeaderSlotEl(el);
+  }, []);
 
   useEffect(() => {
     try {
@@ -161,11 +169,12 @@ export function AICoachPopup(props: {
   }, [storageKey, canonical, props.recommendation, props.subjectLabel]);
 
   useEffect(() => {
-    if (!shouldShow) return;
+    // Auto-open only for critical/at-risk students.
+    if (!shouldAutoOpen) return;
     const dismissed = localStorage.getItem(storageKey);
     if (dismissed) return;
     setOpen(true);
-  }, [shouldShow, storageKey]);
+  }, [shouldAutoOpen, storageKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -233,25 +242,28 @@ export function AICoachPopup(props: {
     }
   };
 
-  if (!shouldShow) return null;
-
   return (
     <>
-      <div className="fixed bottom-5 right-5 z-40">
-        <Button
-          className={cn(
-            "rounded-full shadow-lg gap-2",
-            canonical === "critical" ? "bg-destructive hover:bg-destructive/90" : "",
-          )}
-          onClick={() => setOpen(true)}
-        >
-          <Sparkles className="h-4 w-4" />
-          AI Coach
-          <Badge variant={riskVariant(canonical)} className="ml-1">
-            {riskLabel(canonical)}
-          </Badge>
-        </Button>
-      </div>
+      {headerSlotEl
+        ? createPortal(
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              title="AI Coach"
+              aria-label="AI Coach"
+              className={cn(
+                "h-9 w-9 rounded-lg shrink-0 border-border/80 bg-background/80",
+                canonical === "critical" && "border-destructive/70 bg-destructive/10 text-destructive-foreground hover:bg-destructive/20",
+                canonical === "at_risk" && "border-destructive/50 bg-destructive/10 text-destructive-foreground hover:bg-destructive/20",
+              )}
+              onClick={() => setOpen(true)}
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>,
+            headerSlotEl,
+          )
+        : null}
 
       <Dialog
         open={open}
@@ -266,7 +278,7 @@ export function AICoachPopup(props: {
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
                 AI Coach
-                <Badge variant={riskVariant(canonical)}>{riskLabel(canonical)}</Badge>
+                {shouldAutoOpen ? <Badge variant={riskVariant(canonical)}>{riskLabel(canonical)}</Badge> : null}
               </DialogTitle>
               <DialogDescription className="space-y-1">
                 <span className="block">
