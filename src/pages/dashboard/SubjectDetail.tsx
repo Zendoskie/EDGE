@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail } from 'lucide-react';
+import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
   EmbeddedProgram,
@@ -69,7 +69,8 @@ export default function SubjectDetail() {
   if (!isInstructor) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between gap-3">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate(backUrl)}>
               <ArrowLeft className="h-4 w-4" />
@@ -93,7 +94,8 @@ export default function SubjectDetail() {
               </p>
             </div>
           </div>
-        </div>
+          </div>
+        </section>
         <StudentSubjectView subjectId={id!} subjectCode={subject.code} userId={user?.id} />
       </div>
     );
@@ -101,7 +103,8 @@ export default function SubjectDetail() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between gap-3">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(backUrl)}>
             <ArrowLeft className="h-4 w-4" />
@@ -122,7 +125,8 @@ export default function SubjectDetail() {
             </p>
           </div>
         </div>
-      </div>
+        </div>
+      </section>
 
       <Tabs defaultValue="students" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">
@@ -449,6 +453,20 @@ function SubjectAttendance({
     },
   });
 
+  const { data: attendanceHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ['attendance-history', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('id, date, student_id, status, created_at')
+        .eq('subject_id', subjectId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const markAttendance = useMutation({
     mutationFn: async ({ studentId, status }: { studentId: string; status: string }) => {
       const existing = attendanceRecords.find(a => a.student_id === studentId);
@@ -468,62 +486,132 @@ function SubjectAttendance({
     },
     onSuccess: () => {
       refetchAttendance();
+      queryClient.invalidateQueries({ queryKey: ['attendance-history', subjectId] });
       toast.success('Attendance updated');
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const getStatus = (studentId: string) => attendanceRecords.find(a => a.student_id === studentId)?.status || '';
+  const profileByStudentId = new Map(
+    enrollments
+      .map((e: EnrollmentListRow) => [e.student_id, e.profile] as const)
+      .filter(([studentId]) => !!studentId),
+  );
+
+  const statusBadgeVariant = (status: string) => {
+    if (status === 'absent') return 'destructive';
+    if (status === 'present') return 'default';
+    return 'secondary';
+  };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">Attendance</CardTitle>
-        <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" />
+      <CardHeader className="space-y-2 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="text-lg">Attendance</CardTitle>
+          <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" />
+        </div>
       </CardHeader>
-      <CardContent className="p-0">
-        {enrollments.length === 0 ? (
-          <p className="p-6 text-muted-foreground text-sm">Enroll students first to record attendance.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Program</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {enrollments.map((e: EnrollmentListRow) => {
-                const profile = e.profile;
-                const programLabel = programCode
-                  ? `${programCode}${programName ? ` — ${programName}` : ''}`
-                  : '—';
-                return (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
-                    <TableCell>{programLabel}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {['present', 'absent', 'late', 'excused'].map(status => (
-                          <Button
-                            key={status}
-                            size="sm"
-                            variant={getStatus(e.student_id) === status ? 'default' : 'outline'}
-                            className="capitalize text-xs"
-                            onClick={() => markAttendance.mutate({ studentId: e.student_id, status })}
-                          >
-                            {status}
-                          </Button>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
+
+      <CardContent className="pt-0">
+        <Tabs defaultValue="record" className="w-full">
+          <TabsList className="h-10">
+            <TabsTrigger value="record">Record Attendance</TabsTrigger>
+            <TabsTrigger value="history" className="gap-1.5">
+              <History className="h-3.5 w-3.5" />
+              History
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="record" className="mt-4">
+            {enrollments.length === 0 ? (
+              <p className="p-4 text-muted-foreground text-sm">Enroll students first to record attendance.</p>
+            ) : (
+              <div className="rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Program</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {enrollments.map((e: EnrollmentListRow) => {
+                      const profile = e.profile;
+                      const programLabel = programCode
+                        ? `${programCode}${programName ? ` — ${programName}` : ''}`
+                        : '—';
+                      return (
+                        <TableRow key={e.id}>
+                          <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                          <TableCell>{programLabel}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1.5">
+                              {['present', 'absent', 'late', 'excused'].map(status => (
+                                <Button
+                                  key={status}
+                                  size="sm"
+                                  variant={getStatus(e.student_id) === status ? 'default' : 'outline'}
+                                  className="capitalize text-xs h-8"
+                                  onClick={() => markAttendance.mutate({ studentId: e.student_id, status })}
+                                >
+                                  {status}
+                                </Button>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            {historyLoading ? (
+              <p className="p-4 text-muted-foreground text-sm">Loading history...</p>
+            ) : attendanceHistory.length === 0 ? (
+              <p className="p-4 text-muted-foreground text-sm">No attendance history yet.</p>
+            ) : (
+              <div className="rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Program</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attendanceHistory.map((record: any) => {
+                      const profile = profileByStudentId.get(record.student_id);
+                      const programLabel = programCode
+                        ? `${programCode}${programName ? ` — ${programName}` : ''}`
+                        : '—';
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>{record.date ? new Date(record.date).toLocaleDateString() : '—'}</TableCell>
+                          <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
+                          <TableCell>{programLabel}</TableCell>
+                          <TableCell>
+                            <Badge variant={statusBadgeVariant(record.status)} className="capitalize">
+                              {record.status || '—'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

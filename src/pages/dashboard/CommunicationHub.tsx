@@ -11,8 +11,9 @@ export default function CommunicationHub() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Communication Hub</h1>
           <p className="text-muted-foreground">Connect with instructors and peers</p>
@@ -23,9 +24,10 @@ export default function CommunicationHub() {
             {unreadCount} unread
           </Badge>
         </div>
-      </div>
+        </div>
+      </section>
 
-      <Card className="bg-card/90">
+      <Card className="bg-card/90 interactive-lift">
       <Tabs defaultValue="messages" className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="messages" className="flex items-center gap-2">

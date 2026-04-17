@@ -8,8 +8,9 @@ export default function LearningAssistant() {
   const [activeTab, setActiveTab] = useState('assistant');
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Learning Assistant</h1>
           <p className="text-muted-foreground">Your AI-powered academic companion</p>
@@ -18,7 +19,8 @@ export default function LearningAssistant() {
           <Brain className="h-4 w-4" />
           AI Enhanced
         </Badge>
-      </div>
+        </div>
+      </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">

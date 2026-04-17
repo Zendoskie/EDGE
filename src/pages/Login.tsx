@@ -166,10 +166,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-app w-full overflow-x-hidden overflow-y-auto overscroll-y-contain bg-gradient-to-b from-background via-background to-secondary/20 px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12">
+    <div className="min-h-app app-shell-bg w-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12">
       <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-md mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
             <Shield className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
@@ -178,9 +178,9 @@ export default function Login() {
           </p>
         </div>
 
-        <Card className="shadow-lg border-border/60 bg-card/90 backdrop-blur-sm">
+        <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
           <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-4 border-b border-border/60">
               <TabsList className="grid w-full grid-cols-2 h-11">
                 <TabsTrigger value="login">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>

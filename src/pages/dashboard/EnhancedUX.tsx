@@ -6,7 +6,6 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Check, 
-  X, 
   ChevronRight, 
   ChevronLeft, 
   Moon, 
@@ -20,7 +19,6 @@ import {
   Target,
   BarChart3
 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
 
 interface OnboardingStep {
   id: string;
@@ -31,7 +29,6 @@ interface OnboardingStep {
 }
 
 export default function EnhancedUX() {
-  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -204,8 +201,9 @@ export default function EnhancedUX() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Enhanced User Experience</h1>
           <p className="text-muted-foreground">Personalize your academic experience</p>
@@ -229,7 +227,8 @@ export default function EnhancedUX() {
             Show Onboarding
           </Button>
         </div>
-      </div>
+        </div>
+      </section>
 
       <Tabs defaultValue="accessibility" className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">
@@ -248,7 +247,7 @@ export default function EnhancedUX() {
         </TabsList>
 
         <TabsContent value="accessibility" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
@@ -285,7 +284,7 @@ export default function EnhancedUX() {
         </TabsContent>
 
         <TabsContent value="preferences" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
@@ -336,7 +335,7 @@ export default function EnhancedUX() {
         </TabsContent>
 
         <TabsContent value="shortcuts" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />

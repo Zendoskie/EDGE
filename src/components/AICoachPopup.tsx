@@ -111,6 +111,7 @@ export function AICoachPopup(props: {
   riskLevel?: string | null;
   recommendation?: string | null;
   subjectLabel?: string | null;
+  atRiskSubjects?: string[];
   storageKey?: string;
   variant?: "compact" | "detailed";
 }) {
@@ -144,9 +145,10 @@ export function AICoachPopup(props: {
     const bits: string[] = [];
     bits.push(`Risk level: ${riskLabel(canonical)}`);
     if (props.subjectLabel) bits.push(`Subject: ${props.subjectLabel}`);
+    if (props.atRiskSubjects?.length) bits.push(`At-risk subjects: ${props.atRiskSubjects.join(", ")}`);
     if (props.recommendation) bits.push(`Recommendation: ${props.recommendation}`);
     return bits.join("\n");
-  }, [canonical, props.subjectLabel, props.recommendation]);
+  }, [canonical, props.subjectLabel, props.atRiskSubjects, props.recommendation]);
 
   useEffect(() => {
     const saved = readStoredMessages(storageKey);
@@ -335,6 +337,18 @@ export function AICoachPopup(props: {
           </div>
 
           <div className="px-6 pt-4 shrink-0">
+            {props.atRiskSubjects?.length ? (
+              <div className="rounded-lg border bg-muted/30 p-3 mb-3">
+                <p className="text-xs font-medium text-foreground mb-2">Current at-risk subjects</p>
+                <div className="flex flex-wrap gap-2">
+                  {props.atRiskSubjects.map((subject) => (
+                    <Badge key={subject} variant="outline" className="border-destructive/40 bg-destructive/10 text-foreground">
+                      {subject}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {props.variant === "detailed" && (props.subjectLabel || props.recommendation) ? (
               <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground mb-3">
                 {props.subjectLabel ? (

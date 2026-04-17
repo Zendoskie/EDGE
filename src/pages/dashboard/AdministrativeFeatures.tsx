@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,17 +18,13 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Filter,
-  Search,
   Plus,
   Trash2,
   Edit,
   Mail,
   Bell
 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 
 interface BulkOperation {
   id: string;
@@ -68,7 +64,6 @@ interface SystemSettings {
 }
 
 export default function AdministrativeFeatures() {
-  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('bulk-operations');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,7 +72,7 @@ export default function AdministrativeFeatures() {
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month');
 
   // Mock data for bulk operations
-  const { data: bulkOperations = [], isLoading: bulkLoading } = useQuery({
+  const { data: bulkOperations = [] } = useQuery({
     queryKey: ['bulk-operations'],
     queryFn: async () => {
       // Simulate API call
@@ -108,7 +103,7 @@ export default function AdministrativeFeatures() {
   });
 
   // Mock data for calendar events
-  const { data: calendarEvents = [], isLoading: calendarLoading } = useQuery({
+  const { data: calendarEvents = [] } = useQuery({
     queryKey: ['calendar-events'],
     queryFn: async () => {
       // Simulate API call
@@ -145,7 +140,7 @@ export default function AdministrativeFeatures() {
   });
 
   // Mock data for system settings
-  const { data: systemSettings = [], isLoading: settingsLoading } = useQuery({
+  const { data: systemSettings = [] } = useQuery({
     queryKey: ['system-settings'],
     queryFn: async () => {
       // Simulate API call
@@ -222,8 +217,9 @@ export default function AdministrativeFeatures() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Administrative Features</h1>
           <p className="text-muted-foreground">System management and bulk operations</p>
@@ -233,7 +229,8 @@ export default function AdministrativeFeatures() {
           <Settings className="h-4 w-4" />
           Admin Panel
         </Badge>
-      </div>
+        </div>
+      </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">
@@ -256,7 +253,7 @@ export default function AdministrativeFeatures() {
         </TabsList>
 
         <TabsContent value="bulk-operations" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
@@ -376,7 +373,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="calendar" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
@@ -464,7 +461,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5" />
@@ -524,7 +521,7 @@ export default function AdministrativeFeatures() {
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />

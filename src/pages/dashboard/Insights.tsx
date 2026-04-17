@@ -174,9 +174,11 @@ export default function Insights() {
   if (!user?.id) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
-        </div>
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+          </div>
+        </section>
         <EmptyState
           title="Sign in required"
           body="Please sign in to view performance insights."
@@ -395,9 +397,11 @@ function StudentInsights({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
-      </div>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+        </div>
+      </section>
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">
@@ -917,9 +921,11 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-        <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
-      </div>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+        </div>
+      </section>
 
       {subjects.length === 0 && !subjectsLoading ? (
         <EmptyState

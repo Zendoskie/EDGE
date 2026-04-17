@@ -6,7 +6,7 @@ import { BookOpen, CalendarCheck, BarChart3, Brain } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { canonicalRiskLevel } from '@/lib/risk-utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -54,7 +54,7 @@ export default function StudentDashboard() {
     enabled: !!programCode,
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['student-dashboard-stats', user?.id],
     queryFn: async () => {
       const { data: enrollments } = await supabase
@@ -108,7 +108,7 @@ export default function StudentDashboard() {
     enabled: !!user?.id,
   });
 
-  const { data: recentActivity = [] } = useQuery({
+  const { data: recentActivity = [], isLoading: activityLoading } = useQuery({
     queryKey: ['student-recent-activity', user?.id],
     queryFn: async () => {
       const { data: subs } = await supabase
@@ -131,50 +131,74 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-        <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
-        {(programCode || yearLevel) && (
-          <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-            {programCode && (
-              <div>
-                <span className="font-medium text-foreground">Program:</span>{' '}
-                {program?.code ?? programCode}
-                {program?.name ? ` — ${program.name}` : ''}
-              </div>
-            )}
-            {yearLevel && (
-              <div>
-                <span className="font-medium text-foreground">Year level:</span> {yearLevel}
-              </div>
-            )}
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
           </div>
-        )}
-      </div>
+          {(programCode || yearLevel) && (
+            <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+              {programCode && (
+                <div>
+                  <span className="font-medium text-foreground">Program:</span>{' '}
+                  {program?.code ?? programCode}
+                  {program?.name ? ` — ${program.name}` : ''}
+                </div>
+              )}
+              {yearLevel && (
+                <div>
+                  <span className="font-medium text-foreground">Year level:</span> {yearLevel}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat) => (
-          <Card key={stat.title} className="bg-card/90">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-              <stat.icon className={`h-5 w-5 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stat.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+        {statsLoading
+          ? Array.from({ length: 4 }).map((_, index) => (
+              <Card key={`stats-skeleton-${index}`} className="bg-card/90">
+                <CardHeader className="space-y-2 pb-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-8 w-20" />
+                </CardHeader>
+              </Card>
+            ))
+          : statCards.map((stat) => (
+              <Card key={stat.title} className="bg-card/90 interactive-lift">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
+                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{stat.value}</p>
+                </CardContent>
+              </Card>
+            ))}
       </div>
 
       <Card className="bg-card/90">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Recent Activity</CardTitle>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Latest graded submissions and score progress.
+            </p>
+          </div>
           <Button variant="outline" size="sm" asChild>
             <Link to="/dashboard/my-scores">View Scores</Link>
           </Button>
         </CardHeader>
         <CardContent>
-          {recentActivity.length === 0 ? (
+          {activityLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={`activity-skeleton-${index}`} className="h-9 w-full" />
+              ))}
+            </div>
+          ) : recentActivity.length === 0 ? (
             <p className="text-muted-foreground text-sm">No activity yet. Your performance data will appear here once your instructor records grades.</p>
           ) : (
             <ul className="space-y-2 text-sm">

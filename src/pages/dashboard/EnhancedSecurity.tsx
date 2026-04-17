@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,25 +11,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Shield, 
   Lock, 
-  Key, 
   Smartphone, 
-  Mail, 
   Eye, 
   EyeOff,
-  CheckCircle,
   AlertTriangle,
   Users,
   Settings,
   RefreshCw,
-  Copy,
   UserCheck,
-  Bell,
   Globe,
   Database
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 
 interface SecuritySetting {
   id: string;
@@ -88,7 +82,7 @@ export default function EnhancedSecurity() {
   const [permissionFilter, setPermissionFilter] = useState('all');
 
   // Mock data for security settings
-  const { data: securitySettings = [], isLoading: settingsLoading } = useQuery({
+  useQuery({
     queryKey: ['security-settings'],
     queryFn: async () => {
       return [
@@ -292,8 +286,9 @@ export default function EnhancedSecurity() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Enhanced Security</h1>
           <p className="text-muted-foreground">Advanced security and access control</p>
@@ -303,7 +298,8 @@ export default function EnhancedSecurity() {
           <Shield className="h-4 w-4" />
           Security Center
         </Badge>
-      </div>
+        </div>
+      </section>
 
       {newSessionAlert && (
         <Alert className="mb-6">
@@ -335,7 +331,7 @@ export default function EnhancedSecurity() {
         </TabsList>
 
         <TabsContent value="authentication" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5" />
@@ -433,7 +429,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="permissions" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <UserCheck className="h-5 w-5" />
@@ -526,7 +522,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="sessions" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
@@ -595,7 +591,7 @@ export default function EnhancedSecurity() {
         </TabsContent>
 
         <TabsContent value="audit" className="mt-6">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />

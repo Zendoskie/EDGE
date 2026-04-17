@@ -97,12 +97,16 @@ export default function MyAttendance() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-        <h1 className="text-2xl font-display font-bold">My Attendance</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Sessions are listed newest first. Each row shows the class date and your status.
-        </p>
-      </div>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div>
+            <h1 className="text-2xl font-display font-bold">My Attendance</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Sessions are listed newest first. Each row shows the class date and your status.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <Card className="bg-card/90">
         <CardHeader>

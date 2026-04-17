@@ -132,6 +132,11 @@
     background-attachment: fixed;
   }
 
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
   .dark body {
     background-image: 
       radial-gradient(at 35% 80%, hsl(221 75% 22% / 0.35), transparent 52%),
@@ -194,9 +199,66 @@
   .font-mono {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.35);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.55);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
 }
 
 @layer components {
+  .page-section {
+    @apply rounded-2xl border border-border/70 bg-card/85 shadow-sm backdrop-blur-sm;
+  }
+
+  .page-section-header {
+    @apply flex flex-wrap items-start justify-between gap-3 border-b border-border/60 px-5 py-4;
+  }
+
+  .page-section-body {
+    @apply p-5;
+  }
+
+  .app-shell-bg {
+    background-image:
+      radial-gradient(circle at 18% 18%, hsl(var(--primary) / 0.14), transparent 28%),
+      radial-gradient(circle at 86% 8%, hsl(266 100% 72% / 0.12), transparent 30%),
+      linear-gradient(to bottom right, hsl(var(--background)), hsl(var(--secondary) / 0.45));
+  }
+
+  .dark .app-shell-bg {
+    background-image:
+      radial-gradient(circle at 18% 18%, hsl(var(--primary) / 0.18), transparent 30%),
+      radial-gradient(circle at 86% 8%, hsl(266 100% 72% / 0.14), transparent 32%),
+      linear-gradient(to bottom right, hsl(var(--background)), hsl(var(--secondary) / 0.18));
+  }
+
+  .interactive-lift {
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md;
+  }
+
+  .status-dot {
+    @apply h-2.5 w-2.5 rounded-full;
+    box-shadow: 0 0 0 4px hsl(var(--background));
+  }
+
   .glass {
     /* Theme-aware (works in dark mode; avoids hard-coded white) */
     @apply bg-card/90 backdrop-blur-md border border-border/60;
@@ -246,5 +308,9 @@
   .min-h-app {
     min-height: 100vh;
     min-height: 100dvh;
+  }
+
+  .content-grid {
+    @apply mx-auto w-full max-w-[1280px];
   }
 }

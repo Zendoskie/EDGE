@@ -84,8 +84,12 @@ export default function Programs() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-display font-bold">Programs</h1>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Programs</h1>
+            <p className="text-sm text-muted-foreground mt-1">Organize degree programs and academic groups for subjects.</p>
+          </div>
         <Dialog open={open} onOpenChange={v => { if (!v) closeDialog(); else setOpen(true); }}>
           <DialogTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" /> Add Program</Button>
@@ -115,7 +119,8 @@ export default function Programs() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        </div>
+      </section>
 
       {isLoading ? (
         <p className="text-muted-foreground text-sm">Loading...</p>

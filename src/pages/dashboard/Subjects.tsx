@@ -112,7 +112,8 @@ export default function Subjects() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">Subjects</h1>
           <p className="text-muted-foreground">Manage and organize your academic subjects</p>
@@ -171,7 +172,8 @@ export default function Subjects() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        </div>
+      </section>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">

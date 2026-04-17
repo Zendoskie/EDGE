@@ -61,9 +61,14 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4">
-        <h1 className="text-2xl font-display font-bold">Settings</h1>
-      </div>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Settings</h1>
+            <p className="text-sm text-muted-foreground mt-1">Control account profile and app appearance preferences.</p>
+          </div>
+        </div>
+      </section>
 
       <Card className="bg-card/90">
         <CardHeader>

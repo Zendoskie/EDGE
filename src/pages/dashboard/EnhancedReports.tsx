@@ -1,29 +1,25 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-// import AdvancedReporting from '@/components/AdvancedReporting';
 import { 
   FileText, 
   BarChart3, 
   Download,
-  Settings,
-  Clock,
-  TrendingUp
+  Settings
 } from 'lucide-react';
 
 export default function EnhancedReports() {
-  const [activeTab, setActiveTab] = useState('generate');
-
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
         <div>
           <h1 className="text-2xl font-display font-bold">Advanced Reports</h1>
           <p className="text-muted-foreground">Comprehensive academic reporting and analytics</p>
         </div>
-      </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer interactive-lift">
           <CardHeader className="text-center">
             <FileText className="h-8 w-8 mx-auto mb-2 text-primary" />
             <CardTitle>Generate Reports</CardTitle>
@@ -35,7 +31,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer interactive-lift">
           <CardHeader className="text-center">
             <BarChart3 className="h-8 w-8 mx-auto mb-2 text-success" />
             <CardTitle>Analytics</CardTitle>
@@ -47,7 +43,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer interactive-lift">
           <CardHeader className="text-center">
             <Download className="h-8 w-8 mx-auto mb-2 text-primary" />
             <CardTitle>Export Data</CardTitle>
@@ -59,7 +55,7 @@ export default function EnhancedReports() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="bg-card/90 hover:shadow-md transition-shadow cursor-pointer interactive-lift">
           <CardHeader className="text-center">
             <Settings className="h-8 w-8 mx-auto mb-2 text-warning-foreground" />
             <CardTitle>Schedule Reports</CardTitle>
@@ -73,65 +69,18 @@ export default function EnhancedReports() {
       </div>
 
       <div className="bg-card/90 rounded-xl border border-border/70">
-        {activeTab === 'generate' && (
-          <div className="p-6">
-            <div className="text-center">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Advanced Report Generation</h3>
-              <p className="text-muted-foreground">
-                Advanced reporting features coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Get comprehensive reports with templates, automated generation, and multiple export formats.
-              </p>
-            </div>
+        <div className="p-6">
+          <div className="text-center">
+            <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Advanced Report Generation</h3>
+            <p className="text-muted-foreground">
+              Advanced reporting features coming soon!
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Get comprehensive reports with templates, automated generation, and multiple export formats.
+            </p>
           </div>
-        )}
-        
-        {activeTab === 'analytics' && (
-          <div className="p-6">
-            <div className="text-center">
-              <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Analytics Dashboard</h3>
-              <p className="text-muted-foreground">
-                Advanced analytics features coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Get comprehensive insights into student performance, trends, and patterns.
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {activeTab === 'export' && (
-          <div className="p-6">
-            <div className="text-center">
-              <Download className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Export Center</h3>
-              <p className="text-muted-foreground">
-                Export functionality coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Download your data in PDF, Excel, and CSV formats.
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {activeTab === 'schedule' && (
-          <div className="p-6">
-            <div className="text-center">
-              <Clock className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Report Scheduling</h3>
-              <p className="text-muted-foreground">
-                Automated scheduling coming soon!
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Set up automatic report generation on daily, weekly, or monthly basis.
-              </p>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

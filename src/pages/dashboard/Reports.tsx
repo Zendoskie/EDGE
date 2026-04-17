@@ -160,10 +160,96 @@ export default function Reports() {
     URL.revokeObjectURL(link.href);
   };
 
+  const printSubjectReport = (
+    subject: { code: string; name: string },
+    programCode: string,
+    rows: Array<{
+      full_name: string;
+      email: string;
+      student_id_code: string;
+      attendance: number | null;
+      quiz_avg: number | null;
+      assignment_avg: number | null;
+      risk_level: string | null;
+      recommendation: string;
+    }>,
+  ) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const bodyRows = rows
+      .map((r) => {
+        const recommendation = (r.recommendation ?? '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `
+          <tr>
+            <td>${r.full_name ?? '—'}</td>
+            <td>${r.email ?? '—'}</td>
+            <td>${r.student_id_code ?? '—'}</td>
+            <td>${r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
+            <td>${r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
+            <td>${r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
+            <td>${riskLabel(r.risk_level ?? '')}</td>
+            <td>${recommendation}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${subject.code} - Class Summary Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; }
+            h1 { margin: 0 0 4px; }
+            p { margin: 0 0 8px; color: #444; }
+            table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; vertical-align: top; }
+            th { background: #f5f5f5; font-weight: 600; }
+          </style>
+        </head>
+        <body>
+          <h1>EDGE - Per Class Summary Report</h1>
+          <p><strong>Subject:</strong> ${subject.code} — ${subject.name}</p>
+          <p><strong>Program:</strong> ${programCode || '—'}</p>
+          <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Email</th>
+                <th>Student ID</th>
+                <th>Attendance</th>
+                <th>Quiz Avg</th>
+                <th>Assign. Avg</th>
+                <th>Risk</th>
+                <th>Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bodyRows || '<tr><td colspan="8">No enrolled students.</td></tr>'}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+    printWindow.close();
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-sm px-5 py-4 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-display font-bold">Summary Reports</h1>
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Summary Reports</h1>
+            <p className="text-sm text-muted-foreground mt-1">Generate clean printable and CSV-ready performance reports.</p>
+          </div>
         <div className="flex gap-2 print:hidden">
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" />
@@ -179,7 +265,8 @@ export default function Reports() {
             Download CSV
           </Button>
         </div>
-      </div>
+        </div>
+      </section>
 
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="print:hidden h-11">
@@ -187,7 +274,7 @@ export default function Reports() {
           <TabsTrigger value="per-class">Per Class</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <Card className="bg-card/90">
+          <Card className="bg-card/90 interactive-lift">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <FileText className="h-5 w-5" />
@@ -253,13 +340,20 @@ export default function Reports() {
               <p className="text-muted-foreground text-sm py-8 text-center">No subjects yet.</p>
             ) : (
               subjects.map(({ subject, rows, program }) => (
-                <Card key={subject.id} className="bg-card/90">
+                <Card key={subject.id} className="bg-card/90 interactive-lift">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-2 text-lg">
                       <span>{subject.code} — {subject.name}</span>
                       <Badge variant="outline">{(program as any)?.code ?? '—'}</Badge>
                     </CardTitle>
                     <div className="flex gap-2 print:hidden">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => printSubjectReport(subject, (program as any)?.code ?? '—', rows)}
+                      >
+                        <Printer className="mr-1 h-3.5 w-3.5" /> Print / PDF
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

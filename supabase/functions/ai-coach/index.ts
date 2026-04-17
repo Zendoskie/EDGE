@@ -63,6 +63,19 @@ function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
   return "stable";
 }
 
+const RISK_PRIORITY: Record<CanonicalRiskLevel, number> = {
+  excelling: 0,
+  stable: 1,
+  at_risk: 2,
+  critical: 3,
+};
+
+function createdAtTs(value: unknown): number {
+  if (typeof value !== "string") return 0;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : 0;
+}
+
 function safeString(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
 }
@@ -359,15 +372,63 @@ serve(async (req) => {
       });
     }
 
-    const { data: pred } = await supabase
+    const { data: enrollments } = await supabase
+      .from("enrollments")
+      .select("subject_id")
+      .eq("student_id", user.id)
+      .eq("status", "active");
+
+    const enrolledSubjectIds = (enrollments ?? [])
+      .map((row: { subject_id?: string | null }) => row.subject_id ?? null)
+      .filter((id: string | null): id is string => Boolean(id));
+
+    if (enrolledSubjectIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "I cannot find active enrolled subjects yet. Please confirm your enrollment with your instructor, then try again.",
+          risk_level: "stable",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const { data: preds } = await supabase
       .from("predictions")
       .select("risk_level, recommendation, created_at, subject_id, subjects(code, name)")
       .eq("student_id", user.id)
+      .in("subject_id", enrolledSubjectIds)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(300);
 
-    const risk = canonicalRiskLevel(pred?.risk_level);
+    if (!preds?.length) {
+      return new Response(
+        JSON.stringify({
+          reply:
+            "No subject risk predictions are available yet. Ask your instructor to run risk analysis so I can give targeted help.",
+          risk_level: "stable",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const latestPerSubject = new Map<string, (typeof preds)[number]>();
+    for (const row of preds) {
+      const subjectId = row.subject_id;
+      if (!subjectId || latestPerSubject.has(subjectId)) continue;
+      latestPerSubject.set(subjectId, row);
+    }
+
+    const subjectPredictions = Array.from(latestPerSubject.values());
+    subjectPredictions.sort((a, b) => {
+      const pa = RISK_PRIORITY[canonicalRiskLevel(a.risk_level)];
+      const pb = RISK_PRIORITY[canonicalRiskLevel(b.risk_level)];
+      if (pa !== pb) return pb - pa;
+      return createdAtTs(b.created_at) - createdAtTs(a.created_at);
+    });
+
+    const topPrediction = subjectPredictions[0];
+    const risk = canonicalRiskLevel(topPrediction?.risk_level);
     if (risk !== "critical" && risk !== "at_risk") {
       return new Response(
         JSON.stringify({
@@ -399,23 +460,40 @@ serve(async (req) => {
       );
     }
 
-    const subjectCode = pred?.subjects?.code ?? null;
-    const subjectName = pred?.subjects?.name ?? null;
-    const recommendation = safeString(pred?.recommendation);
+    const topAtRiskSubjects = subjectPredictions.filter((p) => {
+      const level = canonicalRiskLevel(p.risk_level);
+      return level === "critical" || level === "at_risk";
+    });
+    const coachingFocusSubjects = topAtRiskSubjects.length > 0 ? topAtRiskSubjects : subjectPredictions.slice(0, 3);
+
+    const subjectCode = topPrediction?.subjects?.code ?? null;
+    const subjectName = topPrediction?.subjects?.name ?? null;
+    const recommendation = safeString(topPrediction?.recommendation);
+    const allSubjectContext = coachingFocusSubjects
+      .map((p) => {
+        const code = p.subjects?.code ?? "Subject";
+        const name = p.subjects?.name ? ` — ${p.subjects.name}` : "";
+        const level = canonicalRiskLevel(p.risk_level);
+        const rec = safeString(p.recommendation);
+        return `${code}${name} | ${level}${rec ? ` | ${rec}` : ""}`;
+      })
+      .join("\n");
 
     const system = [
       "You are an academic support coach for university students.",
-      "Goal: help at-risk students take concrete next steps in the next 7 days.",
+      "Goal: help at-risk students take concrete next steps in the next 7 days across all their enrolled subjects.",
       "Style: empathetic, supportive, concise, and action-oriented.",
       "Formatting: plain text only—no markdown, no asterisks or star bullets, no **bold**. Use short paragraphs; use 1. 2. numbering if steps are needed.",
       "Do NOT mention internal systems or that you are an AI model.",
       "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact emergency services or a trusted person.",
       "Ask at most one question per reply.",
-      "The student's risk level and system recommendation are already known—do NOT open by asking them to choose among attendance, missing work, or understanding lessons as if the problem were unknown. Build on the recommendation and conversation.",
+      "The student's risk levels and recommendations are already known—do NOT open by asking them to choose among attendance, missing work, or understanding lessons as if the problem were unknown. Build on the recommendations and conversation.",
+      "When multiple subjects appear, prioritize critical and at-risk subjects first. Do not ignore a failing subject just because another subject is stable.",
       "",
       `Student is flagged as: ${risk === "critical" ? "CRITICAL" : "AT RISK"}.`,
       subjectCode || subjectName ? `Subject: ${[subjectCode, subjectName].filter(Boolean).join(" — ")}` : "",
       recommendation ? `System recommendation: ${recommendation}` : "",
+      allSubjectContext ? `Cross-subject context (latest per enrolled subject):\n${allSubjectContext}` : "",
     ]
       .filter(Boolean)
       .join("\n");
