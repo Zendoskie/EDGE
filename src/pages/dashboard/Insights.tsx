@@ -1,11 +1,31 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import { 
   Brain, 
   MessageSquare, 
@@ -23,6 +43,44 @@ import {
 import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
+
+const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ['critical', 'at_risk', 'stable', 'excelling'];
+
+/** Recharts / ChartContainer colors — aligned with semantic risk levels (readable in light & dark) */
+const riskChartConfig = {
+  critical: { label: 'Critical', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
+  at_risk: { label: 'At Risk', theme: { light: 'hsl(38 92% 50%)', dark: 'hsl(38 92% 56%)' } },
+  stable: { label: 'Stable', theme: { light: 'hsl(215 16% 42%)', dark: 'hsl(215 16% 68%)' } },
+  excelling: { label: 'Excelling', theme: { light: 'hsl(142 76% 36%)', dark: 'hsl(142 68% 48%)' } },
+} satisfies ChartConfig;
+
+const metricsChartConfig = {
+  value: { label: 'Percent', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const countChartConfig = {
+  count: { label: 'Count', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const subjectScoreChartConfig = {
+  avg: { label: 'Avg score %', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const scoreTrendChartConfig = {
+  scorePct: { label: 'Score %', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const predictionTimelineChartConfig = {
+  count: { label: 'Predictions', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const enrollmentChartConfig = {
+  students: { label: 'Active students', theme: { light: 'hsl(221 76% 48%)', dark: 'hsl(217 91% 65%)' } },
+} satisfies ChartConfig;
+
+const concernChartConfig = {
+  concern: { label: 'Students (critical / at-risk)', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
+} satisfies ChartConfig;
 
 interface Prediction {
   id: string;
@@ -62,6 +120,39 @@ interface StudentStats {
   riskLevel: string | null;
   recommendation: string | null;
   subjectLabel: string | null;
+}
+
+/**
+ * PostgREST may return `activities` as an object or a single-element array depending on the query.
+ * Match StudentDashboard logic: resolve max_score and subject_id reliably.
+ */
+function getActivityFromSubmission(sub: any): { max_score?: number; subject_id?: string | null } | null {
+  const a = sub?.activities;
+  if (a == null) return null;
+  if (Array.isArray(a)) return a[0] ?? null;
+  return a;
+}
+
+function submissionScorePercent(sub: any): number | null {
+  const raw = sub?.score;
+  if (raw === null || raw === undefined) return null;
+  const scoreNum = Number(raw);
+  if (Number.isNaN(scoreNum)) return null;
+  const act = getActivityFromSubmission(sub);
+  const maxRaw = act?.max_score;
+  const max = maxRaw != null && Number(maxRaw) > 0 ? Number(maxRaw) : 100;
+  return (scoreNum / max) * 100;
+}
+
+/** Prefer graded_at; fall back to submitted_at so trends show when instructors didn’t set graded_at */
+function submissionTrendDateIsoDay(sub: any): string | null {
+  const t = sub?.graded_at || sub?.submitted_at;
+  if (!t) return null;
+  try {
+    return new Date(t).toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -183,7 +274,7 @@ function StudentInsights({ userId }: { userId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('submissions')
-        .select('score, activities(name, subject_id, max_score)')
+        .select('score, graded_at, submitted_at, activity_id, activities(max_score, subject_id)')
         .eq('student_id', userId);
       if (error) {
         console.warn('Insights: scores query failed', error);
@@ -205,24 +296,25 @@ function StudentInsights({ userId }: { userId: string }) {
 
   const latestOverall = predictions.length > 0 ? predictions[0] : null;
 
+  /* Match student dashboard: present + late count as attended */
   const attendanceStats = attendance.reduce((acc: { total: number; present: number }, record: any) => {
     acc.total++;
-    if (record.status === 'present') acc.present++;
+    if (record.status === 'present' || record.status === 'late') acc.present++;
     return acc;
   }, { total: 0, present: 0 });
 
   const attendanceRate = attendanceStats.total > 0 ? (attendanceStats.present / attendanceStats.total) * 100 : 0;
 
-  const scoreStats = scores.reduce((acc: { total: number; count: number }, submission: any) => {
-    if (submission.score !== null) {
-      const max = submission.activities?.max_score ?? 100;
-      if (max <= 0) return acc;
-      const percentage = (submission.score / max) * 100;
-      acc.total += percentage;
-      acc.count++;
-    }
-    return acc;
-  }, { total: 0, count: 0 });
+  const scoreStats = (scores as any[]).reduce(
+    (acc: { total: number; count: number }, submission: any) => {
+      const pct = submissionScorePercent(submission);
+      if (pct === null) return acc;
+      acc.total += pct;
+      acc.count += 1;
+      return acc;
+    },
+    { total: 0, count: 0 },
+  );
 
   const averageScore = scoreStats.count > 0 ? scoreStats.total / scoreStats.count : 0;
 
@@ -231,6 +323,73 @@ function StudentInsights({ userId }: { userId: string }) {
     acc[lvl] = (acc[lvl] || 0) + 1;
     return acc;
   }, {} as Record<CanonicalRiskLevel, number>);
+
+  const studentRiskPieData = useMemo(
+    () =>
+      RISK_LEVEL_ORDER.map(level => ({
+        level,
+        name: riskLabel(level),
+        value: riskDistribution[level] ?? 0,
+      })).filter(d => d.value > 0),
+    [riskDistribution],
+  );
+
+  const studentMetricsBarData = useMemo(
+    () => [
+      { metric: 'Attendance', value: Math.round(attendanceRate * 10) / 10 },
+      { metric: 'Avg score', value: Math.round(averageScore * 10) / 10 },
+    ],
+    [attendanceRate, averageScore],
+  );
+
+  const studentActivityBarData = useMemo(
+    () => [
+      { metric: 'Predictions', count: predictions.length },
+      { metric: 'Interventions', count: interventions.length },
+      { metric: 'Submissions', count: scores.length },
+      { metric: 'Attendance rows', count: attendance.length },
+    ],
+    [predictions.length, interventions.length, scores.length, attendance.length],
+  );
+
+  const studentScoreTrendData = useMemo(() => {
+    const rows = (scores as any[])
+      .map(s => {
+        const pct = submissionScorePercent(s);
+        const date = submissionTrendDateIsoDay(s);
+        if (pct === null || !date) return null;
+        return { date, scorePct: Math.round(pct * 10) / 10 };
+      })
+      .filter((row): row is { date: string; scorePct: number } => row != null)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return rows;
+  }, [scores]);
+
+  const studentSubjectBarData = useMemo(() => {
+    return (subjects as any[]).map((subject: any) => {
+      const subjectScores = (scores as any[]).filter(s => getActivityFromSubmission(s)?.subject_id === subject.id);
+      const subjectAvg =
+        subjectScores.length > 0
+          ? subjectScores.reduce((acc, s: any) => {
+              const p = submissionScorePercent(s);
+              return p === null ? acc : acc + p;
+            }, 0) / subjectScores.length
+          : 0;
+      return { code: subject.code ?? '—', avg: Math.round(subjectAvg * 10) / 10 };
+    });
+  }, [subjects, scores]);
+
+  const studentPredictionsByDay = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const p of predictions as any[]) {
+      if (!p.created_at) continue;
+      const d = new Date(p.created_at).toISOString().slice(0, 10);
+      byDay.set(d, (byDay.get(d) ?? 0) + 1);
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+  }, [predictions]);
 
   const anyLoading = predictionsLoading || interventionsLoading || subjectsLoading || attendanceLoading || scoresLoading;
 
@@ -324,23 +483,37 @@ function StudentInsights({ userId }: { userId: string }) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Target className="h-5 w-5" />
-                  Risk Distribution
+                  Risk distribution
                 </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Latest prediction per enrolled subject (your data only).
+                </p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(riskDistribution).map(([level, count]) => (
-                    <div key={level} className="flex items-center justify-between">
-                      <Badge variant={riskVariant(level as CanonicalRiskLevel)} className="capitalize">
-                        {riskLabel(level as CanonicalRiskLevel)}
-                      </Badge>
-                      <span className="text-sm font-medium">{typeof count === 'number' ? count : 0} subject{typeof count === 'number' && count !== 1 ? 's' : ''}</span>
-                    </div>
-                  ))}
-                  {Object.keys(riskDistribution).length === 0 && (
-                    <p className="text-muted-foreground text-sm">No risk predictions available</p>
-                  )}
-                </div>
+                {studentRiskPieData.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No risk predictions available yet.</p>
+                ) : (
+                  <ChartContainer config={riskChartConfig} className="mx-auto aspect-square max-h-[280px] w-full">
+                    <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }} aria-label="Risk distribution pie chart">
+                      <ChartTooltip content={<ChartTooltipContent nameKey="name" hideIndicator />} />
+                      <Pie
+                        data={studentRiskPieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={88}
+                        paddingAngle={2}
+                      >
+                        {studentRiskPieData.map(entry => (
+                          <Cell key={entry.level} fill={`var(--color-${entry.level})`} stroke="transparent" />
+                        ))}
+                      </Pie>
+                      <ChartLegend content={<ChartLegendContent nameKey="name" />} verticalAlign="bottom" />
+                    </PieChart>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -348,31 +521,99 @@ function StudentInsights({ userId }: { userId: string }) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
-                  Recent Activity
+                  Activity overview
                 </CardTitle>
+                <p className="text-sm text-muted-foreground">Counts from your enrollments and records.</p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Latest Predictions</span>
-                    <span className="font-medium">{predictions.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Interventions</span>
-                    <span className="font-medium">{interventions.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Total Submissions</span>
-                    <span className="font-medium">{scores.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Attendance Records</span>
-                    <span className="font-medium">{attendance.length}</span>
-                  </div>
-                </div>
+                <ChartContainer config={countChartConfig} className="h-[280px] w-full">
+                  <BarChart data={studentActivityBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis dataKey="metric" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="count" fill="var(--color-count)" radius={6} name="Records" />
+                  </BarChart>
+                </ChartContainer>
               </CardContent>
             </Card>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Score trend
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Each point is a submission with a score (% of activity max). Dates use graded time, or submitted time if
+                  not graded yet. Your data only.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {studentScoreTrendData.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No dated scored submissions yet—charts use graded or submitted date.</p>
+                ) : (
+                  <ChartContainer config={scoreTrendChartConfig} className="h-[280px] w-full">
+                    <LineChart data={studentScoreTrendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="scorePct" stroke="var(--color-scorePct)" strokeWidth={2} dot={{ r: 3 }} name="Score %" />
+                    </LineChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Prediction activity
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">How many predictions were recorded per day (your history).</p>
+              </CardHeader>
+              <CardContent>
+                {studentPredictionsByDay.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No prediction history yet.</p>
+                ) : (
+                  <ChartContainer config={predictionTimelineChartConfig} className="h-[280px] w-full">
+                    <LineChart data={studentPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="stepAfter" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Count" />
+                    </LineChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="bg-card/90 mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Key metrics
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Attendance rate and overall average score (same calculations as the summary cards).</p>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={metricsChartConfig} className="h-[200px] w-full max-w-lg mx-auto">
+                <BarChart data={studentMetricsBarData} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 8 }} accessibilityLayer>
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="metric" tickLine={false} axisLine={false} width={88} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="value" fill="var(--color-value)" radius={6} name="Percent" />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
@@ -381,71 +622,51 @@ function StudentInsights({ userId }: { userId: string }) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5" />
-                  Performance Trends
+                  Score trend (analytics)
                 </CardTitle>
+                <p className="text-sm text-muted-foreground">Scored submissions over time (graded or submitted date).</p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Attendance Rate</span>
-                    <div className="flex items-center gap-2">
-                      <Progress value={attendanceRate} className="w-20" />
-                      <span className="text-sm font-medium">{attendanceRate.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Average Score</span>
-                    <div className="flex items-center gap-2">
-                      <Progress value={averageScore} className="w-20" />
-                      <span className="text-sm font-medium">{averageScore.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Subject Engagement</span>
-                    <div className="flex items-center gap-2">
-                      <Progress value={(subjects.length / 8) * 100} className="w-20" />
-                      <span className="text-sm font-medium">{subjects.length} subjects</span>
-                    </div>
-                  </div>
-                </div>
+                {studentScoreTrendData.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No dated scored submissions yet—charts use graded or submitted date.</p>
+                ) : (
+                  <ChartContainer config={scoreTrendChartConfig} className="h-[300px] w-full">
+                    <LineChart data={studentScoreTrendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Line type="monotone" dataKey="scorePct" stroke="var(--color-scorePct)" strokeWidth={2} dot={{ r: 3 }} name="Score %" />
+                    </LineChart>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card/90">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Subject Performance
+                  Average score by subject
                 </CardTitle>
+                <p className="text-sm text-muted-foreground">Mean % across graded activities per subject.</p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {subjects.slice(0, 5).map((subject: any) => {
-                    const subjectScores = scores.filter((s: any) => 
-                      s.activities?.subject_id === subject.id
-                    );
-                    const subjectAvg = subjectScores.length > 0 
-                      ? subjectScores.reduce((acc, s: any) => {
-                          const max = s.activities?.max_score ?? 100;
-                          if (!max) return acc;
-                          return acc + (s.score / max) * 100;
-                        }, 0) / subjectScores.length
-                      : 0;
-                    
-                    return (
-                      <div key={subject.id} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>{subject.code}</span>
-                          <span className="font-medium">{subjectAvg.toFixed(1)}%</span>
-                        </div>
-                        <Progress value={subjectAvg} />
-                      </div>
-                    );
-                  })}
-                  {subjects.length === 0 && (
-                    <p className="text-muted-foreground text-sm">No subjects enrolled</p>
-                  )}
-                </div>
+                {subjects.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No subjects enrolled</p>
+                ) : (
+                  <ChartContainer config={subjectScoreChartConfig} className="h-[300px] w-full">
+                    <BarChart data={studentSubjectBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="avg" fill="var(--color-avg)" radius={6} name="Avg %" />
+                    </BarChart>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -651,6 +872,47 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
     return d;
   }, [latestByStudentSubject]);
 
+  const instructorRiskPieData = useMemo(
+    () =>
+      RISK_LEVEL_ORDER.map(level => ({
+        level,
+        name: riskLabel(level),
+        value: distribution[level] ?? 0,
+      })).filter(d => d.value > 0),
+    [distribution],
+  );
+
+  const instructorEnrollmentBarData = useMemo(() => {
+    return (subjects as any[]).map((s: any) => ({
+      code: s.code ?? '—',
+      students: (enrollments as any[]).filter((e: any) => e.subject_id === s.id).length,
+    }));
+  }, [subjects, enrollments]);
+
+  const instructorPredictionsByDay = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const p of predictions as any[]) {
+      if (!p.created_at) continue;
+      const d = new Date(p.created_at).toISOString().slice(0, 10);
+      byDay.set(d, (byDay.get(d) ?? 0) + 1);
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+  }, [predictions]);
+
+  /** Per subject: count of student rows (latest per student–subject) flagged critical or at-risk */
+  const instructorConcernBarData = useMemo(() => {
+    return (subjects as any[]).map((s: any) => {
+      const rows = latestByStudentSubject.filter((p: any) => p.subject_id === s.id);
+      const concern = rows.filter((p: any) => {
+        const lv = canonicalRiskLevel(p.risk_level);
+        return lv === 'critical' || lv === 'at_risk';
+      }).length;
+      return { code: s.code ?? '—', concern };
+    });
+  }, [subjects, latestByStudentSubject]);
+
   const anyLoading = subjectsLoading || enrollmentsLoading || predictionsLoading || interventionsLoading;
 
   return (
@@ -731,30 +993,198 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               </CardContent>
             </Card>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Risk distribution
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Latest prediction per student per subject across your subjects only.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {subjectIds.length === 0 || instructorRiskPieData.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    {subjectIds.length === 0
+                      ? 'Create subjects and enroll students to see this chart.'
+                      : 'No predictions yet. Run predictions from a subject page.'}
+                  </p>
+                ) : (
+                  <ChartContainer config={riskChartConfig} className="mx-auto aspect-square max-h-[280px] w-full">
+                    <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }} aria-label="Instructor risk distribution">
+                      <ChartTooltip content={<ChartTooltipContent nameKey="name" hideIndicator />} />
+                      <Pie
+                        data={instructorRiskPieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={88}
+                        paddingAngle={2}
+                      >
+                        {instructorRiskPieData.map(entry => (
+                          <Cell key={entry.level} fill={`var(--color-${entry.level})`} stroke="transparent" />
+                        ))}
+                      </Pie>
+                      <ChartLegend content={<ChartLegendContent nameKey="name" />} verticalAlign="bottom" />
+                    </PieChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Active enrollments by subject
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Active enrollment rows per subject you teach.</p>
+              </CardHeader>
+              <CardContent>
+                {subjects.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No subjects yet.</p>
+                ) : (
+                  <ChartContainer config={enrollmentChartConfig} className="h-[280px] w-full">
+                    <BarChart data={instructorEnrollmentBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="students" fill="var(--color-students)" radius={6} name="Students" />
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="bg-card/90 mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Prediction volume
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Count of prediction records per day (recent window).</p>
+            </CardHeader>
+            <CardContent>
+              {instructorPredictionsByDay.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No prediction history yet.</p>
+              ) : (
+                <ChartContainer config={predictionTimelineChartConfig} className="h-[260px] w-full">
+                  <LineChart data={instructorPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Line type="stepAfter" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Predictions" />
+                  </LineChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <Card className="bg-card/90">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Risk distribution (bar)
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Same totals as overview: latest per student–subject pair.</p>
+              </CardHeader>
+              <CardContent>
+                {subjectIds.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">Create subjects and enroll students to see analytics.</p>
+                ) : latestByStudentSubject.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
+                ) : (
+                  <ChartContainer config={riskChartConfig} className="h-[300px] w-full">
+                    <BarChart
+                      data={RISK_LEVEL_ORDER.map(level => ({
+                        level,
+                        name: riskLabel(level),
+                        value: distribution[level],
+                      }))}
+                      margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+                      accessibilityLayer
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="value" radius={6} name="Students">
+                        {RISK_LEVEL_ORDER.map(level => (
+                          <Cell key={level} fill={`var(--color-${level})`} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card/90">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingDown className="h-5 w-5" />
+                  At-risk & critical by subject
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Students (unique student–subject pairs) with latest risk critical or at-risk.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {subjects.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No subjects yet.</p>
+                ) : latestByStudentSubject.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No predictions yet.</p>
+                ) : (
+                  <ChartContainer config={concernChartConfig} className="h-[300px] w-full">
+                    <BarChart data={instructorConcernBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="concern" fill="var(--color-concern)" radius={6} name="Concern count" />
+                    </BarChart>
+                  </ChartContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="bg-card/90 mt-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Risk distribution (latest per student & subject)
+                <Activity className="h-5 w-5" />
+                Prediction volume (analytics)
               </CardTitle>
+              <p className="text-sm text-muted-foreground">Prediction records per day across your subjects.</p>
             </CardHeader>
             <CardContent>
-              {subjectIds.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Create subjects and enroll students to see analytics.</p>
-              ) : latestByStudentSubject.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
+              {instructorPredictionsByDay.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No prediction history yet.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {(Object.keys(distribution) as CanonicalRiskLevel[]).map((k) => (
-                    <div key={k} className="border rounded-lg p-3 flex items-center justify-between">
-                      <Badge variant={riskVariant(k)}>{riskLabel(k)}</Badge>
-                      <span className="text-sm font-medium">{distribution[k]}</span>
-                    </div>
-                  ))}
-                </div>
+                <ChartContainer config={predictionTimelineChartConfig} className="h-[280px] w-full">
+                  <LineChart data={instructorPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Line type="monotone" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Predictions" />
+                  </LineChart>
+                </ChartContainer>
               )}
             </CardContent>
           </Card>

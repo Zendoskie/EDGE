@@ -71,7 +71,7 @@ export default function Settings() {
             <SettingsIcon className="h-5 w-5" />
             Appearance
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Choose light or dark mode.</p>
+          <p className="text-muted-foreground text-sm">Choose light, dark, or match your device.</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-w-md">
@@ -83,6 +83,7 @@ export default function Settings() {
               <SelectContent>
                 <SelectItem value="light">Light mode</SelectItem>
                 <SelectItem value="dark">Dark mode</SelectItem>
+                <SelectItem value="system">Match device</SelectItem>
               </SelectContent>
             </Select>
           </div>

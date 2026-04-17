@@ -6,6 +6,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 210 33% 99%;
     --foreground: 222 47% 11%;
 
@@ -22,7 +23,8 @@
     --secondary-foreground: 222 47% 11%;
 
     --muted: 215 25% 95%;
-    --muted-foreground: 217 18% 38%;
+    /* Slightly darker than before for WCAG-friendly secondary text & placeholders on light surfaces */
+    --muted-foreground: 217 20% 34%;
 
     --accent: 215 32% 93%;
     --accent-foreground: 222 47% 11%;
@@ -62,6 +64,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: 222 42% 8%;
     --foreground: 210 33% 96%;
 
@@ -78,7 +81,8 @@
     --secondary-foreground: 210 33% 96%;
 
     --muted: 217 26% 18%;
-    --muted-foreground: 215 16% 72%;
+    /* Brighter secondary text on dark surfaces (readable, not “washed out”) */
+    --muted-foreground: 215 14% 78%;
 
     --accent: 218 24% 22%;
     --accent-foreground: 210 33% 96%;
@@ -134,6 +138,19 @@
       radial-gradient(at 78% 15%, hsl(212 60% 16% / 0.3), transparent 50%);
   }
 
+  /* Readable placeholders in both themes (avoid UA default faded gray) */
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 1;
+  }
+
+  /* Uses theme tokens so contrast tracks light/dark automatically */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+    color: hsl(var(--foreground));
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
     font-weight: 600;
@@ -160,6 +177,15 @@
     box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / 0.55);
   }
 
+  /* Windows / OS high contrast: keep a visible focus outline even if shadows are suppressed */
+  @media (forced-colors: active) {
+    :focus-visible {
+      outline: 2px solid CanvasText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
   .font-display {
     font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
     font-weight: 600;
@@ -172,7 +198,8 @@
 
 @layer components {
   .glass {
-    @apply bg-white/85 backdrop-blur-md border border-border/60;
+    /* Theme-aware (works in dark mode; avoids hard-coded white) */
+    @apply bg-card/90 backdrop-blur-md border border-border/60;
   }
   
   .glass-dark {
@@ -180,7 +207,7 @@
   }
   
   .gradient-text {
-    @apply bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent dark:from-primary dark:to-violet-300;
   }
   
   .card-shadow {
