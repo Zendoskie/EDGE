@@ -47,30 +47,41 @@ function DashboardHeader() {
   const isSidebarOpen = state === "expanded";
 
   return (
-    <header className="sticky top-0 z-30 h-16 flex items-center border-b border-border/70 bg-card/80 backdrop-blur-md px-4 md:px-6 shadow-sm">
-      <div className="flex items-center gap-3 md:gap-4">
-        <div className="md:hidden">
+    <header className="sticky top-0 z-30 flex min-h-14 items-center gap-2 overflow-hidden border-b border-border/70 bg-card/80 px-3 py-2 shadow-sm backdrop-blur-md sm:h-16 sm:min-h-0 sm:gap-3 sm:px-4 md:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
+        <div className="flex shrink-0 md:hidden">
           <SidebarTrigger aria-label="Open navigation" />
         </div>
         {!isSidebarOpen && (
           <>
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-violet-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-              <GraduationCap className="w-4 h-4 text-sidebar-primary-foreground" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-violet-500 shadow-sm">
+              <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
             </div>
-            <h2 className="text-lg font-semibold text-foreground font-display leading-none">
-              EDGE – Student Risk Analysis and AI Coaching System
-            </h2>
+            <div className="min-w-0 flex-1 pr-1">
+              <h2
+                aria-label="EDGE – Student Risk Analysis and AI Coaching System"
+                className="truncate font-display text-base font-semibold leading-tight text-foreground sm:text-lg"
+                title="EDGE – Student Risk Analysis and AI Coaching System"
+              >
+                <span className="md:hidden" aria-hidden="true">
+                  EDGE
+                </span>
+                <span className="hidden md:inline" aria-hidden="true">
+                  EDGE – Student Risk Analysis and AI Coaching System
+                </span>
+              </h2>
+            </div>
           </>
         )}
       </div>
-      <div className="ml-auto flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
         {/* Slot for the AI Coach trigger so it stays in the header (not covering content) */}
-        <div id="ai-coach-header-slot" className="inline-flex items-center" />
+        <div id="ai-coach-header-slot" className="inline-flex shrink-0 items-center" />
         <NotificationInboxTrigger />
-        <div className="hidden sm:block h-6 w-px bg-border" aria-hidden />
-        <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/65 px-2.5 py-1">
-          <div className="status-dot bg-green-500 animate-pulse-glow" />
-          <span className="text-base text-muted-foreground">System Active</span>
+        <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background/65 px-2 py-0.5 sm:gap-2 sm:px-2.5 sm:py-1">
+          <div className="status-dot shrink-0 bg-green-500 animate-pulse-glow" />
+          <span className="hidden text-sm text-muted-foreground sm:inline sm:text-base">System Active</span>
         </div>
       </div>
     </header>
