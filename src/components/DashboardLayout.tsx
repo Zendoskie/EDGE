@@ -196,9 +196,9 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="min-h-app flex w-full app-shell-bg">
+      <div className="min-h-app h-[100dvh] flex w-full overflow-hidden app-shell-bg">
         <AppSidebar />
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col">
           <DashboardHeader />
           <AICoachPopup
             riskLevel={coachContext?.riskLevel ?? null}
@@ -208,7 +208,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
             storageKey="edge_ai_coach_dismissed_dashboard_header_v1"
             variant="compact"
           />
-          <main className="flex-1 overflow-auto p-4 sm:p-5 md:p-6">
+          <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6">
             <div className="content-grid animate-fade-in">
               <Outlet />
             </div>

@@ -170,7 +170,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-app app-shell-bg w-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12">
+    <div className="min-h-app app-shell-bg w-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-8 pb-[max(8rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12 sm:pb-[max(2.5rem,env(safe-area-inset-bottom,0px))]">
       <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
