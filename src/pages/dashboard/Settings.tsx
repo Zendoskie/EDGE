@@ -76,19 +76,18 @@ export default function Settings() {
             <SettingsIcon className="h-5 w-5" />
             Appearance
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Choose light, dark, or match your device.</p>
+          <p className="text-muted-foreground text-sm">Choose light or dark. New visitors default to dark mode.</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-w-md">
             <Label>Theme</Label>
-            <Select value={(theme as string) || 'light'} onValueChange={v => setTheme(v)}>
+            <Select value={(theme as string) || 'dark'} onValueChange={v => setTheme(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select theme" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="light">Light mode</SelectItem>
                 <SelectItem value="dark">Dark mode</SelectItem>
-                <SelectItem value="system">Match device</SelectItem>
               </SelectContent>
             </Select>
           </div>
