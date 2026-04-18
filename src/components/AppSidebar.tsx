@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { NavLink } from '@/components/NavLink';
@@ -29,6 +29,11 @@ const studentItems = [
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
+const adminItems = [
+  { title: 'User approvals', url: '/dashboard/admin/approvals', icon: UserCheck },
+  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
+];
+
 export function AppSidebar() {
   const { state, setOpen, isMobile } = useSidebar();
   const collapsed = state === 'collapsed';
@@ -41,7 +46,7 @@ export function AppSidebar() {
     };
   }, []);
 
-  const items = role === 'instructor' ? instructorItems : studentItems;
+  const items = role === 'admin' ? adminItems : role === 'instructor' ? instructorItems : studentItems;
   const showText = !collapsed || isMobile;
 
   return (
@@ -75,7 +80,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
-                      end={item.url === '/dashboard'}
+                      end={item.url === '/dashboard' || item.url === '/dashboard/admin/approvals'}
                       className="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/55 transition-all duration-200 ease-in-out interactive-lift group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-sm border border-sidebar-border/60"
                     >

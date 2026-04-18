@@ -78,6 +78,11 @@ export default function Login() {
     };
   }, []);
 
+  const loginErrorMessage = (err: unknown): string => {
+    if (err instanceof Error && err.message.trim()) return err.message;
+    return 'Invalid credentials';
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -85,7 +90,7 @@ export default function Login() {
       await signIn(loginEmail, loginPassword);
       navigate('/dashboard');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Login failed');
+      toast.error(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -144,19 +149,18 @@ export default function Login() {
             }
           : undefined;
 
-      const result = await signUp(signupEmail, signupPassword, signupName, signupRole, extras, true);
+      const result = await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
 
-      if (result.user && result.session) {
-        // Auto sign-in successful, switch to sign-in tab with credentials
-        setTab('login');
-        setLoginEmail(signupEmail);
-        setLoginPassword(signupPassword);
-        toast.success('Account created! You are now signed in.');
+      setTab('login');
+      setLoginEmail(signupEmail);
+      setLoginPassword('');
+
+      if (result.user) {
+        toast.success(
+          'Account submitted. An administrator must approve it before you can sign in. Confirm your email if your organization requires it.'
+        );
       } else {
-        // Email confirmation required or auto sign-in failed
-        setTab('login');
-        setLoginEmail(signupEmail);
-        toast.success('Account created! Please check your email to confirm, then sign in.');
+        toast.success('If this email is available, check your inbox to finish signup.');
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Signup failed');

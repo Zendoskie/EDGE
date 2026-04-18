@@ -1,0 +1,11 @@
+Supabase SQL Editor cannot run the whole approval change in one shot: PostgreSQL needs the new enum value `admin` committed before any function/policy uses `'admin'::app_role`.
+
+Do exactly this order (three separate Run clicks):
+
+1) Open 01-add-admin-enum-value.sql  -> Run (confirm if warned)
+2) Open 02-apply-account-approval-schema.sql -> Run (confirm if warned)
+3) Create the Auth user in Dashboard (Authentication -> Users) if needed, then open bootstrap-admin.sql -> Run
+
+If 01 fails on "admin" already exists, that is OK: skip to 02.
+
+If `db push` works later, use the split migrations under supabase/migrations/20260418000000_* and 20260418000001_*.

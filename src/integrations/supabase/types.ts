@@ -234,6 +234,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_status: string
           created_at: string | null
           email: string
           full_name: string
@@ -243,6 +244,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          account_status?: string
           created_at?: string | null
           email: string
           full_name: string
@@ -252,6 +254,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          account_status?: string
           created_at?: string | null
           email?: string
           full_name?: string
@@ -391,6 +394,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_set_account_status: {
+        Args: {
+          p_status: string
+          p_target_user_id: string
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -400,7 +410,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "student" | "instructor"
+      app_role: "student" | "instructor" | "admin"
     }
     CompositeTypes: {
       [_ in never]: never

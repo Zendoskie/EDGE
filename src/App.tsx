@@ -28,6 +28,7 @@ import CommunicationHub from "./pages/dashboard/CommunicationHub";
 import EnhancedUX from "./pages/dashboard/EnhancedUX";
 import AdministrativeFeatures from "./pages/dashboard/AdministrativeFeatures";
 import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
+import AdminApprovals from "./pages/dashboard/AdminApprovals";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
                 <Route path="programs" element={<Programs />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="admin/approvals" element={<AdminApprovals />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
