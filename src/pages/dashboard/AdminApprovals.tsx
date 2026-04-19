@@ -103,86 +103,147 @@ export default function AdminApprovals() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto min-w-0 max-w-full space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-            <Shield className="h-3.5 w-3.5 text-primary" />
+            <Shield className="h-3.5 w-3.5 shrink-0 text-primary" />
             Admin
           </div>
-          <h1 className="mt-3 text-2xl font-display font-bold tracking-tight text-foreground">User approvals</h1>
-          <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+          <h1 className="mt-3 text-xl font-display font-bold tracking-tight text-foreground sm:text-2xl">User approvals</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Review new student and instructor accounts. Only approved users can sign in. Passwords are never shown here;
             authentication stays with Supabase Auth.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading} className="shrink-0">
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void load()}
+          disabled={loading}
+          className="w-full shrink-0 sm:w-auto"
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 shrink-0 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
 
-      <Card className="border-border/60 bg-card/90 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
-          <CardTitle className="text-lg">Pending accounts</CardTitle>
-          <CardDescription>
+      <Card className="min-w-0 border-border/60 bg-card/90 shadow-sm">
+        <CardHeader className="space-y-1 border-b border-border/50 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
+          <CardTitle className="text-base sm:text-lg">Pending accounts</CardTitle>
+          <CardDescription className="text-pretty">
             Name, email, role, and student ID (for pending students) for each signup awaiting approval.
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-6">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : empty ? (
             <p className="text-sm text-muted-foreground">No pending users right now.</p>
           ) : (
-            <div className="rounded-xl border border-border/50 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Student ID</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-right w-[200px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.user_id}>
-                      <TableCell className="font-medium">{r.full_name || '—'}</TableCell>
-                      <TableCell className="text-muted-foreground">{r.email}</TableCell>
-                      <TableCell className="font-mono text-sm tabular-nums text-muted-foreground">
-                        {r.role === 'student' ? r.student_id ?? '—' : '—'}
-                      </TableCell>
-                      <TableCell className="capitalize">{r.role}</TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="gap-1"
-                          disabled={busyId === r.user_id}
-                          onClick={() => void setStatus(r.user_id, 'approved')}
-                        >
-                          <UserCheck className="h-4 w-4" />
-                          Approve
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          disabled={busyId === r.user_id}
-                          onClick={() => void setStatus(r.user_id, 'rejected')}
-                        >
-                          <UserX className="h-4 w-4" />
-                          Reject
-                        </Button>
-                      </TableCell>
+            <>
+              <ul className="divide-y divide-border/60 md:hidden">
+                {rows.map((r) => (
+                  <li key={r.user_id} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Name</p>
+                      <p className="break-words font-medium text-foreground">{r.full_name || '—'}</p>
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Email</p>
+                      <p className="break-all text-sm text-muted-foreground">{r.email}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Role</p>
+                        <p className="capitalize text-sm font-medium text-foreground">{r.role}</p>
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Student ID</p>
+                        <p className="font-mono text-sm tabular-nums text-muted-foreground">
+                          {r.role === 'student' ? r.student_id ?? '—' : '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full gap-1"
+                        disabled={busyId === r.user_id}
+                        onClick={() => void setStatus(r.user_id, 'approved')}
+                      >
+                        <UserCheck className="h-4 w-4 shrink-0" />
+                        Approve
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1"
+                        disabled={busyId === r.user_id}
+                        onClick={() => void setStatus(r.user_id, 'rejected')}
+                      >
+                        <UserX className="h-4 w-4 shrink-0" />
+                        Reject
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="hidden rounded-xl border border-border/50 md:block md:overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[120px]">Name</TableHead>
+                      <TableHead className="min-w-[160px]">Email</TableHead>
+                      <TableHead className="min-w-[100px]">Student ID</TableHead>
+                      <TableHead className="w-[100px]">Role</TableHead>
+                      <TableHead className="w-[200px] text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((r) => (
+                      <TableRow key={r.user_id}>
+                        <TableCell className="max-w-[200px] break-words font-medium">{r.full_name || '—'}</TableCell>
+                        <TableCell className="max-w-[240px] break-all text-muted-foreground">{r.email}</TableCell>
+                        <TableCell className="font-mono text-sm tabular-nums text-muted-foreground">
+                          {r.role === 'student' ? r.student_id ?? '—' : '—'}
+                        </TableCell>
+                        <TableCell className="capitalize">{r.role}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="gap-1"
+                              disabled={busyId === r.user_id}
+                              onClick={() => void setStatus(r.user_id, 'approved')}
+                            >
+                              <UserCheck className="h-4 w-4 shrink-0" />
+                              Approve
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              disabled={busyId === r.user_id}
+                              onClick={() => void setStatus(r.user_id, 'rejected')}
+                            >
+                              <UserX className="h-4 w-4 shrink-0" />
+                              Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
