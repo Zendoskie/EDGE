@@ -170,156 +170,158 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-app app-shell-bg w-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-8 pb-[max(8rem,env(safe-area-inset-bottom,0px))] sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12 sm:pb-[max(2.5rem,env(safe-area-inset-bottom,0px))]">
-      <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
-            <Shield className="w-8 h-8 text-primary-foreground" />
+    <div className="app-shell-bg flex h-dvh max-h-dvh min-h-0 w-full flex-col overflow-hidden sm:h-auto sm:max-h-none sm:min-h-app sm:overflow-visible sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12 sm:pb-[max(2.5rem,env(safe-area-inset-bottom,0px))]">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-4 py-8 pb-[max(8rem,env(safe-area-inset-bottom,0px))] sm:flex-none sm:min-h-0 sm:w-full sm:overflow-visible sm:py-0 sm:pb-0">
+        <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
+              <Shield className="w-8 h-8 text-primary-foreground" />
+            </div>
+            <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Student Risk Analysis and AI Coaching System
+            </p>
           </div>
-          <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Student Risk Analysis and AI Coaching System
-          </p>
-        </div>
 
-        <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-          <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
-            <CardHeader className="pb-4 border-b border-border/60">
-              <TabsList className="grid w-full grid-cols-2 h-11">
-                <TabsTrigger value="login">Sign In</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
-              </TabsList>
-            </CardHeader>
+          <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
+            <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
+              <CardHeader className="pb-4 border-b border-border/60">
+                <TabsList className="grid w-full grid-cols-2 h-11">
+                  <TabsTrigger value="login">Sign In</TabsTrigger>
+                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                </TabsList>
+              </CardHeader>
 
-            <CardContent>
-              <TabsContent value="login" className="mt-0">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input id="login-email" type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required placeholder="you@university.edu" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <PasswordInput
-                      id="login-password"
-                      autoComplete="current-password"
-                      value={loginPassword}
-                      onChange={e => setLoginPassword(e.target.value)}
-                      required
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Signing in...' : 'Sign In'}
-                  </Button>
-                </form>
-              </TabsContent>
+              <CardContent>
+                <TabsContent value="login" className="mt-0">
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="login-email">Email</Label>
+                      <Input id="login-email" type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required placeholder="you@university.edu" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="login-password">Password</Label>
+                      <PasswordInput
+                        id="login-password"
+                        autoComplete="current-password"
+                        value={loginPassword}
+                        onChange={e => setLoginPassword(e.target.value)}
+                        required
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? 'Signing in...' : 'Sign In'}
+                    </Button>
+                  </form>
+                </TabsContent>
 
-              <TabsContent value="signup" className="mt-0">
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input id="signup-name" value={signupName} onChange={e => setSignupName(e.target.value)} required placeholder="Juan Dela Cruz" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input id="signup-email" type="email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} required placeholder="you@university.edu" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <PasswordInput
-                      id="signup-password"
-                      autoComplete="new-password"
-                      value={signupPassword}
-                      onChange={e => setSignupPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role</Label>
-                    <Select value={signupRole} onValueChange={(v: 'student' | 'instructor') => setSignupRole(v)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="student">
-                          <span className="flex items-center gap-2"><BookOpen className="w-4 h-4" /> Student</span>
-                        </SelectItem>
-                        <SelectItem value="instructor">
-                          <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Instructor</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {signupRole === 'student' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-course">Course</Label>
-                        <Select value={signupCourse} onValueChange={setSignupCourse} disabled={programsLoading}>
-                          <SelectTrigger id="signup-course">
-                            <SelectValue placeholder={programsLoading ? 'Loading courses...' : 'Select course'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {programsLoading ? (
-                              <div className="flex items-center justify-center py-2">
-                                <span className="text-sm text-muted-foreground">Loading courses...</span>
-                              </div>
-                            ) : (
-                              (programs.length > 0 ? programs : DEFAULT_PROGRAMS).map(p => (
-                                <SelectItem key={p.id} value={p.code}>
-                                  {p.code} — {p.name}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                        {programs.length === 0 && !programsLoading && (
-                          <p className="text-xs text-muted-foreground">
-                            Contact an administrator to add academic programs.
-                          </p>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <TabsContent value="signup" className="mt-0">
+                  <form onSubmit={handleSignup} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-name">Full Name</Label>
+                      <Input id="signup-name" value={signupName} onChange={e => setSignupName(e.target.value)} required placeholder="Juan Dela Cruz" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <Input id="signup-email" type="email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} required placeholder="you@university.edu" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-password">Password</Label>
+                      <PasswordInput
+                        id="signup-password"
+                        autoComplete="new-password"
+                        value={signupPassword}
+                        onChange={e => setSignupPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Role</Label>
+                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor') => setSignupRole(v)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="student">
+                            <span className="flex items-center gap-2"><BookOpen className="w-4 h-4" /> Student</span>
+                          </SelectItem>
+                          <SelectItem value="instructor">
+                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Instructor</span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {signupRole === 'student' && (
+                      <>
                         <div className="space-y-2">
-                          <Label htmlFor="signup-year">Year level</Label>
-                          <Select value={signupYear} onValueChange={setSignupYear}>
-                            <SelectTrigger id="signup-year">
-                              <SelectValue placeholder="Select year level" />
+                          <Label htmlFor="signup-course">Course</Label>
+                          <Select value={signupCourse} onValueChange={setSignupCourse} disabled={programsLoading}>
+                            <SelectTrigger id="signup-course">
+                              <SelectValue placeholder={programsLoading ? 'Loading courses...' : 'Select course'} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="1st Year">1st Year</SelectItem>
-                              <SelectItem value="2nd Year">2nd Year</SelectItem>
-                              <SelectItem value="3rd Year">3rd Year</SelectItem>
-                              <SelectItem value="4th Year">4th Year</SelectItem>
-                              <SelectItem value="Irregular">Irregular</SelectItem>
+                              {programsLoading ? (
+                                <div className="flex items-center justify-center py-2">
+                                  <span className="text-sm text-muted-foreground">Loading courses...</span>
+                                </div>
+                              ) : (
+                                (programs.length > 0 ? programs : DEFAULT_PROGRAMS).map(p => (
+                                  <SelectItem key={p.id} value={p.code}>
+                                    {p.code} — {p.name}
+                                  </SelectItem>
+                                ))
+                              )}
                             </SelectContent>
                           </Select>
+                          {programs.length === 0 && !programsLoading && (
+                            <p className="text-xs text-muted-foreground">
+                              Contact an administrator to add academic programs.
+                            </p>
+                          )}
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-student-number">Student No.</Label>
-                          <Input
-                            id="signup-student-number"
-                            value={signupStudentNumber}
-                            onChange={e => setSignupStudentNumber(e.target.value.replace(/\s+/g, ''))}
-                            required
-                            placeholder="22-1-7-0008"
-                            pattern="^\d{2}-\d-\d-\d{4}$"
-                            title="Use format: 22-1-7-0008"
-                          />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="signup-year">Year level</Label>
+                            <Select value={signupYear} onValueChange={setSignupYear}>
+                              <SelectTrigger id="signup-year">
+                                <SelectValue placeholder="Select year level" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1st Year">1st Year</SelectItem>
+                                <SelectItem value="2nd Year">2nd Year</SelectItem>
+                                <SelectItem value="3rd Year">3rd Year</SelectItem>
+                                <SelectItem value="4th Year">4th Year</SelectItem>
+                                <SelectItem value="Irregular">Irregular</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="signup-student-number">Student No.</Label>
+                            <Input
+                              id="signup-student-number"
+                              value={signupStudentNumber}
+                              onChange={e => setSignupStudentNumber(e.target.value.replace(/\s+/g, ''))}
+                              required
+                              placeholder="22-1-7-0008"
+                              pattern="^\d{2}-\d-\d-\d{4}$"
+                              title="Use format: 22-1-7-0008"
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </>
-                  )}
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Creating account...' : 'Create Account'}
-                  </Button>
-                </form>
-              </TabsContent>
-            </CardContent>
-          </Tabs>
-        </Card>
+                      </>
+                    )}
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? 'Creating account...' : 'Create Account'}
+                    </Button>
+                  </form>
+                </TabsContent>
+              </CardContent>
+            </Tabs>
+          </Card>
+        </div>
       </div>
     </div>
   );
