@@ -80,6 +80,7 @@ export default function AdminApprovals() {
   }, [load]);
 
   const empty = useMemo(() => !loading && rows.length === 0, [loading, rows.length]);
+  const showStudentIdColumn = useMemo(() => rows.some((r) => r.role === 'student'), [rows]);
 
   const setStatus = async (userId: string, status: 'approved' | 'rejected') => {
     setBusyId(userId);
@@ -133,7 +134,7 @@ export default function AdminApprovals() {
         <CardHeader className="space-y-1 border-b border-border/50 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <CardTitle className="text-base sm:text-lg">Pending accounts</CardTitle>
           <CardDescription className="text-pretty">
-            Name, email, role, and student ID (for pending students) for each signup awaiting approval.
+            Name, email, and role for each signup; student ID appears only for pending student accounts.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-6">
@@ -159,12 +160,12 @@ export default function AdminApprovals() {
                         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Role</p>
                         <p className="capitalize text-sm font-medium text-foreground">{r.role}</p>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Student ID</p>
-                        <p className="font-mono text-sm tabular-nums text-muted-foreground">
-                          {r.role === 'student' ? r.student_id ?? '—' : '—'}
-                        </p>
-                      </div>
+                      {r.role === 'student' && (
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Student ID</p>
+                          <p className="font-mono text-sm tabular-nums text-muted-foreground">{r.student_id ?? '—'}</p>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col gap-2 pt-1">
                       <Button
@@ -199,7 +200,9 @@ export default function AdminApprovals() {
                     <TableRow>
                       <TableHead className="min-w-[120px]">Name</TableHead>
                       <TableHead className="min-w-[160px]">Email</TableHead>
-                      <TableHead className="min-w-[100px]">Student ID</TableHead>
+                      {showStudentIdColumn ? (
+                        <TableHead className="min-w-[100px]">Student ID</TableHead>
+                      ) : null}
                       <TableHead className="w-[100px]">Role</TableHead>
                       <TableHead className="w-[200px] text-right">Actions</TableHead>
                     </TableRow>
@@ -209,9 +212,11 @@ export default function AdminApprovals() {
                       <TableRow key={r.user_id}>
                         <TableCell className="max-w-[200px] break-words font-medium">{r.full_name || '—'}</TableCell>
                         <TableCell className="max-w-[240px] break-all text-muted-foreground">{r.email}</TableCell>
-                        <TableCell className="font-mono text-sm tabular-nums text-muted-foreground">
-                          {r.role === 'student' ? r.student_id ?? '—' : '—'}
-                        </TableCell>
+                        {showStudentIdColumn ? (
+                          <TableCell className="font-mono text-sm tabular-nums text-muted-foreground">
+                            {r.role === 'student' ? r.student_id ?? '—' : ''}
+                          </TableCell>
+                        ) : null}
                         <TableCell className="capitalize">{r.role}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-wrap justify-end gap-2">
