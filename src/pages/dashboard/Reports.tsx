@@ -1,13 +1,14 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Printer, Download } from 'lucide-react';
+import { FileText, Printer, Download, Eye } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const riskLabel = (level: string) => {
   if (level === 'critical') return 'Critical';
@@ -19,6 +20,24 @@ const riskLabel = (level: string) => {
 export default function Reports() {
   const { user } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
+  const [selectedPreview, setSelectedPreview] = useState<{
+    mode: 'all' | 'class';
+    title: string;
+    subtitle: string;
+    rows: Array<{
+      student_id: string;
+      full_name: string;
+      email: string;
+      student_id_code: string;
+      attendance: number | null;
+      quiz_avg: number | null;
+      assignment_avg: number | null;
+      risk_level: string | null;
+      recommendation: string;
+      subject_code?: string;
+      program?: string;
+    }>;
+  } | null>(null);
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['reports-subjects', user?.id],
@@ -242,6 +261,38 @@ export default function Reports() {
     printWindow.close();
   };
 
+  const openSubjectPreview = (
+    subject: { code: string; name: string },
+    programCode: string,
+    rows: Array<{
+      student_id: string;
+      full_name: string;
+      email: string;
+      student_id_code: string;
+      attendance: number | null;
+      quiz_avg: number | null;
+      assignment_avg: number | null;
+      risk_level: string | null;
+      recommendation: string;
+    }>
+  ) => {
+    setSelectedPreview({
+      mode: 'class',
+      title: `${subject.code} - ${subject.name}`,
+      subtitle: `Program: ${programCode || '—'}`,
+      rows,
+    });
+  };
+
+  const openAllCoursesPreview = () => {
+    setSelectedPreview({
+      mode: 'all',
+      title: 'All Courses Performance Report',
+      subtitle: 'Combined view across all your subjects',
+      rows: allRows,
+    });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="page-section overflow-hidden">
@@ -251,6 +302,15 @@ export default function Reports() {
             <p className="text-sm text-muted-foreground mt-1">Generate clean printable and CSV-ready performance reports.</p>
           </div>
         <div className="flex gap-2 print:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openAllCoursesPreview}
+            disabled={allRows.length === 0}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            View Report
+          </Button>
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" />
             Print
@@ -350,6 +410,13 @@ export default function Reports() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => openSubjectPreview(subject, (program as any)?.code ?? '—', rows)}
+                      >
+                        <Eye className="mr-1 h-3.5 w-3.5" /> View Report
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => printSubjectReport(subject, (program as any)?.code ?? '—', rows)}
                       >
                         <Printer className="mr-1 h-3.5 w-3.5" /> Print / PDF
@@ -411,6 +478,83 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!selectedPreview} onOpenChange={(open) => !open && setSelectedPreview(null)}>
+        <DialogContent className="max-w-7xl w-[96vw]">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedPreview?.title}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedPreview?.subtitle}
+            </DialogDescription>
+          </DialogHeader>
+          {!selectedPreview || selectedPreview.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No enrolled students.</p>
+          ) : (
+            <div className="max-h-[76vh] overflow-auto rounded-md border bg-muted/20 p-4">
+              <div className="mx-auto min-w-[1050px] bg-white text-slate-900 border border-slate-300 shadow-sm">
+                <div className="border-b border-slate-300 px-6 py-4">
+                  <p className="text-xl font-bold tracking-tight">
+                    {selectedPreview.mode === 'all' ? 'EDGE Performance Summary Report' : 'EDGE Class Performance Report'}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    {selectedPreview.title}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-700">
+                    <span><strong>Scope:</strong> {selectedPreview.mode === 'all' ? 'All Courses' : 'Single Class'}</span>
+                    <span><strong>Generated:</strong> {new Date().toLocaleString()}</span>
+                    <span><strong>Students:</strong> {selectedPreview.rows.length}</span>
+                  </div>
+                </div>
+
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">#</th>
+                      {selectedPreview.mode === 'all' && (
+                        <>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Subject</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Program</th>
+                        </>
+                      )}
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Student</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Email</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Student ID</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Attendance</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Quiz Avg</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Assign. Avg</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Risk</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Recommendation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedPreview.rows.map((r, index) => (
+                      <tr key={`${r.student_id}-${r.subject_code ?? 'single'}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-slate-600">{index + 1}</td>
+                        {selectedPreview.mode === 'all' && (
+                          <>
+                            <td className="border border-slate-200 px-3 py-2 align-top">{r.subject_code ?? '—'}</td>
+                            <td className="border border-slate-200 px-3 py-2 align-top">{r.program ?? '—'}</td>
+                          </>
+                        )}
+                        <td className="border border-slate-200 px-3 py-2 align-top font-medium">{r.full_name}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{r.email}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{r.student_id_code}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{riskLabel(r.risk_level ?? '')}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top whitespace-normal">{r.recommendation}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

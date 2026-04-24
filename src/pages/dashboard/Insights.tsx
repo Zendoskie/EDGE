@@ -403,6 +403,10 @@ function StudentInsights({ userId }: { userId: string }) {
         </div>
       </section>
 
+      <p className="text-xs text-muted-foreground">
+        Disclaimer: This system provides academic-related insights only.
+      </p>
+
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="overview" className="flex items-center gap-2">
@@ -926,6 +930,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>
+
+      <p className="text-xs text-muted-foreground">
+        Disclaimer: This system provides academic-related insights only.
+      </p>
 
       {subjects.length === 0 && !subjectsLoading ? (
         <EmptyState

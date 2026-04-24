@@ -289,6 +289,9 @@ export function AICoachPopup(props: {
                     : "Let’s make a simple plan for the next 7 days."}
                 </span>
                 <span className="block text-xs text-muted-foreground">
+                  Disclaimer: This system provides academic-related insights only.
+                </span>
+                <span className="block text-xs text-muted-foreground">
                   Model: <span className="font-medium text-foreground">{AI_COACH_MODEL_LABEL}</span>
                 </span>
               </DialogDescription>

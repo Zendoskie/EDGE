@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   FileText, 
   Download, 
@@ -42,6 +43,10 @@ interface GeneratedReport {
   file_url?: string;
   generated_at: string;
   expires_at: string;
+  report_templates?: {
+    name: string;
+    type: string;
+  };
 }
 
 interface ReportData {
@@ -58,6 +63,8 @@ export default function AdvancedReporting() {
   const [reportParameters, setReportParameters] = useState<Record<string, any>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewData, setPreviewData] = useState<ReportData | null>(null);
+  const [selectedReport, setSelectedReport] = useState<GeneratedReport | null>(null);
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -205,6 +212,12 @@ export default function AdvancedReporting() {
         printWindow.print();
       }
     }
+  };
+
+  const handlePreviewReport = (report: GeneratedReport) => {
+    if (!report.file_url) return;
+    setSelectedReport(report);
+    setIsPreviewDialogOpen(true);
   };
 
   const renderParameterInputs = (template: ReportTemplate) => {
@@ -425,6 +438,13 @@ export default function AdvancedReporting() {
                             <>
                               <Button
                                 size="sm"
+                                variant="outline"
+                                onClick={() => handlePreviewReport(report)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
                                 onClick={() => handleDownloadReport(report.id, report.file_url!)}
                               >
                                 <Download className="h-4 w-4" />
@@ -527,6 +547,33 @@ export default function AdvancedReporting() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
+        <DialogContent className="max-w-6xl w-[95vw] h-[90vh] p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              {selectedReport?.report_templates?.name || 'Report Preview'}
+            </DialogTitle>
+            <DialogDescription>
+              Review the generated report directly in EDGE. Download is optional.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedReport?.file_url ? (
+            <div className="flex-1 h-full px-6 pb-6 pt-2">
+              <iframe
+                src={selectedReport.file_url}
+                title="Generated report preview"
+                className="w-full h-full min-h-[70vh] rounded-md border bg-background"
+              />
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">
+              This report is no longer available for preview.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
