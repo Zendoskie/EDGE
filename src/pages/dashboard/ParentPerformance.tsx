@@ -108,20 +108,27 @@ export default function ParentPerformance() {
   const enrolledSubjectIdsKey = enrolledSubjectIds.join(',');
 
   const { data: predictions = [] } = useQuery({
-    queryKey: ['parent-student-predictions', studentId, enrolledSubjectIdsKey],
-    enabled: !!studentId && enrolledSubjectIds.length > 0,
+    queryKey: ['parent-student-predictions', studentId],
+    enabled: !!studentId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('predictions')
         .select('id, subject_id, risk_level, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name)')
         .eq('student_id', studentId!)
-        .in('subject_id', enrolledSubjectIds)
         .order('created_at', { ascending: false })
         .limit(20);
       if (error) throw error;
       return data ?? [];
     },
   });
+
+  const enrolledSubjectNameFallback = useMemo(() => {
+    const first = (enrolledSubjects as any[])[0]?.subjects;
+    return {
+      code: first?.code ?? 'Subject',
+      name: first?.name ?? 'Subject',
+    };
+  }, [enrolledSubjects]);
 
   const attendanceRate = useMemo(() => {
     if (attendance.length === 0) return 0;
@@ -257,7 +264,7 @@ export default function ParentPerformance() {
                 <div key={p.id} className="rounded-lg border p-3 space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">
-                      {(p.subject as any)?.code ?? 'Subject'} — {(p.subject as any)?.name ?? 'Subject'}
+                      {(p.subject as any)?.code ?? enrolledSubjectNameFallback.code} — {(p.subject as any)?.name ?? enrolledSubjectNameFallback.name}
                     </p>
                     <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))}>
                       {riskLabel(canonicalRiskLevel(p.risk_level))}
