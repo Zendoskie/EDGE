@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'student' | 'instructor' | 'admin';
+export type AppRole = 'student' | 'instructor' | 'admin' | 'parent';
 
 interface AuthContextType {
   user: User | null;
@@ -15,7 +15,13 @@ interface AuthContextType {
     password: string,
     fullName: string,
     role: Exclude<AppRole, 'admin'>,
-    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean }
+    extras?: {
+      course?: string;
+      yearLevel?: string;
+      studentNumber?: string;
+      isIrregular?: boolean;
+      guardianStudentId?: string;
+    }
   ) => Promise<{ user: User | null; session: Session | null }>;
   signOut: () => Promise<void>;
 }
@@ -27,6 +33,7 @@ async function loadRole(userId: string): Promise<AppRole | null> {
   if (error || !data?.length) return null;
   const roles = data.map((r) => r.role);
   if (roles.includes('admin')) return 'admin';
+  if (roles.includes('parent')) return 'parent';
   if (roles.includes('instructor')) return 'instructor';
   return 'student';
 }
@@ -170,9 +177,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     signupRole: Exclude<AppRole, 'admin'>,
-    extras?: { course?: string; yearLevel?: string; studentNumber?: string; isIrregular?: boolean }
+    extras?: {
+      course?: string;
+      yearLevel?: string;
+      studentNumber?: string;
+      isIrregular?: boolean;
+      guardianStudentId?: string;
+    }
   ) => {
-    const { course, yearLevel, studentNumber, isIrregular } = extras || {};
+    const { course, yearLevel, studentNumber, isIrregular, guardianStudentId } = extras || {};
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -185,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           year_level: yearLevel,
           student_number: studentNumber,
           is_irregular: isIrregular ?? false,
+          guardian_student_id: guardianStudentId,
         },
         emailRedirectTo: window.location.origin,
       },
@@ -193,6 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const msg = (error.message || '').toLowerCase();
       if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
         throw new Error('This Student ID/No. is already in use. Please use your own unique Student ID.');
+      }
+      if (msg.includes('student_not_found_for_guardian_link')) {
+        throw new Error('No student account matches that Student ID/No. Please check and try again.');
+      }
+      if (msg.includes('guardian_student_id_required')) {
+        throw new Error('Student ID/No. is required for parent/guardian registration.');
       }
       throw error;
     }

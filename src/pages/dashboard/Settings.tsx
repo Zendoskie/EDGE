@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import StudentProfileSetup from '@/components/StudentProfileSetup';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function Settings() {
   const { user, role } = useAuth();
@@ -57,6 +58,78 @@ export default function Settings() {
       }
       toast.error(e.message);
     },
+  });
+
+  const { data: parentRequests = [], isLoading: parentRequestsLoading } = useQuery({
+    queryKey: ['student-parent-requests', user?.id],
+    enabled: role === 'student' && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('parent_student_links')
+        .select('id, status, requested_at, parent_user_id, student_id_no')
+        .eq('student_user_id', user!.id)
+        .order('requested_at', { ascending: false });
+      if (error) throw error;
+      const parentIds = Array.from(new Set((data ?? []).map((r: any) => r.parent_user_id).filter(Boolean)));
+      if (parentIds.length === 0) return [];
+      const { data: parentProfiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', parentIds);
+      if (profileError) throw profileError;
+      const parentMap = new Map((parentProfiles ?? []).map((p: any) => [p.user_id, p]));
+      return (data ?? []).map((row: any) => ({
+        ...row,
+        parent_name: parentMap.get(row.parent_user_id)?.full_name ?? 'Unknown',
+        parent_email: parentMap.get(row.parent_user_id)?.email ?? '',
+      }));
+    },
+  });
+
+  const { data: myParentLinks = [], isLoading: myParentLinksLoading } = useQuery({
+    queryKey: ['parent-my-links', user?.id],
+    enabled: role === 'parent' && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('parent_student_links')
+        .select('id, status, requested_at, student_user_id, student_id_no')
+        .eq('parent_user_id', user!.id)
+        .order('requested_at', { ascending: false });
+      if (error) throw error;
+      const studentIds = Array.from(new Set((data ?? []).map((r: any) => r.student_user_id).filter(Boolean)));
+      if (studentIds.length === 0) return [];
+      const { data: studentProfiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, student_id')
+        .in('user_id', studentIds);
+      if (profileError) throw profileError;
+      const studentMap = new Map((studentProfiles ?? []).map((p: any) => [p.user_id, p]));
+      return (data ?? []).map((row: any) => ({
+        ...row,
+        student_name: studentMap.get(row.student_user_id)?.full_name ?? 'Unknown',
+        student_id: studentMap.get(row.student_user_id)?.student_id ?? row.student_id_no,
+      }));
+    },
+  });
+
+  const decideParentRequest = useMutation({
+    mutationFn: async ({ linkId, status }: { linkId: string; status: 'approved' | 'rejected' }) => {
+      const { error } = await supabase
+        .from('parent_student_links')
+        .update({
+          status,
+          decided_at: new Date().toISOString(),
+          decided_by: user!.id,
+        })
+        .eq('id', linkId)
+        .eq('student_user_id', user!.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
+      toast.success(vars.status === 'approved' ? 'Parent request approved' : 'Parent request rejected');
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -146,6 +219,106 @@ export default function Settings() {
 
       {role === 'student' && (
         <StudentProfileSetup />
+      )}
+
+      {role === 'student' && (
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <SettingsIcon className="h-5 w-5" />
+              Parent/Guardian approvals
+            </CardTitle>
+            <p className="text-muted-foreground text-sm">
+              Parents register using your Student ID/No. You control whether they can view your performance.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {parentRequestsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading parent requests…</p>
+            ) : parentRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No parent/guardian requests yet.</p>
+            ) : (
+              <div className="rounded-xl border border-border/50 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Parent / Guardian</TableHead>
+                      <TableHead>Student ID used</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {parentRequests.map((r: any) => (
+                      <TableRow key={r.id}>
+                        <TableCell>
+                          <div className="font-medium">{r.parent_name}</div>
+                          <div className="text-xs text-muted-foreground">{r.parent_email}</div>
+                        </TableCell>
+                        <TableCell>{r.student_id_no}</TableCell>
+                        <TableCell className="capitalize">{r.status}</TableCell>
+                        <TableCell className="text-right">
+                          {r.status === 'pending' ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })}
+                                disabled={decideParentRequest.isPending}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })}
+                                disabled={decideParentRequest.isPending}
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No action needed</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {role === 'parent' && (
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <SettingsIcon className="h-5 w-5" />
+              Student link status
+            </CardTitle>
+            <p className="text-muted-foreground text-sm">
+              Your request must be approved by the student before you can view performance.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {myParentLinksLoading ? (
+              <p className="text-sm text-muted-foreground">Loading link status…</p>
+            ) : myParentLinks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No student link request found.</p>
+            ) : (
+              <div className="space-y-2">
+                {myParentLinks.map((link: any) => (
+                  <div key={link.id} className="rounded-lg border p-3">
+                    <p className="font-medium">{link.student_name}</p>
+                    <p className="text-xs text-muted-foreground">Student ID/No.: {link.student_id}</p>
+                    <p className="text-xs text-muted-foreground capitalize mt-1">Status: {link.status}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

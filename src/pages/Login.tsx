@@ -47,10 +47,11 @@ export default function Login() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
-  const [signupRole, setSignupRole] = useState<'student' | 'instructor'>('student');
+  const [signupRole, setSignupRole] = useState<'student' | 'instructor' | 'parent'>('student');
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
+  const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
 
@@ -132,6 +133,10 @@ export default function Login() {
           return;
         }
       }
+      if (signupRole === 'parent' && !signupGuardianStudentId.trim()) {
+        toast.error('Please enter the Student ID/No. of your child.');
+        return;
+      }
 
       // Check if student is irregular based on year selection
       const isIrregular = signupYear === 'Irregular';
@@ -147,6 +152,10 @@ export default function Login() {
               studentNumber: signupStudentNumber.trim() || undefined,
               isIrregular: isIrregular,
             }
+          : signupRole === 'parent'
+            ? {
+                guardianStudentId: signupGuardianStudentId.trim() || undefined,
+              }
           : undefined;
 
       const result = await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
@@ -240,7 +249,7 @@ export default function Login() {
                     </div>
                     <div className="space-y-2">
                       <Label>Role</Label>
-                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor') => setSignupRole(v)}>
+                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor' | 'parent') => setSignupRole(v)}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -250,6 +259,9 @@ export default function Login() {
                           </SelectItem>
                           <SelectItem value="instructor">
                             <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Instructor</span>
+                          </SelectItem>
+                          <SelectItem value="parent">
+                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Parent / Guardian</span>
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -312,6 +324,21 @@ export default function Login() {
                           </div>
                         </div>
                       </>
+                    )}
+                    {signupRole === 'parent' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-guardian-student-id">Student ID/No.</Label>
+                        <Input
+                          id="signup-guardian-student-id"
+                          value={signupGuardianStudentId}
+                          onChange={e => setSignupGuardianStudentId(e.target.value)}
+                          required
+                          placeholder="Enter the student's ID number"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Use your student&apos;s ID number. The student must approve your request in their Settings.
+                        </p>
+                      </div>
                     )}
                     <Button type="submit" className="w-full" disabled={loading}>
                       {loading ? 'Creating account...' : 'Create Account'}

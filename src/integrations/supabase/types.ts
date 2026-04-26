@@ -176,6 +176,39 @@ export type Database = {
           },
         ]
       }
+      parent_student_links: {
+        Row: {
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          parent_user_id: string
+          requested_at: string
+          status: string
+          student_id_no: string
+          student_user_id: string
+        }
+        Insert: {
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          parent_user_id: string
+          requested_at?: string
+          status?: string
+          student_id_no: string
+          student_user_id: string
+        }
+        Update: {
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          parent_user_id?: string
+          requested_at?: string
+          status?: string
+          student_id_no?: string
+          student_user_id?: string
+        }
+        Relationships: []
+      }
       predictions: {
         Row: {
           activity_completion_rate: number | null
@@ -410,7 +443,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "student" | "instructor" | "admin"
+      app_role: "student" | "instructor" | "admin" | "parent"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -538,7 +571,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["student", "instructor"],
+      app_role: ["student", "instructor", "admin", "parent"],
     },
   },
 } as const

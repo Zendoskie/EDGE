@@ -29,6 +29,11 @@ const studentItems = [
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
+const parentItems = [
+  { title: 'Student Performance', url: '/dashboard/parent-performance', icon: BarChart3 },
+  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
+];
+
 const adminItems = [
   { title: 'User approvals', url: '/dashboard/admin/approvals', icon: UserCheck },
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
@@ -46,7 +51,7 @@ export function AppSidebar() {
     };
   }, []);
 
-  const items = role === 'admin' ? adminItems : role === 'instructor' ? instructorItems : studentItems;
+  const items = role === 'admin' ? adminItems : role === 'instructor' ? instructorItems : role === 'parent' ? parentItems : studentItems;
   const showText = !collapsed || isMobile;
 
   return (

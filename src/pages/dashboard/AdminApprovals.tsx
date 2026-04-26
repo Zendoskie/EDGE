@@ -50,6 +50,8 @@ export default function AdminApprovals() {
         const next: AppRole =
           r === 'admin' || cur === 'admin'
             ? 'admin'
+            : r === 'parent' || cur === 'parent'
+              ? 'parent'
             : r === 'instructor' || cur === 'instructor'
               ? 'instructor'
               : 'student';
@@ -113,7 +115,7 @@ export default function AdminApprovals() {
           </div>
           <h1 className="mt-3 text-xl font-display font-bold tracking-tight text-foreground sm:text-2xl">User approvals</h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Review new student and instructor accounts. Only approved users can sign in. Passwords are never shown here;
+            Review new student, instructor, and parent accounts. Only approved users can sign in. Passwords are never shown here;
             authentication stays with Supabase Auth.
           </p>
         </div>
