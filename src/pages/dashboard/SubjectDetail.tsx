@@ -22,7 +22,6 @@ import type {
   SendNotificationResponse,
   SubjectWithInstructor,
 } from '@/types/dashboard';
-import { STANDARD_PERCENT_GRADE_SCALE, gradeBandFromPercent } from '@/lib/grading';
 
 function firstProgram(programs: SubjectWithInstructor['programs']): EmbeddedProgram | null {
   if (!programs) return null;
@@ -856,17 +855,6 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
             and intervention recommendations.
           </p>
         </div>
-        <div className="mx-4 mb-4 rounded-lg border border-border/70 bg-muted/20 p-4">
-          <p className="text-sm font-medium text-foreground mb-2">Standard percentage grading system</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
-            {STANDARD_PERCENT_GRADE_SCALE.map((band) => (
-              <div key={band.label} className="flex items-center justify-between rounded border border-border/50 px-2.5 py-1.5">
-                <span className="font-medium text-foreground">{band.label} — {band.remark}</span>
-                <span>{band.min}-{band.max}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
         {isLoading ? (
           <p className="p-6 text-muted-foreground text-sm">Loading...</p>
         ) : activities.length === 0 ? (
@@ -1012,7 +1000,6 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
             const numScore = Number(scoreStr);
             const pct =
               scoreStr && !isNaN(numScore) ? ((numScore / maxScore) * 100).toFixed(1) : '—';
-            const band = pct !== '—' ? gradeBandFromPercent(Number(pct)) : null;
             return (
               <TableRow key={e.student_id}>
                 <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
@@ -1034,7 +1021,7 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
                   />
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {pct === '—' ? '—' : `${pct}%${band ? ` • ${band.label}` : ''}`}
+                  {pct === '—' ? '—' : `${pct}%`}
                 </TableCell>
               </TableRow>
             );

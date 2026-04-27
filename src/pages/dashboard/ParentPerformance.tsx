@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { STANDARD_PERCENT_GRADE_SCALE, gradeBandFromPercent } from '@/lib/grading';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -663,12 +662,12 @@ export default function ParentPerformance() {
                     <div className="flex items-center gap-2">
                       {s.average != null ? (
                         <Badge variant="outline">
-                          Activity Avg: {s.average}%{gradeBandFromPercent(s.average) ? ` (${gradeBandFromPercent(s.average)?.label})` : ''}
+                          Activity Avg: {s.average}%
                         </Badge>
                       ) : null}
                       {s.gradingSystem && s.weightedAverage != null ? (
                         <Badge variant="secondary">
-                          Weighted: {Math.round(s.weightedAverage)}%{gradeBandFromPercent(s.weightedAverage) ? ` (${gradeBandFromPercent(s.weightedAverage)?.label})` : ''}
+                          Weighted: {Math.round(s.weightedAverage)}%
                         </Badge>
                       ) : null}
                     </div>
@@ -688,7 +687,7 @@ export default function ParentPerformance() {
                           </div>
                           <span className={a.score != null ? 'font-medium' : 'text-muted-foreground'}>
                             {a.score != null
-                              ? `${a.score} / ${a.max_score} (${a.pct}%)${gradeBandFromPercent(a.pct) ? ` • ${gradeBandFromPercent(a.pct)?.label}` : ''}`
+                              ? `${a.score} / ${a.max_score} (${a.pct}%)`
                               : 'Not graded'}
                           </span>
                         </li>
@@ -699,21 +698,6 @@ export default function ParentPerformance() {
               ))}
             </div>
           )}
-
-          <div className="mt-6 rounded-lg border border-border/70 bg-muted/20 p-4">
-            <p className="text-sm font-medium text-foreground mb-2">Standard percentage grading system</p>
-            <p className="text-xs text-muted-foreground mb-3">
-              The student&apos;s grade percentages are interpreted using this standard scale.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              {STANDARD_PERCENT_GRADE_SCALE.map((band) => (
-                <div key={band.label} className="flex items-center justify-between rounded border border-border/50 px-2.5 py-1.5">
-                  <span className="font-medium text-foreground">{band.label} — {band.remark}</span>
-                  <span className="text-muted-foreground">{band.min}-{band.max}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
