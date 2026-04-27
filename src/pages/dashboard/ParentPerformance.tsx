@@ -107,8 +107,8 @@ export default function ParentPerformance() {
         return {
           subject_id: row.subject_id as string,
           id: (subject?.id as string) || (row.subject_id as string),
-          code: (subject.code as string) || 'Subject',
-          name: (subject.name as string) || 'Subject',
+          code: (subject?.code as string) || (row.subject_id as string),
+          name: (subject?.name as string) || 'Enrolled subject',
         };
       })
       .filter((row): row is { subject_id: string; id: string; code: string; name: string } => row != null);
@@ -246,8 +246,8 @@ export default function ParentPerformance() {
     for (const s of subjectsLookup as any[]) {
       if (typeof s?.id !== 'string') continue;
       map.set(s.id, {
-        code: (s?.code as string) || 'Subject',
-        name: (s?.name as string) || 'Subject',
+        code: (s?.code as string) || (s.id as string),
+        name: (s?.name as string) || 'Linked subject',
       });
     }
     return map;
@@ -282,7 +282,7 @@ export default function ParentPerformance() {
     if (subjectId && subjectByIdFromLookup.has(subjectId)) return subjectByIdFromLookup.get(subjectId)!;
     if (subjectId && subjectById.has(subjectId)) return subjectById.get(subjectId)!;
     if (defaultEnrolledSubject) return { code: defaultEnrolledSubject.code, name: defaultEnrolledSubject.name };
-    return { code: 'Subject', name: 'Subject' };
+    return { code: subjectId || '—', name: 'Unresolved subject' };
   }, [defaultEnrolledSubject, subjectByIdFromLookup, subjectById]);
 
   const submissionByActivityId = useMemo(() => {
@@ -327,8 +327,8 @@ export default function ParentPerformance() {
         ? { code: defaultEnrolledSubject.code, name: defaultEnrolledSubject.name }
         : null;
       const resolved = {
-        code: (joinedSubject?.code as string) || fromPredictionSubjectId?.code || fromIntervention?.code || fromDefault?.code || 'Subject',
-        name: (joinedSubject?.name as string) || fromPredictionSubjectId?.name || fromIntervention?.name || fromDefault?.name || 'Subject',
+        code: (joinedSubject?.code as string) || fromPredictionSubjectId?.code || fromIntervention?.code || fromDefault?.code || (p?.subject_id as string) || '—',
+        name: (joinedSubject?.name as string) || fromPredictionSubjectId?.name || fromIntervention?.name || fromDefault?.name || 'Unresolved subject',
       };
       return { ...p, resolvedSubject: resolved };
     });
@@ -495,25 +495,6 @@ export default function ParentPerformance() {
         </Card>
       </div>
 
-      <Card className="bg-card/90 border-border/70">
-        <CardHeader>
-          <CardTitle className="text-lg">How this student performance is calculated</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>
-            Grade percentages are computed per activity as <span className="font-medium text-foreground">score / max score</span>.
-            The shown <span className="font-medium text-foreground">Average score</span> is the mean of those activity percentages.
-          </p>
-          <p>
-            Attendance percent is based on <span className="font-medium text-foreground">present + late</span> divided by all attendance records.
-          </p>
-          <p>
-            Areas where the student may be struggling are identified through low grade percentages, attendance trends, and recorded risk predictions.
-            The recommendation and risk badge are derived from those latest prediction records.
-          </p>
-        </CardContent>
-      </Card>
-
       <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -598,6 +579,23 @@ export default function ParentPerformance() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-5 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
+            <p className="font-medium text-foreground">How to read exact grades and averages</p>
+            <p>
+              Each activity percentage is computed as <span className="font-medium text-foreground">(score / max score) x 100</span>. Example:
+              if score is <span className="font-medium text-foreground">42</span> out of <span className="font-medium text-foreground">50</span>, that activity contributes
+              <span className="font-medium text-foreground"> 84%</span>.
+            </p>
+            <p>
+              The subject average shown on each row is the arithmetic mean of all graded activity percentages in that subject:
+              <span className="font-medium text-foreground"> (sum of activity percentages) / (number of graded activities)</span>.
+              Ungraded activities are listed but are not included in the average yet.
+            </p>
+            <p>
+              Struggle areas are identified when repeated low percentages appear in the list, especially when paired with low attendance and
+              risk outputs (At Risk/Critical). This means the same underlying records in this table are the basis of the overall performance indicators.
+            </p>
+          </div>
           {gradesBySubject.length === 0 ? (
             <p className="text-sm text-muted-foreground">No activities available yet.</p>
           ) : (

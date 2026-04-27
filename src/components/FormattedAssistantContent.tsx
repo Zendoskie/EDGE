@@ -96,7 +96,7 @@ export function FormattedAssistantContent({ text, className }: FormattedAssistan
     .filter(Boolean);
 
   return (
-    <div className={cn("text-sm leading-7 text-foreground space-y-4", className)}>
+    <div className={cn("text-sm leading-7 text-foreground space-y-4 break-words", className)}>
       {blocks.map((block, idx) => (
         <div key={idx} className="space-y-2">
           {renderBlockLines(block, `blk-${idx}`)}

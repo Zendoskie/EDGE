@@ -124,6 +124,7 @@ export function AICoachPopup(props: {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [subjectsOpen, setSubjectsOpen] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
 
@@ -274,8 +275,8 @@ export function AICoachPopup(props: {
           if (!next) localStorage.setItem(storageKey, "1");
         }}
       >
-        <DialogContent className="gap-0 p-0 overflow-hidden max-h-[90vh] flex flex-col min-h-0">
-          <div className="p-6 pb-4 border-b shrink-0">
+        <DialogContent className="top-[4vh] translate-y-0 gap-0 p-0 overflow-hidden max-h-[92vh] w-[96vw] sm:max-w-2xl flex flex-col min-h-0">
+          <div className="sticky top-0 z-20 p-6 pb-4 border-b shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
@@ -289,7 +290,7 @@ export function AICoachPopup(props: {
                     : "Let’s make a simple plan for the next 7 days."}
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Disclaimer: This system provides academic-related insights only.
+                  Disclaimer: This AI coach is only for academic risk support. Out-of-scope requests are declined.
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   Model: <span className="font-medium text-foreground">{AI_COACH_MODEL_LABEL}</span>
@@ -339,18 +340,34 @@ export function AICoachPopup(props: {
             </div>
           </div>
 
-          <div className="px-6 pt-4 shrink-0">
+          <div className="px-6 pt-3 shrink-0">
             {props.atRiskSubjects?.length ? (
-              <div className="rounded-lg border bg-muted/30 p-3 mb-3">
-                <p className="text-xs font-medium text-foreground mb-2">Current at-risk subjects</p>
-                <div className="flex flex-wrap gap-2">
-                  {props.atRiskSubjects.map((subject) => (
-                    <Badge key={subject} variant="outline" className="border-destructive/40 bg-destructive/10 text-foreground">
-                      {subject}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              <Collapsible
+                open={subjectsOpen}
+                onOpenChange={setSubjectsOpen}
+                className="rounded-lg border bg-muted/30 mb-2"
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-between px-3 py-2 h-auto text-xs font-medium text-foreground"
+                  >
+                    <span>Current at-risk subjects ({props.atRiskSubjects.length})</span>
+                    <span className="text-muted-foreground">{subjectsOpen ? "Hide" : "Show"}</span>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-3 pb-3 flex flex-wrap gap-2">
+                    {props.atRiskSubjects.map((subject) => (
+                      <Badge key={subject} variant="outline" className="border-destructive/40 bg-destructive/10 text-foreground">
+                        {subject}
+                      </Badge>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             ) : null}
             {props.variant === "detailed" && (props.subjectLabel || props.recommendation) ? (
               <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground mb-3">
@@ -369,7 +386,7 @@ export function AICoachPopup(props: {
           </div>
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 overscroll-contain touch-pan-y"
+            className="min-h-[280px] h-[42vh] md:h-[48vh] overflow-y-auto overflow-x-hidden px-6 pr-4 overscroll-contain touch-pan-y"
             role="log"
             aria-label="Chat messages"
           >
@@ -390,16 +407,16 @@ export function AICoachPopup(props: {
                   </span>
                   <div
                     className={cn(
-                      "max-w-[88%] rounded-2xl px-4 py-3 text-sm shadow-sm",
+                      "max-w-[90%] rounded-2xl px-4 py-3 text-sm shadow-sm break-words",
                       m.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md"
                         : "bg-muted/80 text-foreground border border-border/80 rounded-bl-md",
                     )}
                   >
                     {m.role === "assistant" ? (
-                      <FormattedAssistantContent text={m.content} className="!text-inherit !leading-7" />
+                      <FormattedAssistantContent text={m.content} className="!text-inherit !leading-7 break-words" />
                     ) : (
-                      <p className="whitespace-pre-wrap leading-7">{m.content}</p>
+                      <p className="whitespace-pre-wrap break-words leading-7">{m.content}</p>
                     )}
                   </div>
                 </div>

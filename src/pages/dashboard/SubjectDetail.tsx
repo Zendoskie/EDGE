@@ -706,6 +706,23 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
         </Dialog>
       </CardHeader>
       <CardContent className="p-0">
+        <div className="mx-4 mb-3 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
+          <p className="font-medium text-foreground">How grading percentages and struggle signals work</p>
+          <p>
+            Per-student activity percentage is calculated as
+            <span className="font-medium text-foreground"> (entered score / activity max score) x 100</span>.
+            Example: score <span className="font-medium text-foreground">35</span> out of <span className="font-medium text-foreground">50</span> gives <span className="font-medium text-foreground">70%</span>.
+          </p>
+          <p>
+            Subject-level trends are built from these percentages across activities. When several low percentages appear over time
+            (especially with poor attendance), students are more likely to be classified as
+            <span className="font-medium text-foreground"> At Risk</span> or <span className="font-medium text-foreground">Critical</span> in Predictions.
+          </p>
+          <p>
+            This means the exact numbers encoded here in the score grid are the direct basis for averages, risk analysis,
+            and intervention recommendations.
+          </p>
+        </div>
         {isLoading ? (
           <p className="p-6 text-muted-foreground text-sm">Loading...</p>
         ) : activities.length === 0 ? (

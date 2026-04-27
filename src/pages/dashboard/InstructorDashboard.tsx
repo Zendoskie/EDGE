@@ -227,26 +227,6 @@ export default function InstructorDashboard() {
         ))}
       </div>
 
-      <Card className="bg-card/90 border-border/70">
-        <CardHeader>
-          <CardTitle className="text-lg">How percentages and struggle areas are identified</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>
-            Student activity percentages are computed as <span className="font-medium text-foreground">score / max score</span> per activity.
-            Subject averages and overall trends aggregate those percentages from recorded submissions.
-          </p>
-          <p>
-            Attendance percentage uses <span className="font-medium text-foreground">present + late</span> over total attendance records.
-          </p>
-          <p>
-            Students are flagged as struggling when prediction inputs (attendance, quiz/assignment performance, and completion signals)
-            place them in <span className="font-medium text-foreground">At Risk</span> or <span className="font-medium text-foreground">Critical</span>.
-            The dashboard counts and intervention prompts come from those computed risk records.
-          </p>
-        </CardContent>
-      </Card>
-
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="overview">Overview</TabsTrigger>

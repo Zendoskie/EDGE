@@ -7,6 +7,8 @@ const MAX_INSIGHT_TOKENS = 500;
 const MAX_MESSAGE_LENGTH = 1000;
 const RATE_LIMIT_REQUESTS = 20;
 const RATE_LIMIT_WINDOW = 60;
+const OUT_OF_SCOPE_REPLY =
+  "I cannot give you the information you needed about that. I can only help with academic risk, grades, attendance, study planning, and school performance improvement.";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -91,6 +93,59 @@ type ApiResponse = {
 };
 
 type ChatCompletionMessage = { role: "system" | "user" | "assistant"; content: string };
+
+function latestRealUserMessage(messages: ChatMessage[]): string {
+  const contextPrefix = "Context (do not quote verbatim):";
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role !== "user" || typeof m?.content !== "string") continue;
+    const trimmed = m.content.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith(contextPrefix)) continue;
+    return trimmed.toLowerCase();
+  }
+  return "";
+}
+
+function isAcademicRiskRelated(text: string): boolean {
+  if (!text) return true;
+  const academicKeywords = [
+    "academic",
+    "study",
+    "subject",
+    "course",
+    "class",
+    "teacher",
+    "instructor",
+    "attendance",
+    "absent",
+    "late",
+    "grade",
+    "score",
+    "quiz",
+    "exam",
+    "assignment",
+    "project",
+    "submission",
+    "risk",
+    "at risk",
+    "critical",
+    "prediction",
+    "recommendation",
+    "performance",
+    "improve",
+    "school",
+    "college",
+    "university",
+    "gpa",
+    "pass",
+    "fail",
+    "failing",
+    "semester",
+    "review",
+  ];
+  return academicKeywords.some((k) => text.includes(k));
+}
 
 async function openAiChatCompletions(opts: {
   apiKey: string;
@@ -429,6 +484,18 @@ serve(async (req) => {
 
     const topPrediction = subjectPredictions[0];
     const risk = canonicalRiskLevel(topPrediction?.risk_level);
+    const lastUserMessage = latestRealUserMessage(effectiveMessages);
+    if (!isAcademicRiskRelated(lastUserMessage)) {
+      return new Response(
+        JSON.stringify({
+          reply: OUT_OF_SCOPE_REPLY,
+          risk_level: risk,
+          subject: null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (risk !== "critical" && risk !== "at_risk") {
       return new Response(
         JSON.stringify({
@@ -481,6 +548,8 @@ serve(async (req) => {
 
     const system = [
       "You are an academic support coach for university students.",
+      "Scope limitation: only respond to academic-risk coaching concerns (attendance, grades, subject performance, study planning, and school interventions).",
+      `If the user asks something outside this scope, reply exactly with: "${OUT_OF_SCOPE_REPLY}"`,
       "Goal: help at-risk students take concrete next steps in the next 7 days across all their enrolled subjects.",
       "Style: empathetic, supportive, concise, and action-oriented.",
       "Formatting: plain text only—no markdown, no asterisks or star bullets, no **bold**. Use short paragraphs; use 1. 2. numbering if steps are needed.",

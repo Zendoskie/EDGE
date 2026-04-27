@@ -135,6 +135,21 @@ export default function MyScores() {
           <p className="text-muted-foreground text-sm">Quiz, assignment, and project scores by subject. Due dates are shown where set.</p>
         </CardHeader>
         <CardContent>
+          <div className="mb-5 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
+            <p className="font-medium text-foreground">How your exact grades and averages are computed</p>
+            <p>
+              For each graded activity, the system computes a percentage using
+              <span className="font-medium text-foreground"> (score / max score) x 100</span>. Example: <span className="font-medium text-foreground">18 / 20 = 90%</span>.
+            </p>
+            <p>
+              The <span className="font-medium text-foreground">Avg</span> beside each subject is the mean of all available activity percentages in that subject:
+              <span className="font-medium text-foreground"> (sum of graded activity percentages) / (count of graded activities)</span>.
+            </p>
+            <p>
+              Activities marked <span className="font-medium text-foreground">—</span> are not graded yet and are excluded from the average until a score is entered.
+              Struggle areas are identified from repeated low percentages in this list, especially when they align with low attendance or risk alerts.
+            </p>
+          </div>
           {bySubject.length === 0 ? (
             <p className="text-muted-foreground text-sm">You are not enrolled in any subjects yet. Enroll using a course code in My Subjects.</p>
           ) : (
