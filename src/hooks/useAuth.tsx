@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'student' | 'instructor' | 'admin' | 'parent';
+export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
 interface AuthContextType {
   user: User | null;
@@ -33,6 +33,7 @@ async function loadRole(userId: string): Promise<AppRole | null> {
   if (error || !data?.length) return null;
   const roles = data.map((r) => r.role);
   if (roles.includes('admin')) return 'admin';
+  if (roles.includes('guidance_counselor')) return 'guidance_counselor';
   if (roles.includes('parent')) return 'parent';
   if (roles.includes('instructor')) return 'instructor';
   return 'student';

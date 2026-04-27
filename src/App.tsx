@@ -30,6 +30,7 @@ import AdministrativeFeatures from "./pages/dashboard/AdministrativeFeatures";
 import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
 import AdminApprovals from "./pages/dashboard/AdminApprovals";
 import ParentPerformance from "./pages/dashboard/ParentPerformance";
+import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +66,7 @@ const App = () => (
                 <Route path="reports" element={<Reports />} />
                 <Route path="admin/approvals" element={<AdminApprovals />} />
                 <Route path="parent-performance" element={<ParentPerformance />} />
+                <Route path="guidance-referrals" element={<GuidanceReferrals />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

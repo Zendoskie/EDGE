@@ -47,7 +47,7 @@ export default function Login() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
-  const [signupRole, setSignupRole] = useState<'student' | 'instructor' | 'parent'>('student');
+  const [signupRole, setSignupRole] = useState<'student' | 'instructor' | 'parent' | 'guidance_counselor'>('student');
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
@@ -249,7 +249,7 @@ export default function Login() {
                     </div>
                     <div className="space-y-2">
                       <Label>Role</Label>
-                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor' | 'parent') => setSignupRole(v)}>
+                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor' | 'parent' | 'guidance_counselor') => setSignupRole(v)}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -262,6 +262,9 @@ export default function Login() {
                           </SelectItem>
                           <SelectItem value="parent">
                             <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Parent / Guardian</span>
+                          </SelectItem>
+                          <SelectItem value="guidance_counselor">
+                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Guidance Counselor</span>
                           </SelectItem>
                         </SelectContent>
                       </Select>

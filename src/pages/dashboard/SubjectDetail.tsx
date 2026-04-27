@@ -890,6 +890,7 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 /* ───── Predictions Tab ───── */
 function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId: string; subjectCode: string; subjectName: string }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [generating, setGenerating] = useState(false);
   const [interventionPrediction, setInterventionPrediction] = useState<PredictionRow | null>(null);
   // DB constraint for interventions.type only allows a limited set of values:
@@ -914,6 +915,19 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       const studentIds = data.map(p => p.student_id).filter(Boolean) as string[];
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
       return data.map(p => ({ ...p, profile: profiles?.find(pr => pr.user_id === p.student_id) })) as PredictionRow[];
+    },
+  });
+
+  const { data: counselingReferrals = [] } = useQuery({
+    queryKey: ['counseling-referrals', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('counseling_referrals')
+        .select('id, student_id, status, created_at')
+        .eq('subject_id', subjectId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -964,6 +978,56 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     mutationFn: async () => {
       if (!interventionPrediction?.id || !interventionPrediction?.student_id) throw new Error('Missing prediction');
       const studentEmail = interventionPrediction.profile?.email;
+      // DB check constraint only allows: email | meeting | counseling | other.
+      const dbInterventionType =
+        interventionType === 'email' ||
+        interventionType === 'meeting' ||
+        interventionType === 'counseling' ||
+        interventionType === 'other'
+          ? interventionType
+          : 'other';
+
+      if (dbInterventionType === 'counseling') {
+        if (!user?.id) throw new Error('Missing instructor session');
+        const latestReferral = counselingReferrals.find(
+          (r: any) => r.student_id === interventionPrediction.student_id,
+        );
+
+        if (latestReferral?.status !== 'approved') {
+          const { error: referralError } = await supabase.from('counseling_referrals').insert({
+            student_id: interventionPrediction.student_id,
+            subject_id: subjectId,
+            instructor_id: user.id,
+            prediction_id: interventionPrediction.id,
+            recommendation_message:
+              interventionMessage ||
+              interventionPrediction.recommendation ||
+              `Guidance support is recommended for ${subjectCode}.`,
+            status: 'pending',
+          });
+          if (referralError) throw referralError;
+
+          if (sendEmailNotification && studentEmail) {
+            const { error: invokeError } = await supabase.functions.invoke('send-notification', {
+              body: {
+                to: studentEmail,
+                student_id: interventionPrediction.student_id,
+                subject_id: subjectId,
+                risk_level: interventionPrediction.risk_level,
+                subject_code: subjectCode,
+                subject_name: subjectName,
+                body:
+                  interventionMessage ||
+                  `Your instructor recommends guidance counseling support for ${subjectCode}. Please check EDGE for details.`,
+              },
+            });
+            if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
+          }
+
+          return { mode: 'referral_created' as const };
+        }
+      }
+
       if (sendEmailNotification && studentEmail) {
         const { error: invokeError } = await supabase.functions.invoke('send-notification', {
           body: {
@@ -978,14 +1042,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         });
         if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
       }
-      // DB check constraint only allows: email | meeting | counseling | other.
-      const dbInterventionType =
-        interventionType === 'email' ||
-        interventionType === 'meeting' ||
-        interventionType === 'counseling' ||
-        interventionType === 'other'
-          ? interventionType
-          : 'other';
 
       const { error } = await supabase.from('interventions').insert({
         prediction_id: interventionPrediction.id,
@@ -995,9 +1051,19 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         message: interventionMessage || null,
       });
       if (error) throw error;
+      return { mode: 'intervention_logged' as const };
     },
-    onSuccess: () => {
-      toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
+    onSuccess: (result) => {
+      if (result?.mode === 'referral_created') {
+        toast.success(
+          sendEmailNotification
+            ? 'Counseling referral submitted to guidance counselor and student notified'
+            : 'Counseling referral submitted to guidance counselor for approval',
+        );
+      } else {
+        toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
+      }
+      queryClient.invalidateQueries({ queryKey: ['counseling-referrals', subjectId] });
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');
@@ -1188,6 +1254,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <Label>Message (optional)</Label>
                 <Input placeholder="Note or summary" value={interventionMessage} onChange={e => setInterventionMessage(e.target.value)} />
               </div>
+              {interventionType === 'counseling' && (
+                <p className="text-xs text-muted-foreground">
+                  Counseling interventions require guidance counselor approval first. Saving now will create a counseling referral when not yet approved.
+                </p>
+              )}
               <div className="flex items-center space-x-2">
                 <Checkbox id="send-email" checked={sendEmailNotification} onCheckedChange={(c) => setSendEmailNotification(!!c)} />
                 <Label htmlFor="send-email" className="text-sm font-normal cursor-pointer">

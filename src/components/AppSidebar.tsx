@@ -34,6 +34,11 @@ const parentItems = [
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
+const guidanceItems = [
+  { title: 'Counseling Referrals', url: '/dashboard/guidance-referrals', icon: UserCheck },
+  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
+];
+
 const adminItems = [
   { title: 'User approvals', url: '/dashboard/admin/approvals', icon: UserCheck },
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
@@ -51,7 +56,16 @@ export function AppSidebar() {
     };
   }, []);
 
-  const items = role === 'admin' ? adminItems : role === 'instructor' ? instructorItems : role === 'parent' ? parentItems : studentItems;
+  const items =
+    role === 'admin'
+      ? adminItems
+      : role === 'instructor'
+        ? instructorItems
+        : role === 'parent'
+          ? parentItems
+          : role === 'guidance_counselor'
+            ? guidanceItems
+            : studentItems;
   const showText = !collapsed || isMobile;
 
   return (

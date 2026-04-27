@@ -176,6 +176,60 @@ export type Database = {
           },
         ]
       }
+      counseling_referrals: {
+        Row: {
+          created_at: string
+          id: string
+          instructor_id: string
+          prediction_id: string | null
+          recommendation_message: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          student_id: string
+          subject_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instructor_id: string
+          prediction_id?: string | null
+          recommendation_message?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          student_id: string
+          subject_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instructor_id?: string
+          prediction_id?: string | null
+          recommendation_message?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          student_id?: string
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "counseling_referrals_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: false
+            referencedRelation: "predictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "counseling_referrals_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_student_links: {
         Row: {
           decided_at: string | null
@@ -443,7 +497,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "student" | "instructor" | "admin" | "parent"
+      app_role: "student" | "instructor" | "admin" | "parent" | "guidance_counselor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -571,7 +625,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["student", "instructor", "admin", "parent"],
+      app_role: ["student", "instructor", "admin", "parent", "guidance_counselor"],
     },
   },
 } as const

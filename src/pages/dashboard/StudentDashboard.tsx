@@ -179,6 +179,25 @@ export default function StudentDashboard() {
             ))}
       </div>
 
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            Each graded activity is converted to a percent using <span className="font-medium text-foreground">score / max score</span>. 
+            Your <span className="font-medium text-foreground">Overall Average</span> is the mean of those activity percentages.
+          </p>
+          <p>
+            Attendance percent counts <span className="font-medium text-foreground">present + late</span> as attended, divided by total attendance records.
+          </p>
+          <p>
+            Struggle areas are identified from low attendance, low grade percentages, and recent risk predictions. 
+            The dashboard cards and recommendations reflect those same records so you can see how the shown average is derived.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="bg-card/90">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>

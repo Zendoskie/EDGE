@@ -1,0 +1,2 @@
+-- Placeholder migration file to match remote migration history.
+-- Intentionally no-op.

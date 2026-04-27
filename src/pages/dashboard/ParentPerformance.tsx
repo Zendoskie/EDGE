@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -19,6 +20,34 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     </Card>
   );
 }
+
+function relationToObject<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  if (Array.isArray(value)) return (value[0] as T) ?? null;
+  return value as T;
+}
+
+function formatSessionDate(iso: string) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const attendanceBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  present: 'default',
+  late: 'secondary',
+  absent: 'destructive',
+  excused: 'outline',
+};
 
 export default function ParentPerformance() {
   const { user, role } = useAuth();
@@ -56,42 +85,34 @@ export default function ParentPerformance() {
     },
   });
 
-  const { data: attendance = [] } = useQuery({
-    queryKey: ['parent-student-attendance', studentId],
-    enabled: !!studentId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('attendance').select('status').eq('student_id', studentId!);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const { data: scores = [] } = useQuery({
-    queryKey: ['parent-student-scores', studentId],
-    enabled: !!studentId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('submissions')
-        .select('score, activities(max_score)')
-        .eq('student_id', studentId!);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const { data: enrolledSubjects = [] } = useQuery({
+  const { data: enrolledSubjectsRaw = [] } = useQuery({
     queryKey: ['parent-student-enrolled-subjects', studentId],
     enabled: !!studentId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enrollments')
-        .select('subject_id, subjects(id, code, name)')
+        .select('subject_id, subjects(id, code, name), status')
         .eq('student_id', studentId!)
         .eq('status', 'active');
       if (error) throw error;
-      return (data ?? []).filter((row: any) => row?.subject_id && row?.subjects);
+      return data ?? [];
     },
   });
+
+  const enrolledSubjects = useMemo(() => {
+    return (enrolledSubjectsRaw as any[])
+      .map((row: any) => {
+        const subject = relationToObject<any>(row?.subjects);
+        if (!row?.subject_id) return null;
+        return {
+          subject_id: row.subject_id as string,
+          id: (subject?.id as string) || (row.subject_id as string),
+          code: (subject.code as string) || 'Subject',
+          name: (subject.name as string) || 'Subject',
+        };
+      })
+      .filter((row): row is { subject_id: string; id: string; code: string; name: string } => row != null);
+  }, [enrolledSubjectsRaw]);
 
   const enrolledSubjectIds = useMemo(
     () =>
@@ -104,8 +125,6 @@ export default function ParentPerformance() {
       ),
     [enrolledSubjects],
   );
-
-  const enrolledSubjectIdsKey = enrolledSubjectIds.join(',');
 
   const { data: predictions = [] } = useQuery({
     queryKey: ['parent-student-predictions', studentId],
@@ -122,13 +141,157 @@ export default function ParentPerformance() {
     },
   });
 
-  const enrolledSubjectNameFallback = useMemo(() => {
-    const first = (enrolledSubjects as any[])[0]?.subjects;
+  const { data: predictionInterventions = [] } = useQuery({
+    queryKey: ['parent-prediction-interventions', studentId],
+    enabled: !!studentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('interventions')
+        .select('prediction_id, subject_id')
+        .eq('student_id', studentId!)
+        .not('prediction_id', 'is', null);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: attendance = [] } = useQuery({
+    queryKey: ['parent-student-attendance', studentId],
+    enabled: !!studentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('subject_id, date, status')
+        .eq('student_id', studentId!)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: activities = [] } = useQuery({
+    queryKey: ['parent-student-activities', studentId, enrolledSubjectIds.join(',')],
+    enabled: !!studentId && enrolledSubjectIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activities')
+        .select('id, subject_id, title, type, max_score, due_date')
+        .in('subject_id', enrolledSubjectIds)
+        .order('due_date', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: submissions = [] } = useQuery({
+    queryKey: ['parent-student-submissions', studentId],
+    enabled: !!studentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('activity_id, score, submitted_at, graded_at')
+        .eq('student_id', studentId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const allSubjectIdsKey = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of enrolledSubjects) {
+      if (typeof s.id === 'string') set.add(s.id);
+      if (typeof s.subject_id === 'string') set.add(s.subject_id);
+    }
+    for (const a of attendance as any[]) {
+      if (typeof a?.subject_id === 'string') set.add(a.subject_id);
+    }
+    for (const a of activities as any[]) {
+      if (typeof a?.subject_id === 'string') set.add(a.subject_id);
+    }
+    for (const p of predictions as any[]) {
+      if (typeof p?.subject_id === 'string') set.add(p.subject_id);
+    }
+    for (const i of predictionInterventions as any[]) {
+      if (typeof i?.subject_id === 'string') set.add(i.subject_id);
+    }
+    return Array.from(set).join(',');
+  }, [enrolledSubjects, attendance, activities, predictions, predictionInterventions]);
+
+  const { data: subjectsLookup = [] } = useQuery({
+    queryKey: ['parent-subject-lookup', studentId, allSubjectIdsKey],
+    enabled: !!studentId && allSubjectIdsKey.length > 0,
+    queryFn: async () => {
+      const ids = allSubjectIdsKey.split(',').filter(Boolean);
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('id, code, name')
+        .in('id', ids);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const subjectById = useMemo(() => {
+    const map = new Map<string, { code: string; name: string }>();
+    for (const s of enrolledSubjects) {
+      map.set(s.id, { code: s.code, name: s.name });
+      map.set(s.subject_id, { code: s.code, name: s.name });
+    }
+    return map;
+  }, [enrolledSubjects]);
+
+  const subjectByIdFromLookup = useMemo(() => {
+    const map = new Map<string, { code: string; name: string }>();
+    for (const s of subjectsLookup as any[]) {
+      if (typeof s?.id !== 'string') continue;
+      map.set(s.id, {
+        code: (s?.code as string) || 'Subject',
+        name: (s?.name as string) || 'Subject',
+      });
+    }
+    return map;
+  }, [subjectsLookup]);
+
+  const interventionSubjectByPredictionId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of predictionInterventions as any[]) {
+      if (typeof row?.prediction_id !== 'string' || typeof row?.subject_id !== 'string') continue;
+      if (!map.has(row.prediction_id)) map.set(row.prediction_id, row.subject_id);
+    }
+    return map;
+  }, [predictionInterventions]);
+
+  const defaultEnrolledSubject = useMemo(() => {
+    if (enrolledSubjects.length === 0) return null;
+    if (enrolledSubjects.length === 1) {
+      return {
+        id: enrolledSubjects[0].id,
+        code: enrolledSubjects[0].code,
+        name: enrolledSubjects[0].name,
+      };
+    }
     return {
-      code: first?.code ?? 'Subject',
-      name: first?.name ?? 'Subject',
+      id: enrolledSubjects[0].id,
+      code: enrolledSubjects[0].code,
+      name: enrolledSubjects[0].name,
     };
   }, [enrolledSubjects]);
+
+  const resolveSubjectMeta = useCallback((subjectId?: string | null) => {
+    if (subjectId && subjectByIdFromLookup.has(subjectId)) return subjectByIdFromLookup.get(subjectId)!;
+    if (subjectId && subjectById.has(subjectId)) return subjectById.get(subjectId)!;
+    if (defaultEnrolledSubject) return { code: defaultEnrolledSubject.code, name: defaultEnrolledSubject.name };
+    return { code: 'Subject', name: 'Subject' };
+  }, [defaultEnrolledSubject, subjectByIdFromLookup, subjectById]);
+
+  const submissionByActivityId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const sub of submissions as any[]) {
+      if (typeof sub?.activity_id === 'string') map.set(sub.activity_id, sub);
+    }
+    return map;
+  }, [submissions]);
 
   const attendanceRate = useMemo(() => {
     if (attendance.length === 0) return 0;
@@ -137,19 +300,103 @@ export default function ParentPerformance() {
   }, [attendance]);
 
   const averageScore = useMemo(() => {
-    const scored = (scores as any[])
+    const scored = (activities as any[])
       .map((s: any) => {
-        if (s?.score == null) return null;
-        const max = Number(s?.activities?.max_score ?? 100);
+        const submission = submissionByActivityId.get(s.id);
+        if (submission?.score == null) return null;
+        const max = Number(s?.max_score ?? 100);
         if (!Number.isFinite(max) || max <= 0) return null;
-        return (Number(s.score) / max) * 100;
+        return (Number(submission.score) / max) * 100;
       })
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
     if (scored.length === 0) return 0;
     return scored.reduce((acc, cur) => acc + cur, 0) / scored.length;
-  }, [scores]);
+  }, [activities, submissionByActivityId]);
 
   const latestPrediction = predictions[0] ?? null;
+
+  const predictionsResolved = useMemo(() => {
+    return (predictions as any[]).map((p: any) => {
+      const joinedSubject = relationToObject<any>(p?.subject);
+      const fromPredictionSubjectId = typeof p?.subject_id === 'string' ? resolveSubjectMeta(p.subject_id) : null;
+      const linkedInterventionSubjectId = interventionSubjectByPredictionId.get(p.id);
+      const fromIntervention = linkedInterventionSubjectId
+        ? resolveSubjectMeta(linkedInterventionSubjectId)
+        : null;
+      const fromDefault = defaultEnrolledSubject
+        ? { code: defaultEnrolledSubject.code, name: defaultEnrolledSubject.name }
+        : null;
+      const resolved = {
+        code: (joinedSubject?.code as string) || fromPredictionSubjectId?.code || fromIntervention?.code || fromDefault?.code || 'Subject',
+        name: (joinedSubject?.name as string) || fromPredictionSubjectId?.name || fromIntervention?.name || fromDefault?.name || 'Subject',
+      };
+      return { ...p, resolvedSubject: resolved };
+    });
+  }, [predictions, interventionSubjectByPredictionId, resolveSubjectMeta, defaultEnrolledSubject]);
+
+  const attendanceBySubject = useMemo(() => {
+    const bySubjectId = new Map<string, any[]>();
+    for (const row of attendance as any[]) {
+      if (typeof row?.subject_id !== 'string') continue;
+      const existing = bySubjectId.get(row.subject_id) ?? [];
+      existing.push(row);
+      bySubjectId.set(row.subject_id, existing);
+    }
+    return Array.from(bySubjectId.entries()).map(([subjectId, records]) => {
+      const meta = resolveSubjectMeta(subjectId);
+      const total = records.length;
+      const present = records.filter((a: any) => a?.status === 'present' || a?.status === 'late').length;
+      const rate = total > 0 ? Math.round((present / total) * 100) : null;
+      return {
+        id: subjectId,
+        subject_id: subjectId,
+        code: meta.code,
+        name: meta.name,
+        records,
+        total,
+        present,
+        rate,
+      };
+    });
+  }, [attendance, resolveSubjectMeta]);
+
+  const gradesBySubject = useMemo(() => {
+    const grouped = new Map<string, any[]>();
+    for (const a of activities as any[]) {
+      if (typeof a?.subject_id !== 'string') continue;
+      const existing = grouped.get(a.subject_id) ?? [];
+      existing.push(a);
+      grouped.set(a.subject_id, existing);
+    }
+    return Array.from(grouped.entries()).map(([subjectId, subjectActivities]) => {
+      const meta = resolveSubjectMeta(subjectId);
+      const items = subjectActivities.map((a: any) => {
+        const submission = submissionByActivityId.get(a.id);
+        const score = submission?.score ?? null;
+        const max = Number(a?.max_score ?? 100);
+        const pct = score != null && Number.isFinite(max) && max > 0 ? Math.round((Number(score) / max) * 100) : null;
+        return {
+          id: a.id as string,
+          title: (a?.title as string) || 'Untitled activity',
+          type: (a?.type as string) || 'activity',
+          due_date: (a?.due_date as string | null) ?? null,
+          max_score: max,
+          score,
+          pct,
+        };
+      });
+      const graded = items.filter((i) => i.pct != null);
+      const average = graded.length > 0 ? Math.round(graded.reduce((acc, cur) => acc + (cur.pct ?? 0), 0) / graded.length) : null;
+      return {
+        id: subjectId,
+        subject_id: subjectId,
+        code: meta.code,
+        name: meta.name,
+        items,
+        average,
+      };
+    });
+  }, [activities, submissionByActivityId, resolveSubjectMeta]);
 
   if (role !== 'parent') {
     return (
@@ -228,7 +475,7 @@ export default function ParentPerformance() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{averageScore.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">Based on {scores.length} submissions</p>
+            <p className="text-xs text-muted-foreground">Based on {submissions.length} submissions</p>
           </CardContent>
         </Card>
         <Card className="bg-card/90">
@@ -248,6 +495,25 @@ export default function ParentPerformance() {
         </Card>
       </div>
 
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">How this student performance is calculated</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            Grade percentages are computed per activity as <span className="font-medium text-foreground">score / max score</span>.
+            The shown <span className="font-medium text-foreground">Average score</span> is the mean of those activity percentages.
+          </p>
+          <p>
+            Attendance percent is based on <span className="font-medium text-foreground">present + late</span> divided by all attendance records.
+          </p>
+          <p>
+            Areas where the student may be struggling are identified through low grade percentages, attendance trends, and recorded risk predictions.
+            The recommendation and risk badge are derived from those latest prediction records.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -256,15 +522,15 @@ export default function ParentPerformance() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {predictions.length === 0 ? (
+          {predictionsResolved.length === 0 ? (
             <p className="text-sm text-muted-foreground">No predictions available yet.</p>
           ) : (
             <div className="space-y-3">
-              {predictions.map((p: any) => (
+              {predictionsResolved.map((p: any) => (
                 <div key={p.id} className="rounded-lg border p-3 space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">
-                      {(p.subject as any)?.code ?? enrolledSubjectNameFallback.code} — {(p.subject as any)?.name ?? enrolledSubjectNameFallback.name}
+                      {p.resolvedSubject.code} — {p.resolvedSubject.name}
                     </p>
                     <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))}>
                       {riskLabel(canonicalRiskLevel(p.risk_level))}
@@ -275,6 +541,94 @@ export default function ParentPerformance() {
                     {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
                   </p>
                 </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card/90">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Calendar className="h-5 w-5" />
+            Attendance by subject
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {attendanceBySubject.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No attendance records available yet.</p>
+          ) : (
+            <div className="space-y-6">
+              {attendanceBySubject.map((s) => (
+                <section key={s.id} className="space-y-3 rounded-xl border border-border/60 p-4">
+                  <div className="flex flex-col gap-1">
+                    <p className="font-semibold">{s.code} — {s.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {s.present} present / late out of {s.total} records
+                      {s.rate != null ? ` · ${s.rate}%` : ''}
+                    </p>
+                  </div>
+                  {s.rate != null && <Progress value={s.rate} className="h-2" />}
+                  {s.records.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No attendance yet for this subject.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {s.records.map((r: any) => (
+                        <li key={`${s.id}-${r.date}-${r.status}`} className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0">
+                          <span className="text-sm">{formatSessionDate(r.date)}</span>
+                          <Badge variant={attendanceBadgeVariant[r.status] ?? 'outline'} className="capitalize">
+                            {r.status}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card/90">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FileText className="h-5 w-5" />
+            Grades and activities
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {gradesBySubject.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activities available yet.</p>
+          ) : (
+            <div className="space-y-6">
+              {gradesBySubject.map((s) => (
+                <section key={s.id} className="space-y-3 rounded-xl border border-border/60 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{s.code} — {s.name}</p>
+                    {s.average != null ? <Badge variant="secondary">Avg: {s.average}%</Badge> : null}
+                  </div>
+                  {s.items.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No activities yet.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {s.items.map((a) => (
+                        <li key={a.id} className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0 text-sm">
+                          <div>
+                            <p className="font-medium">{a.title}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {a.type}
+                              {a.due_date ? ` · Due ${new Date(a.due_date).toLocaleDateString()}` : ''}
+                            </p>
+                          </div>
+                          <span className={a.score != null ? 'font-medium' : 'text-muted-foreground'}>
+                            {a.score != null ? `${a.score} / ${a.max_score} (${a.pct}%)` : 'Not graded'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
               ))}
             </div>
           )}
