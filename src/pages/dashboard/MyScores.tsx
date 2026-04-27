@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
+import { STANDARD_PERCENT_GRADE_SCALE, gradeBandFromPercent } from '@/lib/grading';
+import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 
 function formatDue(due: string | null): string {
   if (!due) return '—';
@@ -71,6 +73,41 @@ export default function MyScores() {
     enabled: !!user?.id,
   });
 
+  const { data: attendance = [] } = useQuery({
+    queryKey: ['my-attendance-for-scores', user?.id, subjectIds],
+    queryFn: async () => {
+      if (!user?.id || subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('subject_id, status')
+        .eq('student_id', user.id)
+        .in('subject_id', subjectIds);
+      if (error) {
+        console.warn('MyScores: attendance query failed', error);
+        return [];
+      }
+      return data ?? [];
+    },
+    enabled: !!user?.id && subjectIds.length > 0,
+  });
+
+  const { data: gradingSystems = [] } = useQuery({
+    queryKey: ['my-grading-systems', subjectIds],
+    queryFn: async () => {
+      if (subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('subject_grading_systems')
+        .select('subject_id, activity_weight, project_weight, attendance_weight, exam_weight')
+        .in('subject_id', subjectIds);
+      if (error) {
+        console.warn('MyScores: grading systems query failed', error);
+        return [];
+      }
+      return data ?? [];
+    },
+    enabled: subjectIds.length > 0,
+  });
+
   const { data: subjectsList = [] } = useQuery({
     queryKey: ['subjects-list', subjectIds],
     queryFn: async () => {
@@ -87,6 +124,7 @@ export default function MyScores() {
 
   const getScore = (activityId: string) => submissions.find((s: any) => s.activity_id === activityId)?.score;
   const getSubject = (subjectId: string) => subjectsList.find((s: any) => s.id === subjectId);
+  const getGradingSystem = (subjectId: string) => gradingSystems.find((g: any) => g.subject_id === subjectId);
 
   const bySubject = subjectIds.map((sid: string) => {
     const sub = getSubject(sid) ?? (enrollments.find((e: any) => e.subjects?.id === sid) as any)?.subjects;
@@ -106,12 +144,30 @@ export default function MyScores() {
             withScores.filter(x => x.pct != null).length
         )
       : null;
+    const attendanceRecords = attendance.filter((a: any) => a.subject_id === sid);
+    const attendancePercent = attendanceRecords.length
+      ? (attendanceRecords.filter((a: any) => a.status === 'present' || a.status === 'late').length / attendanceRecords.length) * 100
+      : null;
+    const activityAverage = averageOf(
+      withScores.filter((x: any) => x.type === 'quiz' || x.type === 'assignment' || x.type === 'activity').map((x: any) => x.pct),
+    );
+    const projectAverage = averageOf(withScores.filter((x: any) => x.type === 'project').map((x: any) => x.pct));
+    const examAverage = averageOf(withScores.filter((x: any) => x.type === 'exam').map((x: any) => x.pct));
+    const weightedAverage = computeWeightedGrade({
+      activityAverage,
+      projectAverage,
+      attendancePercent,
+      examAverage,
+      weights: getGradingSystem(sid) ?? null,
+    });
     return {
       subjectId: sid,
       code: sub?.code ?? '—',
       name: sub?.name ?? '—',
       activities: withScores,
       average: avg,
+      weightedAverage,
+      gradingSystem: getGradingSystem(sid) ?? null,
     };
   });
 
@@ -142,8 +198,13 @@ export default function MyScores() {
               <span className="font-medium text-foreground"> (score / max score) x 100</span>. Example: <span className="font-medium text-foreground">18 / 20 = 90%</span>.
             </p>
             <p>
-              The <span className="font-medium text-foreground">Avg</span> beside each subject is the mean of all available activity percentages in that subject:
+              The <span className="font-medium text-foreground">Activity Avg</span> beside each subject is the mean of all available activity percentages in that subject:
               <span className="font-medium text-foreground"> (sum of graded activity percentages) / (count of graded activities)</span>.
+            </p>
+            <p>
+              If your instructor configured a grading system for the subject, the system also computes
+              <span className="font-medium text-foreground"> Weighted %</span> using Activity, Project, Attendance, and Exam categories.
+              Formula: <span className="font-medium text-foreground">(Activity x w1 + Project x w2 + Attendance x w3 + Exam x w4) / (w1 + w2 + w3 + w4)</span>.
             </p>
             <p>
               Activities marked <span className="font-medium text-foreground">—</span> are not graded yet and are excluded from the average until a score is entered.
@@ -154,13 +215,22 @@ export default function MyScores() {
             <p className="text-muted-foreground text-sm">You are not enrolled in any subjects yet. Enroll using a course code in My Subjects.</p>
           ) : (
             <div className="space-y-6">
-              {bySubject.map(({ subjectId, code, name, activities: acts, average }) => (
+              {bySubject.map(({ subjectId, code, name, activities: acts, average, weightedAverage, gradingSystem }) => (
                 <div key={subjectId} className="border border-border/70 rounded-xl bg-card/70 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="font-semibold">{code} — {name}</p>
-                    {average != null && (
-                      <Badge variant="secondary">Avg: {average}%</Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {average != null && (
+                        <Badge variant="outline">
+                          Activity Avg: {average}%{gradeBandFromPercent(average) ? ` (${gradeBandFromPercent(average)?.label})` : ''}
+                        </Badge>
+                      )}
+                      {gradingSystem && weightedAverage != null ? (
+                        <Badge variant="secondary">
+                          Weighted: {Math.round(weightedAverage)}%{gradeBandFromPercent(weightedAverage) ? ` (${gradeBandFromPercent(weightedAverage)?.label})` : ''}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
                   {acts.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No activities yet.</p>
@@ -182,7 +252,7 @@ export default function MyScores() {
                               )}
                             </div>
                             <span className={a.score != null ? 'font-medium' : 'text-muted-foreground'}>
-                              {a.score != null ? `${a.score} / ${a.max_score} (${a.pct}%)` : '—'}
+                              {a.score != null ? `${a.score} / ${a.max_score} (${a.pct}%)${gradeBandFromPercent(a.pct) ? ` • ${gradeBandFromPercent(a.pct)?.label}` : ''}` : '—'}
                             </span>
                           </li>
                         );
@@ -193,6 +263,21 @@ export default function MyScores() {
               ))}
             </div>
           )}
+
+          <div className="mt-6 rounded-lg border border-border/70 bg-muted/20 p-4">
+            <p className="text-sm font-medium text-foreground mb-2">Standard percentage grading system</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              All scores are evaluated using percentage-based grading bands.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {STANDARD_PERCENT_GRADE_SCALE.map((band) => (
+                <div key={band.label} className="flex items-center justify-between rounded border border-border/50 px-2.5 py-1.5">
+                  <span className="font-medium text-foreground">{band.label} — {band.remark}</span>
+                  <span className="text-muted-foreground">{band.min}-{band.max}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

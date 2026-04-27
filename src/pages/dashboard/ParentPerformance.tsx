@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { STANDARD_PERCENT_GRADE_SCALE, gradeBandFromPercent } from '@/lib/grading';
+import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -196,6 +198,19 @@ export default function ParentPerformance() {
     },
   });
 
+  const { data: gradingSystems = [] } = useQuery({
+    queryKey: ['parent-student-grading-systems', studentId, enrolledSubjectIds.join(',')],
+    enabled: !!studentId && enrolledSubjectIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subject_grading_systems')
+        .select('subject_id, activity_weight, project_weight, attendance_weight, exam_weight')
+        .in('subject_id', enrolledSubjectIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const allSubjectIdsKey = useMemo(() => {
     const set = new Set<string>();
     for (const s of enrolledSubjects) {
@@ -370,6 +385,11 @@ export default function ParentPerformance() {
     }
     return Array.from(grouped.entries()).map(([subjectId, subjectActivities]) => {
       const meta = resolveSubjectMeta(subjectId);
+      const attendanceRecords = (attendance as any[]).filter((row: any) => row?.subject_id === subjectId);
+      const attendancePercent = attendanceRecords.length
+        ? (attendanceRecords.filter((a: any) => a.status === 'present' || a.status === 'late').length / attendanceRecords.length) * 100
+        : null;
+      const gradingSystem = (gradingSystems as any[]).find((g: any) => g.subject_id === subjectId) ?? null;
       const items = subjectActivities.map((a: any) => {
         const submission = submissionByActivityId.get(a.id);
         const score = submission?.score ?? null;
@@ -387,6 +407,16 @@ export default function ParentPerformance() {
       });
       const graded = items.filter((i) => i.pct != null);
       const average = graded.length > 0 ? Math.round(graded.reduce((acc, cur) => acc + (cur.pct ?? 0), 0) / graded.length) : null;
+      const activityAverage = averageOf(items.filter((i) => i.type === 'quiz' || i.type === 'assignment' || i.type === 'activity').map((i) => i.pct));
+      const projectAverage = averageOf(items.filter((i) => i.type === 'project').map((i) => i.pct));
+      const examAverage = averageOf(items.filter((i) => i.type === 'exam').map((i) => i.pct));
+      const weightedAverage = computeWeightedGrade({
+        activityAverage,
+        projectAverage,
+        attendancePercent,
+        examAverage,
+        weights: gradingSystem,
+      });
       return {
         id: subjectId,
         subject_id: subjectId,
@@ -394,9 +424,11 @@ export default function ParentPerformance() {
         name: meta.name,
         items,
         average,
+        weightedAverage,
+        gradingSystem,
       };
     });
-  }, [activities, submissionByActivityId, resolveSubjectMeta]);
+  }, [activities, submissionByActivityId, resolveSubjectMeta, attendance, gradingSystems]);
 
   if (role !== 'parent') {
     return (
@@ -495,6 +527,25 @@ export default function ParentPerformance() {
         </Card>
       </div>
 
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            Each activity uses percentage scoring: <span className="font-medium text-foreground">(score / max score) x 100</span>.
+          </p>
+          <p>
+            Per subject, the instructor may define a 100% grading system using Activity, Project, Attendance, and Exam (midterm + finals) weights.
+            The weighted score follows those configured percentages.
+          </p>
+          <p>
+            Risk statuses are based on attendance trends, score performance, and generated risk predictions.
+            Lower weighted results across multiple components increase the chance of At Risk or Critical classification.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -592,6 +643,11 @@ export default function ParentPerformance() {
               Ungraded activities are listed but are not included in the average yet.
             </p>
             <p>
+              If an instructor grading system exists, the weighted result follows:
+              <span className="font-medium text-foreground"> (Activity x w1 + Project x w2 + Attendance x w3 + Exam x w4) / (w1 + w2 + w3 + w4)</span>.
+              Exam category includes both midterm and finals records entered as exam activities.
+            </p>
+            <p>
               Struggle areas are identified when repeated low percentages appear in the list, especially when paired with low attendance and
               risk outputs (At Risk/Critical). This means the same underlying records in this table are the basis of the overall performance indicators.
             </p>
@@ -604,7 +660,18 @@ export default function ParentPerformance() {
                 <section key={s.id} className="space-y-3 rounded-xl border border-border/60 p-4">
                   <div className="flex items-center justify-between">
                     <p className="font-semibold">{s.code} — {s.name}</p>
-                    {s.average != null ? <Badge variant="secondary">Avg: {s.average}%</Badge> : null}
+                    <div className="flex items-center gap-2">
+                      {s.average != null ? (
+                        <Badge variant="outline">
+                          Activity Avg: {s.average}%{gradeBandFromPercent(s.average) ? ` (${gradeBandFromPercent(s.average)?.label})` : ''}
+                        </Badge>
+                      ) : null}
+                      {s.gradingSystem && s.weightedAverage != null ? (
+                        <Badge variant="secondary">
+                          Weighted: {Math.round(s.weightedAverage)}%{gradeBandFromPercent(s.weightedAverage) ? ` (${gradeBandFromPercent(s.weightedAverage)?.label})` : ''}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
                   {s.items.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No activities yet.</p>
@@ -620,7 +687,9 @@ export default function ParentPerformance() {
                             </p>
                           </div>
                           <span className={a.score != null ? 'font-medium' : 'text-muted-foreground'}>
-                            {a.score != null ? `${a.score} / ${a.max_score} (${a.pct}%)` : 'Not graded'}
+                            {a.score != null
+                              ? `${a.score} / ${a.max_score} (${a.pct}%)${gradeBandFromPercent(a.pct) ? ` • ${gradeBandFromPercent(a.pct)?.label}` : ''}`
+                              : 'Not graded'}
                           </span>
                         </li>
                       ))}
@@ -630,6 +699,21 @@ export default function ParentPerformance() {
               ))}
             </div>
           )}
+
+          <div className="mt-6 rounded-lg border border-border/70 bg-muted/20 p-4">
+            <p className="text-sm font-medium text-foreground mb-2">Standard percentage grading system</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              The student&apos;s grade percentages are interpreted using this standard scale.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {STANDARD_PERCENT_GRADE_SCALE.map((band) => (
+                <div key={band.label} className="flex items-center justify-between rounded border border-border/50 px-2.5 py-1.5">
+                  <span className="font-medium text-foreground">{band.label} — {band.remark}</span>
+                  <span className="text-muted-foreground">{band.min}-{band.max}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

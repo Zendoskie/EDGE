@@ -227,6 +227,26 @@ export default function InstructorDashboard() {
         ))}
       </div>
 
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            Student percentages are based on <span className="font-medium text-foreground">(score / max score) x 100</span> for each activity.
+          </p>
+          <p>
+            For each subject you own, you can define a 100% grading system:
+            Activity %, Project %, Attendance %, and Exam % (midterm + finals combined).
+            The system applies these weights when computing weighted course performance.
+          </p>
+          <p>
+            Prediction risk levels use attendance, grade behavior, and completion signals.
+            Low weighted performance across these components raises intervention priority.
+          </p>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">
           <TabsTrigger value="overview">Overview</TabsTrigger>

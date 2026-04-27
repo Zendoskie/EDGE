@@ -420,6 +420,50 @@ export type Database = {
           },
         ]
       }
+      subject_grading_systems: {
+        Row: {
+          activity_weight: number
+          attendance_weight: number
+          created_at: string
+          created_by: string
+          exam_weight: number
+          id: string
+          project_weight: number
+          subject_id: string
+          updated_at: string
+        }
+        Insert: {
+          activity_weight?: number
+          attendance_weight?: number
+          created_at?: string
+          created_by?: string
+          exam_weight?: number
+          id?: string
+          project_weight?: number
+          subject_id: string
+          updated_at?: string
+        }
+        Update: {
+          activity_weight?: number
+          attendance_weight?: number
+          created_at?: string
+          created_by?: string
+          exam_weight?: number
+          id?: string
+          project_weight?: number
+          subject_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subject_grading_systems_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: true
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       submissions: {
         Row: {
           activity_id: string | null

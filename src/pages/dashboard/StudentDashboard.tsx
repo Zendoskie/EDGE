@@ -179,6 +179,25 @@ export default function StudentDashboard() {
             ))}
       </div>
 
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            Activity percentages are computed as <span className="font-medium text-foreground">(score / max score) x 100</span>.
+          </p>
+          <p>
+            For each subject, your instructor can configure a grading system that must total 100%:
+            Activity + Project + Attendance + Exam (midterm + finals). Your weighted result follows those course-specific percentages.
+          </p>
+          <p>
+            Risk level is inferred from attendance, graded outputs, and completion patterns from predictions.
+            Consistently low weighted performance across subjects increases At Risk/Critical status.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="bg-card/90">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
