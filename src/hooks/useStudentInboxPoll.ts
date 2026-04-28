@@ -110,6 +110,31 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
             dedupeKey: `att:${row.id}:${row.date}:${row.status}`,
           });
         }
+
+        const { data: interventions } = await supabase
+          .from("interventions")
+          .select("id, sent_at, subject_id, message, subjects(code)")
+          .eq("student_id", userId)
+          .gt("sent_at", lastPoll)
+          .order("sent_at", { ascending: false })
+          .limit(25);
+
+        for (const i of interventions ?? []) {
+          const row = i as {
+            id: string;
+            sent_at: string | null;
+            message: string | null;
+            subjects: { code?: string } | null;
+          };
+          const msg = row.message?.trim();
+          if (!msg || !msg.toLowerCase().startsWith("early warning alert")) continue;
+          const code = row.subjects?.code ?? "your subject";
+          addRef.current({
+            title: "Instructor early warning",
+            body: `${code}: ${msg}`,
+            dedupeKey: `early-warning:${row.id}:${row.sent_at ?? ""}`,
+          });
+        }
       } catch (e) {
         console.warn("useStudentInboxPoll:", e);
       }

@@ -68,6 +68,28 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
         {
           event: "INSERT",
           schema: "public",
+          table: "interventions",
+          filter: `student_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | undefined;
+          if (!row) return;
+          const id = String(row.id ?? payload.commit_timestamp ?? Date.now());
+          const msg = typeof row.message === "string" && row.message.trim()
+            ? row.message
+            : "Your instructor sent an early warning alert. Please review your progress.";
+          addRef.current({
+            title: "Instructor early warning",
+            body: msg,
+            dedupeKey: `intervention:${id}`,
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
           table: "predictions",
           filter: `student_id=eq.${userId}`,
         },

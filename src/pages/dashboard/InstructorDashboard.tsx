@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, XAxis, YAxis, CartesianGrid, Cell } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 const riskLabel = (level: string) => {
   if (level === 'critical') return 'Critical';
@@ -33,8 +36,35 @@ const getYearFromSubject = (subject: any) => {
   return 1; // Default to year 1 if no year found
 };
 
+const riskSeverity = (level: string) => {
+  if (level === 'critical') return 3;
+  if (level === 'at_risk') return 2;
+  if (level === 'stable') return 1;
+  return 0;
+};
+
+function alignTrendWithRisk(
+  trend: 'improved' | 'declined' | 'stable',
+  latestRisk: string,
+  previousRisk: string,
+): 'improved' | 'declined' | 'stable' {
+  // Guardrails for clearer instructor interpretation:
+  // - Critical cannot be tagged as improved.
+  // - Stable/Excelling cannot be tagged as declined.
+  if (latestRisk === 'critical') return 'declined';
+  if (latestRisk === 'stable' || latestRisk === 'excelling') {
+    return trend === 'declined' ? 'stable' : trend;
+  }
+  if (latestRisk === 'at_risk' && trend === 'improved') {
+    // Only allow "improved" at at-risk level when coming down from critical.
+    return previousRisk === 'critical' ? 'improved' : 'stable';
+  }
+  return trend;
+}
+
 export default function InstructorDashboard() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: subjectsWithPrograms } = useQuery({
     queryKey: ['instructor-subjects-programs', user?.id],
@@ -138,6 +168,318 @@ export default function InstructorDashboard() {
       return data ?? [];
     },
     enabled: !!user?.id && !!subjectsWithPrograms,
+  });
+
+  const { data: monitoringRows = [], isError: monitoringIsError, error: monitoringError } = useQuery({
+    queryKey: ['instructor-monitoring-rows', user?.id],
+    queryFn: async () => {
+      const ids = subjectsWithPrograms?.map((s) => s.id) ?? [];
+      if (ids.length === 0) return [];
+
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from('enrollments')
+        .select('student_id, subject_id, status')
+        .in('subject_id', ids)
+        .eq('status', 'active');
+      if (enrollmentsError) throw enrollmentsError;
+      const enrollmentRows = enrollments ?? [];
+      if (enrollmentRows.length === 0) return [];
+
+        const { data: predictions, error } = await supabase
+        .from('predictions')
+        .select('id, student_id, subject_id, risk_level, attendance_rate, quiz_average, assignment_average, project_score, created_at, subjects(code, name)')
+        .in('subject_id', ids)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const predRows = predictions ?? [];
+
+      const { data: attendanceRows, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('student_id, subject_id, status, date')
+        .in('subject_id', ids)
+        .order('date', { ascending: false });
+      if (attendanceError) throw attendanceError;
+
+      const studentIds = Array.from(
+        new Set(enrollmentRows.map((e: any) => e.student_id).filter((id: unknown): id is string => typeof id === 'string')),
+      );
+
+      const { data: submissionRows, error: submissionsError } = await supabase
+        .from('submissions')
+        .select('student_id, score, graded_at, submitted_at, activities(subject_id, max_score)')
+        .in('student_id', studentIds);
+      if (submissionsError) throw submissionsError;
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email, student_id')
+        .in('user_id', studentIds);
+      const profileByStudentId = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
+
+      const grouped = new Map<string, any[]>();
+      for (const row of predRows) {
+        const key = `${row.student_id}::${row.subject_id}`;
+        const existing = grouped.get(key) ?? [];
+        existing.push(row);
+        grouped.set(key, existing);
+      }
+
+      const subjectById = new Map((subjectsWithPrograms ?? []).map((s: any) => [s.id, s]));
+      const attendanceByKey = new Map<string, Array<{ status: string; date: string | null }>>();
+      for (const row of attendanceRows ?? []) {
+        if (typeof row?.student_id !== 'string' || typeof row?.subject_id !== 'string') continue;
+        const key = `${row.student_id}::${row.subject_id}`;
+        const existing = attendanceByKey.get(key) ?? [];
+        existing.push({ status: String(row.status ?? ''), date: row.date ?? null });
+        attendanceByKey.set(key, existing);
+      }
+
+      const scoresByKey = new Map<string, Array<{ pct: number; ts: number }>>();
+      for (const row of submissionRows ?? []) {
+        const activity = row?.activities as any;
+        const subjectId = activity?.subject_id;
+        const studentId = row?.student_id;
+        const score = row?.score;
+        const max = Number(activity?.max_score ?? 0);
+        if (typeof studentId !== 'string' || typeof subjectId !== 'string') continue;
+        if (score == null || !Number.isFinite(max) || max <= 0) continue;
+        const pct = (Number(score) / max) * 100;
+        if (!Number.isFinite(pct)) continue;
+        const tsRaw = row?.graded_at ?? row?.submitted_at ?? null;
+        const ts = tsRaw ? Date.parse(String(tsRaw)) : 0;
+        const key = `${studentId}::${subjectId}`;
+        const existing = scoresByKey.get(key) ?? [];
+        existing.push({ pct, ts: Number.isFinite(ts) ? ts : 0 });
+        scoresByKey.set(key, existing);
+      }
+      for (const [key, values] of scoresByKey.entries()) {
+        values.sort((a, b) => b.ts - a.ts);
+        scoresByKey.set(key, values);
+      }
+
+      return enrollmentRows.map((enroll: any) => {
+        const key = `${enroll.student_id}::${enroll.subject_id}`;
+        const history = grouped.get(key) ?? [];
+        const latest = history[0] ?? null;
+        const previous = history[1] ?? null;
+        const subject = subjectById.get(enroll.subject_id);
+        const latestRisk = latest?.risk_level ?? 'stable';
+        const previousRisk = previous?.risk_level ?? latestRisk;
+
+        let trend: 'improved' | 'declined' | 'stable' = 'stable';
+        const riskDelta = riskSeverity(latestRisk) - riskSeverity(previousRisk);
+        if (previous) {
+          if (riskDelta < 0) trend = 'improved';
+          if (riskDelta > 0) trend = 'declined';
+        }
+
+        const latestScores = [latest?.quiz_average, latest?.assignment_average, latest?.project_score]
+          .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
+        const latestScoreAvg = latestScores.length > 0
+          ? latestScores.reduce((a, b) => a + b, 0) / latestScores.length
+          : 0;
+        const previousScoreAvg = previous
+          ? (() => {
+              const prevScores = [previous?.quiz_average, previous?.assignment_average, previous?.project_score]
+                .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
+              return prevScores.length > 0 ? prevScores.reduce((a, b) => a + b, 0) / prevScores.length : 0;
+            })()
+          : latestScoreAvg;
+        if (trend === 'stable' && previous) {
+          if (latestScoreAvg - previousScoreAvg >= 5) trend = 'improved';
+          if (previousScoreAvg - latestScoreAvg >= 5) trend = 'declined';
+        }
+
+        // Fallback trend when no prior prediction exists:
+        // compare recent vs older performance windows from scores and attendance.
+        if (!previous) {
+          const scoreHistory = scoresByKey.get(key) ?? [];
+          const recentScores = scoreHistory.slice(0, 3).map((s) => s.pct);
+          const olderScores = scoreHistory.slice(3, 6).map((s) => s.pct);
+          const recentScoreAvg = recentScores.length ? recentScores.reduce((a, b) => a + b, 0) / recentScores.length : null;
+          const olderScoreAvg = olderScores.length ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length : null;
+
+          const attendanceHistory = (attendanceByKey.get(key) ?? []).map((a) => a.status);
+          const recentAttendance = attendanceHistory.slice(0, 5);
+          const olderAttendance = attendanceHistory.slice(5, 10);
+          const attendanceRate = (list: string[]) =>
+            list.length === 0
+              ? null
+              : (list.filter((s) => s === 'present' || s === 'late').length / list.length) * 100;
+          const recentAttendanceRate = attendanceRate(recentAttendance);
+          const olderAttendanceRate = attendanceRate(olderAttendance);
+
+          const signals: Array<'improved' | 'declined'> = [];
+          if (recentScoreAvg != null && olderScoreAvg != null) {
+            if (recentScoreAvg - olderScoreAvg >= 5) signals.push('improved');
+            if (olderScoreAvg - recentScoreAvg >= 5) signals.push('declined');
+          }
+          if (recentAttendanceRate != null && olderAttendanceRate != null) {
+            if (recentAttendanceRate - olderAttendanceRate >= 10) signals.push('improved');
+            if (olderAttendanceRate - recentAttendanceRate >= 10) signals.push('declined');
+          }
+
+          if (signals.includes('declined') && !signals.includes('improved')) trend = 'declined';
+          else if (signals.includes('improved') && !signals.includes('declined')) trend = 'improved';
+          else if (latestRisk === 'critical' || latestRisk === 'at_risk') trend = 'declined';
+          else trend = 'stable';
+        }
+
+        trend = alignTrendWithRisk(trend, latestRisk, previousRisk);
+
+        const attendanceHistoryAll = (attendanceByKey.get(key) ?? []).map((a) => a.status);
+        const attendanceRateAll =
+          attendanceHistoryAll.length === 0
+            ? null
+            : (attendanceHistoryAll.filter((s) => s === 'present' || s === 'late').length / attendanceHistoryAll.length) * 100;
+        const attendancePct = latest?.attendance_rate != null
+          ? Math.round(Number(latest.attendance_rate) * 100)
+          : attendanceRateAll != null
+            ? Math.round(attendanceRateAll)
+            : null;
+        const subjectCode = (latest?.subjects as any)?.code ?? subject?.code ?? '—';
+        const subjectName = (latest?.subjects as any)?.name ?? subject?.name ?? 'Subject';
+        const profile = profileByStudentId.get(enroll.student_id);
+
+        const scoreHistoryForDisplay = scoresByKey.get(key) ?? [];
+        const scoreFromHistory =
+          scoreHistoryForDisplay.length > 0
+            ? scoreHistoryForDisplay.slice(0, 5).reduce((a, b) => a + b.pct, 0) / Math.min(scoreHistoryForDisplay.length, 5)
+            : null;
+        const displayScoreAvg =
+          latestScoreAvg > 0
+            ? Math.round(latestScoreAvg)
+            : scoreFromHistory != null
+              ? Math.round(scoreFromHistory)
+              : null;
+
+        const reasons: string[] = [];
+        if (latestRisk === 'critical' || latestRisk === 'at_risk') reasons.push(`Risk level: ${riskLabel(latestRisk)}`);
+        if (attendancePct != null && attendancePct < 75) reasons.push(`Low attendance: ${attendancePct}%`);
+        if (displayScoreAvg != null && displayScoreAvg < 70) reasons.push(`Low score average: ${displayScoreAvg}%`);
+        if (trend === 'declined') reasons.push('Declining trend detected');
+
+        return {
+          key: `${enroll.student_id}-${enroll.subject_id}`,
+          studentId: enroll.student_id as string,
+          studentName: profile?.full_name || 'Unknown student',
+          studentEmail: profile?.email || null,
+          studentNo: profile?.student_id || '—',
+          subjectId: enroll.subject_id as string,
+          subjectCode,
+          subjectName,
+          latestRisk,
+          attendancePct,
+          latestScoreAvg: displayScoreAvg,
+          trend,
+          reasons,
+          createdAt: latest?.created_at as string | null,
+        };
+      });
+    },
+    enabled: !!user?.id && !!subjectsWithPrograms,
+  });
+
+  const trendSummary = useMemo(() => {
+    const improved = monitoringRows.filter((r: any) => r.trend === 'improved').length;
+    const declined = monitoringRows.filter((r: any) => r.trend === 'declined').length;
+    const stable = monitoringRows.filter((r: any) => r.trend === 'stable').length;
+    return { improved, declined, stable };
+  }, [monitoringRows]);
+
+  const sortedMonitoringRows = useMemo(() => {
+    const trendPriority: Record<string, number> = {
+      declined: 0,
+      stable: 1,
+      improved: 2,
+    };
+    return [...monitoringRows].sort((a: any, b: any) => {
+      const riskDelta = riskSeverity(b.latestRisk) - riskSeverity(a.latestRisk);
+      if (riskDelta !== 0) return riskDelta;
+      const trendDelta = (trendPriority[a.trend] ?? 9) - (trendPriority[b.trend] ?? 9);
+      if (trendDelta !== 0) return trendDelta;
+      const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return tb - ta;
+    });
+  }, [monitoringRows]);
+
+  const earlyWarnings = useMemo(
+    () => monitoringRows.filter((r: any) => Array.isArray(r.reasons) && r.reasons.length > 0),
+    [monitoringRows],
+  );
+
+  const { data: earlyWarningHistory = [] } = useQuery({
+    queryKey: ['instructor-early-warning-history', user?.id, monitoringRows.length],
+    queryFn: async () => {
+      const subjectIds = Array.from(
+        new Set(
+          monitoringRows
+            .map((row: any) => row.subjectId)
+            .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0),
+        ),
+      );
+      if (subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('interventions')
+        .select('id, student_id, subject_id, sent_at, message, type, status')
+        .in('subject_id', subjectIds)
+        .eq('type', 'email')
+        .eq('status', 'sent')
+        .ilike('message', 'Early warning alert%')
+        .order('sent_at', { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user?.id && monitoringRows.length > 0,
+  });
+
+  const earlyWarningByStudentSubject = useMemo(() => {
+    const map = new Map<string, { sentAt: string | null }>();
+    for (const row of earlyWarningHistory as any[]) {
+      if (typeof row?.student_id !== 'string' || typeof row?.subject_id !== 'string') continue;
+      const key = `${row.student_id}-${row.subject_id}`;
+      if (!map.has(key)) {
+        map.set(key, { sentAt: (row?.sent_at as string | null) ?? null });
+      }
+    }
+    return map;
+  }, [earlyWarningHistory]);
+
+  const notifyStudent = useMutation({
+    mutationFn: async (row: any) => {
+      const message = `Early warning alert for ${row.subjectCode}: ${row.reasons.join('; ')}. Please review your progress and contact your instructor for support.`;
+      const { error: interventionError } = await supabase.from('interventions').insert({
+        student_id: row.studentId,
+        subject_id: row.subjectId,
+        type: 'email',
+        message,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+      if (interventionError) throw new Error(interventionError.message || 'Failed to create in-app warning.');
+
+      if (row?.studentEmail) {
+        const { error } = await supabase.functions.invoke('send-notification', {
+          body: {
+            to: row.studentEmail,
+            student_id: row.studentId,
+            subject_id: row.subjectId,
+            risk_level: row.latestRisk,
+            subject_code: row.subjectCode,
+            subject_name: row.subjectName,
+            body: message,
+          },
+        });
+        if (error) {
+          throw new Error(`In-app warning saved, but email failed: ${error.message || 'send error'}`);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Early warning sent to student account');
+      queryClient.invalidateQueries({ queryKey: ['instructor-early-warning-history', user?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   // Group subjects by program and year
@@ -308,6 +650,142 @@ export default function InstructorDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="mt-6 bg-card/90 interactive-lift">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Student Progress Monitoring
+                </CardTitle>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">How trend works</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Trend interpretation</DialogTitle>
+                    </DialogHeader>
+                    <div className="text-sm text-muted-foreground space-y-2">
+                      <p>
+                        <span className="font-medium text-foreground">Improved</span>: Risk is getting better, or recent scores/attendance are clearly better than older records.
+                      </p>
+                      <p>
+                        <span className="font-medium text-foreground">Stable</span>: No significant positive or negative movement in risk, attendance, and score indicators.
+                      </p>
+                      <p>
+                        <span className="font-medium text-foreground">Declined</span>: Risk worsened, or recent scores/attendance dropped versus prior records.
+                      </p>
+                      <p>
+                        Trend is constrained for clarity: <span className="font-medium text-foreground">Critical</span> will not show as Improved, and
+                        <span className="font-medium text-foreground"> Stable/Excelling</span> will not show as Declined.
+                      </p>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Tracks whether each student is improving, stable, or declining based on recent prediction history.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2 mb-4">
+                <Badge variant="default">Improved: {trendSummary.improved}</Badge>
+                <Badge variant="secondary">Stable: {trendSummary.stable}</Badge>
+                <Badge variant="destructive">Declined: {trendSummary.declined}</Badge>
+              </div>
+              {monitoringRows.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  {monitoringIsError
+                    ? `Monitoring failed: ${monitoringError instanceof Error ? monitoringError.message : 'Unknown error'}`
+                    : 'No monitoring data yet. Ensure students are actively enrolled and have attendance/score records.'}
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {sortedMonitoringRows.slice(0, 30).map((row: any) => (
+                    <div
+                      key={row.key}
+                      className={`rounded-lg border p-3 ${
+                        row.trend === 'declined'
+                          ? 'border-destructive/40 bg-destructive/5'
+                          : row.trend === 'improved'
+                            ? 'border-emerald-500/40 bg-emerald-500/5'
+                            : 'border-border/60'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {row.studentName} ({row.studentNo}) — {row.subjectCode}
+                        </p>
+                        <div className="flex gap-2">
+                          <Badge variant={riskVariant(row.latestRisk)}>Status: {riskLabel(row.latestRisk)}</Badge>
+                          <Badge variant={row.trend === 'declined' ? 'destructive' : row.trend === 'improved' ? 'default' : 'secondary'}>
+                            Trend: {row.trend}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Attendance: {row.attendancePct != null ? `${row.attendancePct}%` : '—'} • Score Avg: {row.latestScoreAvg != null ? `${row.latestScoreAvg}%` : 'No graded metrics yet'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Last prediction: {row.createdAt ? new Date(row.createdAt).toLocaleString() : 'No prediction yet'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6 bg-card/90 interactive-lift">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Early Warning Alerts
+              </CardTitle>
+              <Badge variant={earlyWarnings.length > 0 ? 'destructive' : 'secondary'}>
+                {earlyWarnings.length} active
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              {earlyWarnings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No early warning concerns detected from current prediction data.</p>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {earlyWarnings.slice(0, 30).map((row: any) => (
+                    <div key={`warning-${row.key}`} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                      {(() => {
+                        const sent = earlyWarningByStudentSubject.get(`${row.studentId}-${row.subjectId}`);
+                        return sent ? (
+                          <div className="mb-2 flex items-center justify-end">
+                            <Badge variant="secondary">
+                              Notified {sent.sentAt ? new Date(sent.sentAt).toLocaleString() : 'recently'}
+                            </Badge>
+                          </div>
+                        ) : null;
+                      })()}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {row.studentName} — {row.subjectCode}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={notifyStudent.isPending || !row.studentEmail}
+                          onClick={() => notifyStudent.mutate(row)}
+                        >
+                          {row.studentEmail ? 'Notify student' : 'No email'}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {row.reasons.length > 0 ? row.reasons.join(' | ') : 'Performance concern detected.'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {analyticsData?.needIntervention?.length ? (
             <Card className="mt-6 bg-card/90 interactive-lift">
