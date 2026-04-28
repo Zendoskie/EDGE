@@ -464,6 +464,54 @@ export type Database = {
           },
         ]
       }
+      student_feedback: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          prediction_id: string | null
+          reasons: string[]
+          risk_level: string
+          student_id: string
+          subject_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          prediction_id?: string | null
+          reasons?: string[]
+          risk_level: string
+          student_id?: string
+          subject_id: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          prediction_id?: string | null
+          reasons?: string[]
+          risk_level?: string
+          student_id?: string
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_feedback_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: false
+            referencedRelation: "predictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_feedback_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       submissions: {
         Row: {
           activity_id: string | null

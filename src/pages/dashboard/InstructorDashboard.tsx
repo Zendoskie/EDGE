@@ -445,6 +445,35 @@ export default function InstructorDashboard() {
     return map;
   }, [earlyWarningHistory]);
 
+  const { data: recentStudentFeedback = [] } = useQuery({
+    queryKey: ['instructor-student-feedback', user?.id],
+    queryFn: async () => {
+      const ids = subjectsWithPrograms?.map((s: any) => s.id) ?? [];
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from('student_feedback')
+        .select('id, created_at, student_id, subject_id, risk_level, reasons, details')
+        .in('subject_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      const studentIds = Array.from(new Set((data ?? []).map((r: any) => r.student_id).filter(Boolean)));
+      const subjectIds = Array.from(new Set((data ?? []).map((r: any) => r.subject_id).filter(Boolean)));
+      const [profilesRes, subjectsRes] = await Promise.all([
+        studentIds.length ? supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', studentIds) : Promise.resolve({ data: [] as any[] }),
+        subjectIds.length ? supabase.from('subjects').select('id, code, name').in('id', subjectIds) : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const profileMap = new Map((profilesRes.data ?? []).map((p: any) => [p.user_id, p]));
+      const subjectMap = new Map((subjectsRes.data ?? []).map((s: any) => [s.id, s]));
+      return (data ?? []).map((r: any) => ({
+        ...r,
+        student: profileMap.get(r.student_id) ?? null,
+        subject: subjectMap.get(r.subject_id) ?? null,
+      }));
+    },
+    enabled: !!user?.id && !!subjectsWithPrograms,
+  });
+
   const notifyStudent = useMutation({
     mutationFn: async (row: any) => {
       const message = `Early warning alert for ${row.subjectCode}: ${row.reasons.join('; ')}. Please review your progress and contact your instructor for support.`;
@@ -730,6 +759,46 @@ export default function InstructorDashboard() {
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Last prediction: {row.createdAt ? new Date(row.createdAt).toLocaleString() : 'No prediction yet'}
                       </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6 bg-card/90 interactive-lift">
+            <CardHeader>
+              <CardTitle className="text-lg">Student feedback</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Feedback submitted by at-risk/critical students to explain why they are struggling.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {recentStudentFeedback.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No student feedback submitted yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-72 overflow-y-auto">
+                  {recentStudentFeedback.map((f: any) => (
+                    <div key={f.id} className="rounded-xl border border-border/60 p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">
+                            {f.student?.full_name ?? f.student?.email ?? f.student_id} — {f.subject?.code ?? f.subject_id}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {f.subject?.name ?? ''} • {f.student?.student_id ?? '—'} • {f.created_at ? new Date(f.created_at).toLocaleString() : ''}
+                          </p>
+                        </div>
+                        <Badge variant={f.risk_level === 'critical' || f.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
+                          {riskLabel(f.risk_level)}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(f.reasons ?? []).slice(0, 6).map((r: string) => (
+                          <Badge key={r} variant="outline" className="text-xs">{r}</Badge>
+                        ))}
+                      </div>
+                      {f.details ? <p className="text-sm text-muted-foreground">{f.details}</p> : null}
                     </div>
                   ))}
                 </div>

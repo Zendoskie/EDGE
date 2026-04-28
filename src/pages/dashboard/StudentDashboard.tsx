@@ -7,6 +7,14 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -16,6 +24,7 @@ interface StudentStats {
   riskLevel: string | null;
   recommendation: string | null;
   subjectLabel: string | null;
+  riskSource: 'prediction' | 'derived';
 }
 
 interface RecentActivity {
@@ -35,6 +44,11 @@ interface RecentActivity {
 
 export default function StudentDashboard() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [selectedReasons, setSelectedReasons] = useState<Record<string, boolean>>({});
+  const [details, setDetails] = useState("");
+  const [feedbackSubjectId, setFeedbackSubjectId] = useState<string | null>(null);
 
   const programCode = (user?.user_metadata as any)?.course as string | undefined;
   const yearLevel = (user?.user_metadata as any)?.year_level as string | undefined;
@@ -70,7 +84,7 @@ export default function StudentDashboard() {
         .eq('student_id', user!.id);
       const total = attRecords?.length ?? 0;
       const present = attRecords?.filter(a => a.status === 'present' || a.status === 'late').length ?? 0;
-      const attendanceRate = total > 0 ? Math.round((present / total) * 100) : null;
+      const attendanceRateNum = total > 0 ? Math.round((present / total) * 100) : null;
 
       const { data: subs } = await supabase
         .from('submissions')
@@ -95,14 +109,51 @@ export default function StudentDashboard() {
         .limit(1)
         .maybeSingle();
 
+      const predLevel = pred?.risk_level ?? null;
+      const predTs = pred?.created_at ? Date.parse(pred.created_at) : 0;
+      const predIsRecent = Number.isFinite(predTs) ? (Date.now() - predTs) <= 14 * 24 * 60 * 60 * 1000 : false;
+
+      const derivedLevel = (() => {
+        const a = overallAvg ?? null;
+        const att = attendanceRateNum ?? null;
+        if (a == null && att == null) return null;
+        const lowScore = a != null && a < 70;
+        const veryLowScore = a != null && a < 60;
+        const lowAttendance = att != null && att < 75;
+        const veryLowAttendance = att != null && att < 60;
+        if (veryLowScore || veryLowAttendance) return 'critical';
+        if (lowScore || lowAttendance) return 'at_risk';
+        return 'stable';
+      })();
+
+      // Use prediction when it's recent, but avoid showing "At Risk" when current performance is clearly stable.
+      const resolvedLevel = (() => {
+        if (predIsRecent && predLevel) {
+          if ((predLevel === 'critical' || predLevel === 'at_risk') && derivedLevel === 'stable') {
+            return 'stable';
+          }
+          return predLevel;
+        }
+        return derivedLevel ?? predLevel;
+      })();
+
+      const resolvedSource: 'prediction' | 'derived' = predIsRecent && predLevel ? 'prediction' : 'derived';
+      const levelLabel = resolvedLevel
+        ? (resolvedLevel === 'critical' ? 'Critical'
+          : resolvedLevel === 'at_risk' ? 'At Risk'
+          : resolvedLevel === 'excelling' ? 'Excelling'
+          : 'Stable')
+        : '—';
+
       return {
         enrolledSubjects: enrolledCount,
-        attendanceRate: attendanceRate != null ? `${attendanceRate}%` : '—',
+        attendanceRate: attendanceRateNum != null ? `${attendanceRateNum}%` : '—',
         overallAverage: overallAvg != null ? `${overallAvg}%` : '—',
-        riskStatus: pred?.risk_level ? (pred.risk_level === 'critical' ? 'Critical' : pred.risk_level === 'at_risk' ? 'At Risk' : pred.risk_level === 'excelling' ? 'Excelling' : 'Stable') : '—',
-        riskLevel: pred?.risk_level ?? null,
+        riskStatus: levelLabel,
+        riskLevel: resolvedLevel ?? null,
         recommendation: (pred as any)?.recommendation ?? null,
         subjectLabel: (pred as any)?.subjects?.code ? `${(pred as any)?.subjects?.code} — ${(pred as any)?.subjects?.name ?? ''}`.trim() : null,
+        riskSource: resolvedSource,
       };
     },
     enabled: !!user?.id,
@@ -122,11 +173,155 @@ export default function StudentDashboard() {
     enabled: !!user?.id,
   });
 
+  const { data: atRiskSubjects = [] } = useQuery({
+    queryKey: ["student-at-risk-subjects", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from("predictions")
+        .select("id, subject_id, risk_level, created_at, subjects(code, name)")
+        .eq("student_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      const latestBySubject = new Map<string, any>();
+      for (const row of data ?? []) {
+        if (!row.subject_id) continue;
+        if (!latestBySubject.has(row.subject_id)) latestBySubject.set(row.subject_id, row);
+      }
+      return Array.from(latestBySubject.values()).filter(
+        (p: any) => p.risk_level === "critical" || p.risk_level === "at_risk",
+      );
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: latestGradeBySubject = {} } = useQuery<Record<string, string>>({
+    queryKey: ["student-latest-grade-by-subject", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return {};
+      const { data, error } = await supabase
+        .from("submissions")
+        .select("id, graded_at, submitted_at, activities(subject_id)")
+        .eq("student_id", user.id)
+        .not("score", "is", null)
+        .order("graded_at", { ascending: false, nullsFirst: false })
+        .order("submitted_at", { ascending: false, nullsFirst: false })
+        .limit(300);
+      if (error) return {};
+      const latest: Record<string, string> = {};
+      for (const row of data ?? []) {
+        const sid = (row as any)?.activities?.subject_id;
+        if (typeof sid !== "string") continue;
+        if (latest[sid]) continue;
+        const t = (row as any)?.graded_at ?? (row as any)?.submitted_at ?? null;
+        if (typeof t === "string" && t) latest[sid] = t;
+      }
+      return latest;
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: feedbackHistory = [] } = useQuery({
+    queryKey: ["student-feedback-history", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from("student_feedback")
+        .select("id, subject_id, created_at")
+        .eq("student_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const needsFeedback = useMemo(() => {
+    const lastBySubject = new Map<string, string>();
+    for (const row of feedbackHistory as any[]) {
+      if (typeof row?.subject_id !== "string") continue;
+      if (!lastBySubject.has(row.subject_id)) lastBySubject.set(row.subject_id, String(row.created_at ?? ""));
+    }
+    return (atRiskSubjects as any[]).filter((p: any) => {
+      const subjectId = p.subject_id;
+      if (!subjectId) return false;
+      const lastGrade = (latestGradeBySubject as any)[subjectId] as string | undefined;
+      if (!lastGrade) return false; // only ask after at least one graded submission exists
+      const last = lastBySubject.get(subjectId);
+      if (!last) return true;
+      const gradeTs = Date.parse(lastGrade);
+      const lastTs = Date.parse(last);
+      if (!Number.isFinite(lastTs)) return true;
+      if (Number.isFinite(gradeTs) && gradeTs > lastTs) return true; // new grades since last feedback
+      // Cooldown: if no new grades, don't spam the student
+      return Date.now() - lastTs > 14 * 24 * 60 * 60 * 1000;
+    });
+  }, [atRiskSubjects, feedbackHistory, latestGradeBySubject]);
+
+  const reasonOptions = [
+    "Inadequate preparation (poor study habits/time management)",
+    "Lack of motivation",
+    "Fear of failure",
+    "External pressures (work/family/financial/health)",
+    "Difficulty understanding lessons/content",
+    "Missed classes / attendance issues",
+    "Missing or late submissions",
+    "Other",
+  ];
+
+  const feedbackTarget = useMemo(() => {
+    if (!needsFeedback.length) return null;
+    const preferred = feedbackSubjectId
+      ? (needsFeedback as any[]).find((p: any) => p.subject_id === feedbackSubjectId) ?? null
+      : null;
+    return preferred ?? needsFeedback[0] ?? null;
+  }, [needsFeedback, feedbackSubjectId]);
+  // Show feedback when at least one subject is currently Critical/At Risk (per-subject prediction)
+  // and the student has recent graded activity for that subject.
+  const showFeedbackPrompt = !!feedbackTarget;
+
+  const feedbackSubjectLabel = (p: any) => {
+    const subj = p?.subjects as any;
+    const code = subj?.code ?? "Subject";
+    const name = subj?.name ? ` — ${subj.name}` : "";
+    const level = p?.risk_level === "critical" ? "Critical" : "At Risk";
+    return `${code}${name} (${level})`;
+  };
+
+  const feedbackMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error("Missing session");
+      if (!feedbackTarget?.subject_id) throw new Error("Missing subject");
+      const reasons = reasonOptions.filter((r) => selectedReasons[r]);
+      if (reasons.length === 0) throw new Error("Select at least one reason.");
+      const { error } = await supabase.from("student_feedback").insert({
+        student_id: user.id,
+        subject_id: feedbackTarget.subject_id,
+        prediction_id: feedbackTarget.id,
+        risk_level: feedbackTarget.risk_level,
+        reasons,
+        details: details.trim() ? details.trim() : null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Feedback submitted. Thank you.");
+      setFeedbackOpen(false);
+      setSelectedReasons({});
+      setDetails("");
+      setFeedbackSubjectId(null);
+      queryClient.invalidateQueries({ queryKey: ["student-feedback-history", user?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const statCards = [
     { title: 'Enrolled Subjects', value: stats?.enrolledSubjects ?? '—', icon: BookOpen, color: 'text-primary' },
     { title: 'Attendance Rate', value: stats?.attendanceRate ?? '—', icon: CalendarCheck, color: 'text-success' },
     { title: 'Overall Average', value: stats?.overallAverage ?? '—', icon: BarChart3, color: 'text-accent-foreground' },
-    { title: 'Risk Status', value: stats?.riskStatus ?? '—', icon: Brain, color: 'text-muted-foreground' },
+    { title: 'Risk Status', value: stats?.riskStatus ? `${stats.riskStatus}${stats?.riskSource ? ` (${stats.riskSource === 'prediction' ? 'AI' : 'Current' })` : ''}` : '—', icon: Brain, color: 'text-muted-foreground' },
   ];
 
   return (
@@ -197,6 +392,117 @@ export default function StudentDashboard() {
           </p>
         </CardContent>
       </Card>
+
+      {showFeedbackPrompt ? (
+        <Card className="bg-card/90 border-border/70">
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">Student feedback (requested)</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your recent grades indicate you are{" "}
+                <span className="font-medium text-foreground">
+                  {feedbackTarget.risk_level === "critical" ? "Critical" : "At Risk"}
+                </span>{" "}
+                for{" "}
+                <span className="font-medium text-foreground">
+                  {(feedbackTarget.subjects as any)?.code ?? "Subject"}
+                </span>
+                . Share why this happened so your instructor/guidance counselor can support you.
+              </p>
+              {needsFeedback.length > 1 ? (
+                <div className="mt-3 max-w-md">
+                  <Label className="text-xs text-muted-foreground">Select subject</Label>
+                  <Select
+                    value={feedbackTarget?.subject_id ?? ""}
+                    onValueChange={(v) => {
+                      setFeedbackSubjectId(v);
+                      setSelectedReasons({});
+                      setDetails("");
+                    }}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Choose a subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(needsFeedback as any[]).map((p: any) => (
+                        <SelectItem key={p.subject_id} value={p.subject_id}>
+                          {feedbackSubjectLabel(p)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+            <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">Give feedback</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Why do you think this happened?</DialogTitle>
+                  <DialogDescription>
+                    Select the reasons that best describe your situation. This will be visible to your instructor and guidance counselor.
+                  </DialogDescription>
+                </DialogHeader>
+                {needsFeedback.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label>Subject</Label>
+                    <Select
+                      value={feedbackTarget?.subject_id ?? ""}
+                      onValueChange={(v) => {
+                        setFeedbackSubjectId(v);
+                        setSelectedReasons({});
+                        setDetails("");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(needsFeedback as any[]).map((p: any) => (
+                          <SelectItem key={p.subject_id} value={p.subject_id}>
+                            {feedbackSubjectLabel(p)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                <div className="space-y-3">
+                  {reasonOptions.map((r) => (
+                    <div key={r} className="flex items-start gap-2">
+                      <Checkbox
+                        id={`reason-${r}`}
+                        checked={!!selectedReasons[r]}
+                        onCheckedChange={(v) => setSelectedReasons((prev) => ({ ...prev, [r]: !!v }))}
+                      />
+                      <Label htmlFor={`reason-${r}`} className="text-sm font-normal cursor-pointer">
+                        {r}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2 mt-2">
+                  <Label>Details (optional)</Label>
+                  <Textarea
+                    value={details}
+                    onChange={(e) => setDetails(e.target.value)}
+                    placeholder="Anything else your instructor should know?"
+                    className="min-h-[90px]"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setFeedbackOpen(false)}>Cancel</Button>
+                  <Button onClick={() => feedbackMutation.mutate()} disabled={feedbackMutation.isPending}>
+                    {feedbackMutation.isPending ? "Submitting..." : "Submit feedback"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+        </Card>
+      ) : null}
 
       <Card className="bg-card/90">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">

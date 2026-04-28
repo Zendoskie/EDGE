@@ -74,6 +74,49 @@ export default function GuidanceReferrals() {
 
   const pendingCount = useMemo(() => referrals.filter((r: any) => r.status === 'pending').length, [referrals]);
 
+  const { data: feedback = [] } = useQuery({
+    queryKey: ['guidance-student-feedback', user?.id],
+    enabled: role === 'guidance_counselor' && !!user?.id,
+    queryFn: async () => {
+      const studentIds = Array.from(new Set((referrals ?? []).map((r: any) => r.student_id).filter(Boolean)));
+      const subjectIds = Array.from(new Set((referrals ?? []).map((r: any) => r.subject_id).filter(Boolean)));
+      if (studentIds.length === 0 || subjectIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('student_feedback')
+        .select('id, created_at, student_id, subject_id, risk_level, reasons, details')
+        .in('student_id', studentIds)
+        .in('subject_id', subjectIds)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      const feedbackRows = data ?? [];
+      if (feedbackRows.length === 0) return [];
+
+      const uniqStudentIds = Array.from(new Set(feedbackRows.map((f: any) => f.student_id).filter(Boolean)));
+      const uniqSubjectIds = Array.from(new Set(feedbackRows.map((f: any) => f.subject_id).filter(Boolean)));
+
+      const [studentsRes, subjectsRes] = await Promise.all([
+        uniqStudentIds.length > 0
+          ? supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', uniqStudentIds)
+          : Promise.resolve({ data: [] as any[] }),
+        uniqSubjectIds.length > 0
+          ? supabase.from('subjects').select('id, code, name').in('id', uniqSubjectIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      if (studentsRes.error) throw studentsRes.error;
+      if (subjectsRes.error) throw subjectsRes.error;
+
+      const studentMap = new Map((studentsRes.data ?? []).map((p: any) => [p.user_id, p]));
+      const subjectMap = new Map((subjectsRes.data ?? []).map((s: any) => [s.id, s]));
+
+      return feedbackRows.map((f: any) => ({
+        ...f,
+        student: studentMap.get(f.student_id) ?? null,
+        subject: subjectMap.get(f.subject_id) ?? null,
+      }));
+    },
+  });
+
   if (role !== 'guidance_counselor') {
     return <Navigate to="/dashboard" replace />;
   }
@@ -147,6 +190,44 @@ export default function GuidanceReferrals() {
                       </Button>
                     </div>
                   ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card/90">
+        <CardHeader>
+          <CardTitle className="text-lg">Student feedback</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {feedback.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No feedback submitted for referred students yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {feedback.map((f: any) => (
+                <div key={f.id} className="rounded-xl border border-border/60 p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">
+                        {(f.subject?.code ?? f.subject_id)} — {(f.subject?.name ?? 'Subject')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Student: {(f.student?.full_name ?? f.student?.email ?? f.student_id)} ({f.student?.student_id ?? '—'})
+                      </p>
+                    </div>
+                    <Badge variant={f.risk_level === 'critical' || f.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
+                      {f.risk_level === 'critical' ? 'Critical' : f.risk_level === 'at_risk' ? 'At Risk' : f.risk_level}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(f.reasons ?? []).slice(0, 8).map((r: string) => (
+                      <Badge key={r} variant="outline" className="text-xs">{r}</Badge>
+                    ))}
+                  </div>
+                  {f.details ? <p className="text-sm text-muted-foreground">{f.details}</p> : null}
+                  <p className="text-xs text-muted-foreground">{f.created_at ? new Date(f.created_at).toLocaleString() : ''}</p>
                 </div>
               ))}
             </div>
