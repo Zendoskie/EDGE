@@ -883,7 +883,14 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                   </div>
                 </div>
                 {expandedActivity === a.id && (
-                  <ActivityScoring activityId={a.id} subjectId={subjectId} maxScore={a.max_score} userId={userId} />
+                  <ActivityScoring
+                    activityId={a.id}
+                    activityTitle={a.title}
+                    gradesPublishedAt={a.grades_published_at ?? null}
+                    subjectId={subjectId}
+                    maxScore={a.max_score}
+                    userId={userId}
+                  />
                 )}
               </div>
             ))}
@@ -895,7 +902,21 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
 }
 
 /* ───── Activity Scoring Sub-component ───── */
-function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activityId: string; subjectId: string; maxScore: number; userId?: string }) {
+function ActivityScoring({
+  activityId,
+  activityTitle,
+  gradesPublishedAt,
+  subjectId,
+  maxScore,
+  userId,
+}: {
+  activityId: string;
+  activityTitle: string;
+  gradesPublishedAt: string | null;
+  subjectId: string;
+  maxScore: number;
+  userId?: string;
+}) {
   const queryClient = useQueryClient();
   const [scores, setScores] = useState<Record<string, string>>({});
 
@@ -974,6 +995,70 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const publishGrades = useMutation({
+    mutationFn: async () => {
+      if (!userId) throw new Error('Missing instructor session');
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase
+        .from('activities')
+        .update({ grades_published_at: nowIso, grades_published_by: userId })
+        .eq('id', activityId);
+      if (error) throw error;
+
+      try {
+        const { error: invokeError } = await supabase.functions.invoke('notify-missing-grades', {
+          body: { activity_id: activityId },
+        });
+        if (!invokeError) return;
+
+        let msg = invokeError.message || 'Failed to notify missing grades';
+        const ctx = (invokeError as { context?: Response }).context;
+        if (ctx && typeof ctx.json === 'function') {
+          try {
+            const j = (await ctx.clone().json()) as { error?: string };
+            if (j?.error) msg = j.error;
+          } catch {
+            /* use msg */
+          }
+        }
+
+        // Common root cause: the function hasn't been deployed to the Supabase project yet.
+        if (msg.toLowerCase().includes('failed to send a request')) {
+          msg = `${msg}. This usually means the Edge Function is not deployed or not reachable from the configured Supabase project.`;
+        }
+        throw new Error(msg);
+      } catch (e) {
+        // Roll back publish if notification step fails.
+        await supabase
+          .from('activities')
+          .update({ grades_published_at: null, grades_published_by: null })
+          .eq('id', activityId);
+        throw e;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
+      toast.success('Grades published. Missing-grade students will be notified.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const unpublishGrades = useMutation({
+    mutationFn: async () => {
+      if (!userId) throw new Error('Missing instructor session');
+      const { error } = await supabase
+        .from('activities')
+        .update({ grades_published_at: null, grades_published_by: null })
+        .eq('id', activityId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
+      toast.success('Grades unpublished');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (isLoading) return <p className="px-4 py-3 text-sm text-muted-foreground">Loading scores...</p>;
 
   if (enrollments.length === 0) {
@@ -982,6 +1067,42 @@ function ActivityScoring({ activityId, subjectId, maxScore, userId }: { activity
 
   return (
     <div className="border-t border-border bg-muted/30 px-4 py-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-foreground">Grades status</p>
+          {gradesPublishedAt ? (
+            <Badge variant="default">Published</Badge>
+          ) : (
+            <Badge variant="secondary">Not published</Badge>
+          )}
+          {gradesPublishedAt ? (
+            <span className="text-xs text-muted-foreground">
+              {new Date(gradesPublishedAt).toLocaleString()}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {gradesPublishedAt ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => unpublishGrades.mutate()}
+              disabled={unpublishGrades.isPending}
+            >
+              {unpublishGrades.isPending ? 'Unpublishing...' : 'Unpublish'}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => publishGrades.mutate()}
+              disabled={publishGrades.isPending}
+              title={`Publish grades for ${activityTitle}`}
+            >
+              {publishGrades.isPending ? 'Publishing...' : 'Publish grades'}
+            </Button>
+          )}
+        </div>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>

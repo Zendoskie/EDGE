@@ -33,6 +33,65 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
       const nowIso = new Date().toISOString();
 
       try {
+        // Missing-grade alerts: when an instructor publishes grades for an activity,
+        // notify students who do not have a recorded score for that activity.
+        const { data: myEnrollments } = await supabase
+          .from("enrollments")
+          .select("subject_id")
+          .eq("student_id", userId)
+          .eq("status", "active");
+        const mySubjectIds = (myEnrollments ?? [])
+          .map((e) => (e as { subject_id?: string | null }).subject_id)
+          .filter(Boolean) as string[];
+
+        if (mySubjectIds.length > 0) {
+          const { data: publishedActivities } = await supabase
+            .from("activities")
+            .select("id, title, grades_published_at, subject_id, subjects(code)")
+            .in("subject_id", mySubjectIds)
+            .gt("grades_published_at", lastPoll);
+
+          const published = (publishedActivities ?? []).filter(
+            (a) => (a as { grades_published_at?: string | null }).grades_published_at,
+          ) as Array<{
+            id: string;
+            title: string;
+            grades_published_at: string;
+            subject_id: string | null;
+            subjects: { code?: string } | null;
+          }>;
+
+          if (published.length > 0) {
+            const activityIds = published.map((a) => a.id);
+            const { data: mySubsForPublished } = await supabase
+              .from("submissions")
+              .select("activity_id, score")
+              .eq("student_id", userId)
+              .in("activity_id", activityIds);
+
+            const scoreByActivityId = new Map<string, number | null>();
+            for (const s of mySubsForPublished ?? []) {
+              const row = s as { activity_id?: string | null; score?: number | null };
+              if (!row.activity_id) continue;
+              scoreByActivityId.set(row.activity_id, row.score ?? null);
+            }
+
+            for (const a of published) {
+              const hasRow = scoreByActivityId.has(a.id);
+              const score = scoreByActivityId.get(a.id);
+              const isMissing = !hasRow || score == null;
+              if (!isMissing) continue;
+
+              const courseCode = a.subjects?.code ?? "your course";
+              addRef.current({
+                title: "Missing grade",
+                body: `${courseCode}: "${a.title}" grades were published, but no score is recorded for you yet. Contact your instructor.`,
+                dedupeKey: `missing-grade:${a.id}:${a.grades_published_at}`,
+              });
+            }
+          }
+        }
+
         const { data: subsGraded } = await supabase
           .from("submissions")
           .select("id, score, graded_at, submitted_at, activities(title)")

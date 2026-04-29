@@ -19,6 +19,8 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           due_date: string | null
+          grades_published_at: string | null
+          grades_published_by: string | null
           id: string
           max_score: number
           subject_id: string | null
@@ -30,6 +32,8 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           due_date?: string | null
+          grades_published_at?: string | null
+          grades_published_by?: string | null
           id?: string
           max_score?: number
           subject_id?: string | null
@@ -41,6 +45,8 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           due_date?: string | null
+          grades_published_at?: string | null
+          grades_published_by?: string | null
           id?: string
           max_score?: number
           subject_id?: string | null
