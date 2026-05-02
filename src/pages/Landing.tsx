@@ -119,7 +119,7 @@ function HeroVisualMock() {
           </div>
         </div>
         <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground dark:bg-primary/10">
-          {AI_COACH_MODEL_LABEL} powers the coach; neural-style analytics surface risk—same signals, aligned guidance.
+          {AI_COACH_MODEL_LABEL} powers the coach; the same academic signals feed risk insight—aligned guidance.
         </div>
       </div>
     </div>
@@ -134,8 +134,8 @@ function AiSpotlightSection() {
       icon: Sparkles,
     },
     {
-      title: "Neural & deep learning analytics",
-      desc: "Models analyze attendance, scores, and completion patterns to surface who may need support before final grades.",
+      title: "LLM & academic analytics",
+      desc: "Large language models work with attendance, scores, and completion patterns to surface who may need support before final grades.",
       icon: Brain,
     },
     {
@@ -153,7 +153,7 @@ function AiSpotlightSection() {
         </Badge>
         <h2 className="font-display text-2xl font-bold text-foreground md:text-3xl">Artificial intelligence at the core</h2>
         <p className="mt-3 text-sm text-muted-foreground md:text-base">
-          EDGE combines <strong className="text-foreground">machine learning / neural approaches</strong> for risk detection
+          EDGE combines <strong className="text-foreground">large language models and academic analytics</strong> for risk detection
           with <strong className="text-foreground">{AI_COACH_MODEL_LABEL}</strong> for the chat coach—so insights become
           dialogue, not just dashboards.
         </p>
@@ -239,7 +239,7 @@ export default function Landing() {
                 System
               </p>
               <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground lg:mx-0">
-                <span className="font-medium text-foreground">Deep learning and neural analytics</span> flag patterns early;
+                <span className="font-medium text-foreground">Large language models and structured analytics</span> flag patterns early;
                 the in-app coach runs on <span className="font-medium text-foreground">{AI_COACH_MODEL_LABEL}</span>—clear,
                 supportive next steps for students and instructors.
               </p>
@@ -249,7 +249,7 @@ export default function Landing() {
                   Coach: {AI_COACH_MODEL_SHORT}
                 </Badge>
                 <Badge variant="secondary" className="rounded-full border border-violet-500/20 px-3 py-1 font-normal">
-                  Neural risk analysis
+                  LLM-powered risk insight
                 </Badge>
                 <Badge variant="secondary" className="rounded-full px-3 py-1 font-normal">
                   Secure access
@@ -321,22 +321,22 @@ export default function Landing() {
             {[
               {
                 icon: Brain,
-                title: "Deep Learning Analytics",
-                body: "Advanced neural networks analyze complex academic patterns and predict performance trends with 95% accuracy",
+                title: "LLM-powered analytics",
+                body: "Large language models interpret complex academic patterns and help predict performance trends with strong accuracy",
                 gradient: "from-blue-500 to-blue-600",
                 ring: "ring-blue-500/20",
               },
               {
                 icon: TrendingUp,
-                title: "Predictive Monitoring",
-                body: "Deep learning models forecast academic trajectories and identify at-risk students before grades decline",
+                title: "Predictive monitoring",
+                body: "LLM-assisted signals forecast academic trajectories and highlight at-risk students before grades decline",
                 gradient: "from-emerald-500 to-emerald-600",
                 ring: "ring-emerald-500/20",
               },
               {
                 icon: Users,
-                title: "Neural Network Insights",
-                body: "AI-powered recommendations for personalized learning paths based on deep pattern analysis",
+                title: "LLM insights",
+                body: "AI-powered recommendations for personalized learning paths grounded in language-model pattern analysis",
                 gradient: "from-violet-500 to-violet-600",
                 ring: "ring-violet-500/20",
               },
@@ -349,8 +349,8 @@ export default function Landing() {
               },
               {
                 icon: Activity,
-                title: "Model Training",
-                body: "Continuously learning from student data to improve prediction accuracy and intervention strategies",
+                title: "Continuous improvement",
+                body: "LLM guidance refines as new academic signals arrive—sharper risk reads and intervention strategies over time",
                 gradient: "from-cyan-500 to-sky-600",
                 ring: "ring-cyan-500/20",
               },
@@ -371,15 +371,14 @@ export default function Landing() {
                   aria-hidden
                 />
                 <CardContent className="p-6 pt-7 text-center">
-                  {(f.title.includes("Learning") ||
-                    f.title.includes("Neural") ||
-                    f.title.includes("Model") ||
-                    f.title.includes("Predictive")) && (
+                  {(f.title.includes("LLM") ||
+                    f.title.includes("Predictive") ||
+                    f.title.includes("Continuous")) && (
                     <Badge
                       variant="outline"
                       className="mb-3 border-violet-500/35 text-[10px] font-normal text-violet-700 dark:text-violet-300"
                     >
-                      Uses AI / ML
+                      Uses LLMs
                     </Badge>
                   )}
                   <div
@@ -420,8 +419,8 @@ export default function Landing() {
                 },
                 {
                   step: "2",
-                  title: "AI & deep learning",
-                  text: `Neural networks and ML models analyze patterns and predict outcomes; ${AI_COACH_MODEL_LABEL} uses that same context so the coach stays aligned with risk signals`,
+                  title: "AI & LLM analysis",
+                  text: `Large language models interpret patterns and anticipate outcomes; ${AI_COACH_MODEL_LABEL} uses that same context so the coach stays aligned with risk signals`,
                 },
                 {
                   step: "3",

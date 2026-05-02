@@ -46,20 +46,69 @@ const riskSeverity = (level: string) => {
 function alignTrendWithRisk(
   trend: 'improved' | 'declined' | 'stable',
   latestRisk: string,
-  previousRisk: string,
 ): 'improved' | 'declined' | 'stable' {
   // Guardrails for clearer instructor interpretation:
   // - Critical cannot be tagged as improved.
   // - Stable/Excelling cannot be tagged as declined.
+  // "Improved" at at-risk is allowed when graded work/recovery clearly supports it (see activity merge).
   if (latestRisk === 'critical') return 'declined';
   if (latestRisk === 'stable' || latestRisk === 'excelling') {
     return trend === 'declined' ? 'stable' : trend;
   }
-  if (latestRisk === 'at_risk' && trend === 'improved') {
-    // Only allow "improved" at at-risk level when coming down from critical.
-    return previousRisk === 'critical' ? 'improved' : 'stable';
-  }
   return trend;
+}
+
+/** Trends from graded submissions + recent attendance vs prior window (scores sorted newest-first). */
+function inferActivityTrend(
+  scoreHistory: Array<{ pct: number; ts: number }>,
+  attendanceStatuses: string[],
+): 'improved' | 'declined' | 'stable' {
+  const recentScores = scoreHistory.slice(0, 3).map((s) => s.pct);
+  const olderScores = scoreHistory.slice(3, 6).map((s) => s.pct);
+  const recentScoreAvg = recentScores.length ? recentScores.reduce((a, b) => a + b, 0) / recentScores.length : null;
+  const olderScoreAvg = olderScores.length ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length : null;
+
+  const recentAttendance = attendanceStatuses.slice(0, 5);
+  const olderAttendance = attendanceStatuses.slice(5, 10);
+  const attendanceRate = (list: string[]) =>
+    list.length === 0
+      ? null
+      : (list.filter((s) => s === 'present' || s === 'late').length / list.length) * 100;
+  const recentAttendanceRate = attendanceRate(recentAttendance);
+  const olderAttendanceRate = attendanceRate(olderAttendance);
+
+  const signals: Array<'improved' | 'declined'> = [];
+  if (recentScoreAvg != null && olderScoreAvg != null) {
+    if (recentScoreAvg - olderScoreAvg >= 5) signals.push('improved');
+    if (olderScoreAvg - recentScoreAvg >= 5) signals.push('declined');
+  }
+
+  // New / thin history: recent graded work stands alone — avoid "nothing changed" falsely mapping to declining.
+  if (recentScores.length >= 1 && olderScores.length === 0 && recentScoreAvg != null && recentScoreAvg >= 85) {
+    signals.push('improved');
+  }
+
+  if (recentAttendanceRate != null && olderAttendanceRate != null) {
+    if (recentAttendanceRate - olderAttendanceRate >= 10) signals.push('improved');
+    if (olderAttendanceRate - recentAttendanceRate >= 10) signals.push('declined');
+  }
+
+  const hasDeclined = signals.includes('declined');
+  const hasImproved = signals.includes('improved');
+  if (hasDeclined && hasImproved) {
+    if (recentScoreAvg != null && olderScoreAvg != null) {
+      const diff = recentScoreAvg - olderScoreAvg;
+      if (Math.abs(diff) >= 5) return diff > 0 ? 'improved' : 'declined';
+      return 'stable';
+    }
+    if (recentScores.length >= 1 && olderScores.length === 0 && recentScoreAvg != null && recentScoreAvg >= 85) {
+      return 'improved';
+    }
+    return 'stable';
+  }
+  if (hasDeclined) return 'declined';
+  if (hasImproved) return 'improved';
+  return 'stable';
 }
 
 export default function InstructorDashboard() {
@@ -263,9 +312,13 @@ export default function InstructorDashboard() {
         const previous = history[1] ?? null;
         const subject = subjectById.get(enroll.subject_id);
         const latestRisk = latest?.risk_level ?? 'stable';
-        const previousRisk = previous?.risk_level ?? latestRisk;
+        const scoreHistorySorted = scoresByKey.get(key) ?? [];
+        const attendanceStatusesOrdered = (attendanceByKey.get(key) ?? []).map((a: { status: string }) => a.status);
 
         let trend: 'improved' | 'declined' | 'stable' = 'stable';
+
+        const previousRisk = previous?.risk_level ?? latestRisk;
+
         const riskDelta = riskSeverity(latestRisk) - riskSeverity(previousRisk);
         if (previous) {
           if (riskDelta < 0) trend = 'improved';
@@ -274,57 +327,41 @@ export default function InstructorDashboard() {
 
         const latestScores = [latest?.quiz_average, latest?.assignment_average, latest?.project_score]
           .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
-        const latestScoreAvg = latestScores.length > 0
+        const latestScoreAvgPred = latestScores.length > 0
           ? latestScores.reduce((a, b) => a + b, 0) / latestScores.length
           : 0;
-        const previousScoreAvg = previous
+        const previousScoreAvgPred = previous
           ? (() => {
               const prevScores = [previous?.quiz_average, previous?.assignment_average, previous?.project_score]
                 .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
               return prevScores.length > 0 ? prevScores.reduce((a, b) => a + b, 0) / prevScores.length : 0;
             })()
-          : latestScoreAvg;
+          : latestScoreAvgPred;
+
+        // Refinement from rolling prediction aggregates when risk delta was flat or missing.
         if (trend === 'stable' && previous) {
-          if (latestScoreAvg - previousScoreAvg >= 5) trend = 'improved';
-          if (previousScoreAvg - latestScoreAvg >= 5) trend = 'declined';
+          if (latestScoreAvgPred - previousScoreAvgPred >= 5) trend = 'improved';
+          if (previousScoreAvgPred - latestScoreAvgPred >= 5) trend = 'declined';
         }
 
-        // Fallback trend when no prior prediction exists:
-        // compare recent vs older performance windows from scores and attendance.
+        const activityTrend = inferActivityTrend(scoreHistorySorted, attendanceStatusesOrdered);
+        const predictionTs = latest?.created_at ? Date.parse(String(latest.created_at)) : Number.NaN;
+        const newestGradeTs = scoreHistorySorted[0]?.ts ?? 0;
+        const hasFreshGradedWork =
+          newestGradeTs > 0 && Number.isFinite(predictionTs) && newestGradeTs > predictionTs;
+
         if (!previous) {
-          const scoreHistory = scoresByKey.get(key) ?? [];
-          const recentScores = scoreHistory.slice(0, 3).map((s) => s.pct);
-          const olderScores = scoreHistory.slice(3, 6).map((s) => s.pct);
-          const recentScoreAvg = recentScores.length ? recentScores.reduce((a, b) => a + b, 0) / recentScores.length : null;
-          const olderScoreAvg = olderScores.length ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length : null;
-
-          const attendanceHistory = (attendanceByKey.get(key) ?? []).map((a) => a.status);
-          const recentAttendance = attendanceHistory.slice(0, 5);
-          const olderAttendance = attendanceHistory.slice(5, 10);
-          const attendanceRate = (list: string[]) =>
-            list.length === 0
-              ? null
-              : (list.filter((s) => s === 'present' || s === 'late').length / list.length) * 100;
-          const recentAttendanceRate = attendanceRate(recentAttendance);
-          const olderAttendanceRate = attendanceRate(olderAttendance);
-
-          const signals: Array<'improved' | 'declined'> = [];
-          if (recentScoreAvg != null && olderScoreAvg != null) {
-            if (recentScoreAvg - olderScoreAvg >= 5) signals.push('improved');
-            if (olderScoreAvg - recentScoreAvg >= 5) signals.push('declined');
+          trend = activityTrend;
+        } else {
+          // Prefer real graded submissions when newer than last prediction snapshot (risk row lags grading).
+          if (hasFreshGradedWork && activityTrend !== 'stable') {
+            trend = activityTrend;
+          } else if (activityTrend === 'improved' && trend === 'declined') {
+            trend = 'improved';
           }
-          if (recentAttendanceRate != null && olderAttendanceRate != null) {
-            if (recentAttendanceRate - olderAttendanceRate >= 10) signals.push('improved');
-            if (olderAttendanceRate - recentAttendanceRate >= 10) signals.push('declined');
-          }
-
-          if (signals.includes('declined') && !signals.includes('improved')) trend = 'declined';
-          else if (signals.includes('improved') && !signals.includes('declined')) trend = 'improved';
-          else if (latestRisk === 'critical' || latestRisk === 'at_risk') trend = 'declined';
-          else trend = 'stable';
         }
 
-        trend = alignTrendWithRisk(trend, latestRisk, previousRisk);
+        trend = alignTrendWithRisk(trend, latestRisk);
 
         const attendanceHistoryAll = (attendanceByKey.get(key) ?? []).map((a) => a.status);
         const attendanceRateAll =
@@ -346,8 +383,8 @@ export default function InstructorDashboard() {
             ? scoreHistoryForDisplay.slice(0, 5).reduce((a, b) => a + b.pct, 0) / Math.min(scoreHistoryForDisplay.length, 5)
             : null;
         const displayScoreAvg =
-          latestScoreAvg > 0
-            ? Math.round(latestScoreAvg)
+          latestScoreAvgPred > 0
+            ? Math.round(latestScoreAvgPred)
             : scoreFromHistory != null
               ? Math.round(scoreFromHistory)
               : null;
@@ -709,12 +746,15 @@ export default function InstructorDashboard() {
                         Trend is constrained for clarity: <span className="font-medium text-foreground">Critical</span> will not show as Improved, and
                         <span className="font-medium text-foreground"> Stable/Excelling</span> will not show as Declined.
                       </p>
+                      <p>
+                        When you grade work after the last risk run, newer scores are preferred so the panel reflects real progress instead of stale risk snapshots alone.
+                      </p>
                     </div>
                   </DialogContent>
                 </Dialog>
               </div>
               <p className="text-sm text-muted-foreground">
-                Tracks whether each student is improving, stable, or declining based on recent prediction history.
+                Combines risk history with graded submissions and attendance recent vs prior windows — recent grades outweigh old risk deltas when grading is newer.
               </p>
             </CardHeader>
             <CardContent>
