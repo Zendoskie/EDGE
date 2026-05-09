@@ -11,8 +11,8 @@ export function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
 }
 
 export function riskLabel(level: CanonicalRiskLevel): string {
-  if (level === "critical") return "Critical";
-  if (level === "at_risk") return "At Risk";
+  if (level === "critical") return "Crucial";
+  if (level === "at_risk") return "Vulnerable";
   if (level === "excelling") return "Excelling";
   return "Stable";
 }

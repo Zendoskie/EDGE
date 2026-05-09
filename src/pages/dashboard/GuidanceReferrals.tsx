@@ -218,7 +218,7 @@ export default function GuidanceReferrals() {
                       </p>
                     </div>
                     <Badge variant={f.risk_level === 'critical' || f.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
-                      {f.risk_level === 'critical' ? 'Critical' : f.risk_level === 'at_risk' ? 'At Risk' : f.risk_level}
+                      {f.risk_level === 'critical' ? 'Crucial' : f.risk_level === 'at_risk' ? 'Vulnerable' : f.risk_level}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-2">

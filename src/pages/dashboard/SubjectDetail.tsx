@@ -181,7 +181,7 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
     enabled: !!userId,
   });
 
-  const riskLabel = (level: string) => level === 'critical' ? 'Critical' : level === 'at_risk' ? 'At Risk' : level === 'excelling' ? 'Excelling' : 'Stable';
+  const riskLabel = (level: string) => level === 'critical' ? 'Crucial' : level === 'at_risk' ? 'Vulnerable' : level === 'excelling' ? 'Excelling' : 'Stable';
 
   return (
     <div className="space-y-6">
@@ -848,7 +848,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
           <p>
             Subject-level trends are built from these percentages across activities. When several low percentages appear over time
             (especially with poor attendance), students are more likely to be classified as
-            <span className="font-medium text-foreground"> At Risk</span> or <span className="font-medium text-foreground">Critical</span> in Predictions.
+            <span className="font-medium text-foreground"> Vulnerable</span> or <span className="font-medium text-foreground">Crucial</span> in Predictions.
           </p>
           <p>
             This means the exact numbers encoded here in the score grid are the direct basis for averages, risk analysis,
@@ -1352,8 +1352,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   };
 
   const riskLabel = (level: string) => {
-    if (level === 'critical') return 'Critical';
-    if (level === 'at_risk') return 'At Risk';
+    if (level === 'critical') return 'Crucial';
+    if (level === 'at_risk') return 'Vulnerable';
     if (level === 'excelling') return 'Excelling';
     return 'Stable';
   };
@@ -1377,7 +1377,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const sendBulkNotifications = async () => {
     const withEmail = atRiskPredictions.filter((p: PredictionRow) => p.profile?.email);
     if (withEmail.length === 0) {
-      toast.error('No at-risk students have email on file');
+      toast.error('No vulnerable students have email on file');
       return;
     }
     setBulkNotifyPreparing(true);
@@ -1405,7 +1405,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       setBulkNotifyOpen(false);
       setBulkNotifyMessage('');
-      toast.success(`Sent notifications to ${sent} of ${withEmail.length} at-risk students`);
+      toast.success(`Sent notifications to ${sent} of ${withEmail.length} vulnerable students`);
       if (failed > 0) {
         const first = errors?.[0]?.message;
         toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check Resend settings.');
@@ -1426,7 +1426,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
             {atRiskPredictions.length > 0 && (
               <Button size="sm" variant="outline" onClick={() => setBulkNotifyOpen(true)}>
                 <Mail className="mr-2 h-4 w-4" />
-                Notify at-risk students
+                Notify vulnerable students
               </Button>
             )}
             <Button size="sm" onClick={generatePredictions} disabled={generating}>
@@ -1446,8 +1446,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
           ) : (
             <>
               <div className="px-6 py-2 flex gap-4 text-sm border-b bg-muted/30 flex-wrap">
-                <span><strong>{summary.critical}</strong> critical</span>
-                <span><strong>{summary.at_risk}</strong> at-risk</span>
+                <span><strong>{summary.critical}</strong> crucial</span>
+                <span><strong>{summary.at_risk}</strong> vulnerable</span>
                 <span><strong>{summary.stable}</strong> stable</span>
                 <span><strong>{summary.excelling}</strong> excelling</span>
               </div>
@@ -1486,8 +1486,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Notify at-risk students</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: PredictionRow) => p.profile?.email).length} at-risk/critical students for {subjectCode}.</p>
+          <DialogHeader><DialogTitle>Notify vulnerable students</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: PredictionRow) => p.profile?.email).length} vulnerable/crucial students for {subjectCode}.</p>
           <div className="space-y-2">
             <Label>Message (optional)</Label>
             <Input

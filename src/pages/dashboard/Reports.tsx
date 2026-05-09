@@ -11,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const riskLabel = (level: string) => {
-  if (level === 'critical') return 'Critical';
-  if (level === 'at_risk') return 'At Risk';
+  if (level === 'critical') return 'Crucial';
+  if (level === 'at_risk') return 'Vulnerable';
   if (level === 'excelling') return 'Excelling';
   return level ? 'Stable' : '—';
 };

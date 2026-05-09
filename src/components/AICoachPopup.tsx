@@ -146,7 +146,7 @@ export function AICoachPopup(props: {
     const bits: string[] = [];
     bits.push(`Risk level: ${riskLabel(canonical)}`);
     if (props.subjectLabel) bits.push(`Subject: ${props.subjectLabel}`);
-    if (props.atRiskSubjects?.length) bits.push(`At-risk subjects: ${props.atRiskSubjects.join(", ")}`);
+    if (props.atRiskSubjects?.length) bits.push(`Vulnerable subjects: ${props.atRiskSubjects.join(", ")}`);
     if (props.recommendation) bits.push(`Recommendation: ${props.recommendation}`);
     return bits.join("\n");
   }, [canonical, props.subjectLabel, props.atRiskSubjects, props.recommendation]);
@@ -172,7 +172,7 @@ export function AICoachPopup(props: {
   }, [storageKey, canonical, props.recommendation, props.subjectLabel]);
 
   useEffect(() => {
-    // Auto-open only for critical/at-risk students.
+  // Auto-open only for crucial/vulnerable students.
     if (!shouldAutoOpen) return;
     const dismissed = localStorage.getItem(storageKey);
     if (dismissed) return;
@@ -354,7 +354,7 @@ export function AICoachPopup(props: {
                     size="sm"
                     className="w-full justify-between px-3 py-2 h-auto text-xs font-medium text-foreground"
                   >
-                    <span>Current at-risk subjects ({props.atRiskSubjects.length})</span>
+                    <span>Current vulnerable subjects ({props.atRiskSubjects.length})</span>
                     <span className="text-muted-foreground">{subjectsOpen ? "Hide" : "Show"}</span>
                   </Button>
                 </CollapsibleTrigger>

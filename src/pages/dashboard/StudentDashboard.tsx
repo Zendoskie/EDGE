@@ -126,7 +126,7 @@ export default function StudentDashboard() {
         return 'stable';
       })();
 
-      // Use prediction when it's recent, but avoid showing "At Risk" when current performance is clearly stable.
+      // Use prediction when it's recent, but avoid showing "Vulnerable" when current performance is clearly stable.
       const resolvedLevel = (() => {
         if (predIsRecent && predLevel) {
           if ((predLevel === 'critical' || predLevel === 'at_risk') && derivedLevel === 'stable') {
@@ -139,8 +139,8 @@ export default function StudentDashboard() {
 
       const resolvedSource: 'prediction' | 'derived' = predIsRecent && predLevel ? 'prediction' : 'derived';
       const levelLabel = resolvedLevel
-        ? (resolvedLevel === 'critical' ? 'Critical'
-          : resolvedLevel === 'at_risk' ? 'At Risk'
+        ? (resolvedLevel === 'critical' ? 'Crucial'
+          : resolvedLevel === 'at_risk' ? 'Vulnerable'
           : resolvedLevel === 'excelling' ? 'Excelling'
           : 'Stable')
         : '—';
@@ -278,7 +278,7 @@ export default function StudentDashboard() {
       : null;
     return preferred ?? needsFeedback[0] ?? null;
   }, [needsFeedback, feedbackSubjectId]);
-  // Show feedback when at least one subject is currently Critical/At Risk (per-subject prediction)
+  // Show feedback when at least one subject is currently Crucial/Vulnerable (per-subject prediction)
   // and the student has recent graded activity for that subject.
   const showFeedbackPrompt = !!feedbackTarget;
 
@@ -286,7 +286,7 @@ export default function StudentDashboard() {
     const subj = p?.subjects as any;
     const code = subj?.code ?? "Subject";
     const name = subj?.name ? ` — ${subj.name}` : "";
-    const level = p?.risk_level === "critical" ? "Critical" : "At Risk";
+    const level = p?.risk_level === "critical" ? "Crucial" : "Vulnerable";
     return `${code}${name} (${level})`;
   };
 
@@ -388,7 +388,7 @@ export default function StudentDashboard() {
           </p>
           <p>
             Risk level is inferred from attendance, graded outputs, and completion patterns from predictions.
-            Consistently low weighted performance across subjects increases At Risk/Critical status.
+            Consistently low weighted performance across subjects increases Vulnerable/Crucial status.
           </p>
         </CardContent>
       </Card>
@@ -401,7 +401,7 @@ export default function StudentDashboard() {
               <p className="text-sm text-muted-foreground mt-1">
                 Your recent grades indicate you are{" "}
                 <span className="font-medium text-foreground">
-                  {feedbackTarget.risk_level === "critical" ? "Critical" : "At Risk"}
+                  {feedbackTarget.risk_level === "critical" ? "Crucial" : "Vulnerable"}
                 </span>{" "}
                 for{" "}
                 <span className="font-medium text-foreground">

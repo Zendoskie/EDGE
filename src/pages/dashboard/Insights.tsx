@@ -48,8 +48,8 @@ const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ['critical', 'at_risk', 'stable',
 
 /** Recharts / ChartContainer colors — aligned with semantic risk levels (readable in light & dark) */
 const riskChartConfig = {
-  critical: { label: 'Critical', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
-  at_risk: { label: 'At Risk', theme: { light: 'hsl(38 92% 50%)', dark: 'hsl(38 92% 56%)' } },
+  critical: { label: 'Crucial', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
+  at_risk: { label: 'Vulnerable', theme: { light: 'hsl(38 92% 50%)', dark: 'hsl(38 92% 56%)' } },
   stable: { label: 'Stable', theme: { light: 'hsl(215 16% 42%)', dark: 'hsl(215 16% 68%)' } },
   excelling: { label: 'Excelling', theme: { light: 'hsl(142 76% 36%)', dark: 'hsl(142 68% 48%)' } },
 } satisfies ChartConfig;
@@ -79,7 +79,7 @@ const enrollmentChartConfig = {
 } satisfies ChartConfig;
 
 const concernChartConfig = {
-  concern: { label: 'Students (critical / at-risk)', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
+  concern: { label: 'Students (crucial / vulnerable)', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
 } satisfies ChartConfig;
 
 interface Prediction {
@@ -909,7 +909,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
       .map(([date, count]) => ({ date, count }));
   }, [predictions]);
 
-  /** Per subject: count of student rows (latest per student–subject) flagged critical or at-risk */
+  /** Per subject: count of student rows (latest per student–subject) flagged crucial or vulnerable */
   const instructorConcernBarData = useMemo(() => {
     return (subjects as any[]).map((s: any) => {
       const rows = latestByStudentSubject.filter((p: any) => p.subject_id === s.id);
@@ -988,7 +988,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
             </Card>
             <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">At Risk</CardTitle>
+                <CardTitle className="text-sm font-medium">Vulnerable</CardTitle>
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -998,7 +998,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
             </Card>
             <Card className="bg-card/90">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Critical</CardTitle>
+                <CardTitle className="text-sm font-medium">Crucial</CardTitle>
                 <Brain className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -1150,10 +1150,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingDown className="h-5 w-5" />
-                  At-risk & critical by subject
+                  Vulnerable & crucial by subject
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Students (unique student–subject pairs) with latest risk critical or at-risk.
+                  Students (unique student–subject pairs) with latest risk crucial or vulnerable.
                 </p>
               </CardHeader>
               <CardContent>

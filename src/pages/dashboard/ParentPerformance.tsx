@@ -540,7 +540,7 @@ export default function ParentPerformance() {
           </p>
           <p>
             Risk statuses are based on attendance trends, score performance, and generated risk predictions.
-            Lower weighted results across multiple components increase the chance of At Risk or Critical classification.
+            Lower weighted results across multiple components increase the chance of Vulnerable or Crucial classification.
           </p>
         </CardContent>
       </Card>
@@ -648,7 +648,7 @@ export default function ParentPerformance() {
             </p>
             <p>
               Struggle areas are identified when repeated low percentages appear in the list, especially when paired with low attendance and
-              risk outputs (At Risk/Critical). This means the same underlying records in this table are the basis of the overall performance indicators.
+              risk outputs (Vulnerable/Crucial). This means the same underlying records in this table are the basis of the overall performance indicators.
             </p>
           </div>
           {gradesBySubject.length === 0 ? (

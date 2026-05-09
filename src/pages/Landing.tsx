@@ -494,7 +494,7 @@ export default function Landing() {
               {
                 icon: TrendingUp,
                 title: "Predictive monitoring",
-                body: "LLM-assisted signals forecast academic trajectories and highlight at-risk students before grades decline",
+                body: "LLM-assisted signals forecast academic trajectories and highlight vulnerable students before grades decline",
                 gradient: "from-emerald-500 to-emerald-600",
                 ring: "ring-emerald-500/20",
               },

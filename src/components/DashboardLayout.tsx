@@ -164,9 +164,9 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
         const rec = typeof p?.recommendation === "string" ? p.recommendation.trim() : "";
         const riskText =
           level === "critical"
-            ? "critical"
+            ? "crucial"
             : level === "at_risk"
-              ? "at risk"
+              ? "vulnerable"
               : level === "excelling"
                 ? "excelling"
                 : "stable";
@@ -177,7 +177,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
         .map((p: any) => {
           const code = typeof p?.subjects?.code === "string" ? p.subjects.code : "Subject";
           const name = typeof p?.subjects?.name === "string" ? p.subjects.name : "";
-          const level = normalizeRisk(p?.risk_level) === "critical" ? "Critical" : "At Risk";
+          const level = normalizeRisk(p?.risk_level) === "critical" ? "Crucial" : "Vulnerable";
           return `${code}${name ? ` — ${name}` : ""} (${level})`;
         })
         .slice(0, 6);

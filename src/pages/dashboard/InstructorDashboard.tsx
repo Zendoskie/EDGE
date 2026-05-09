@@ -14,8 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from 'sonner';
 
 const riskLabel = (level: string) => {
-  if (level === 'critical') return 'Critical';
-  if (level === 'at_risk') return 'At Risk';
+  if (level === 'critical') return 'Crucial';
+  if (level === 'at_risk') return 'Vulnerable';
   if (level === 'excelling') return 'Excelling';
   return 'Stable';
 };
@@ -48,9 +48,9 @@ function alignTrendWithRisk(
   latestRisk: string,
 ): 'improved' | 'declined' | 'stable' {
   // Guardrails for clearer instructor interpretation:
-  // - Critical cannot be tagged as improved.
+  // - Crucial cannot be tagged as improved.
   // - Stable/Excelling cannot be tagged as declined.
-  // "Improved" at at-risk is allowed when graded work/recovery clearly supports it (see activity merge).
+  // "Improved" at vulnerable is allowed when graded work/recovery clearly supports it (see activity merge).
   if (latestRisk === 'critical') return 'declined';
   if (latestRisk === 'stable' || latestRisk === 'excelling') {
     return trend === 'declined' ? 'stable' : trend;
@@ -177,8 +177,8 @@ export default function InstructorDashboard() {
       const preds = predictions ?? [];
       const criticalAndAtRisk = preds.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
       const chartData = [
-        { level: 'Critical', count: preds.filter((p: any) => p.risk_level === 'critical').length, fill: 'hsl(0 72% 51%)' },
-        { level: 'At Risk', count: preds.filter((p: any) => p.risk_level === 'at_risk').length, fill: 'hsl(38 92% 50%)' },
+        { level: 'Crucial', count: preds.filter((p: any) => p.risk_level === 'critical').length, fill: 'hsl(0 72% 51%)' },
+        { level: 'Vulnerable', count: preds.filter((p: any) => p.risk_level === 'at_risk').length, fill: 'hsl(38 92% 50%)' },
         { level: 'Stable', count: preds.filter((p: any) => p.risk_level === 'stable').length, fill: 'hsl(215 15% 50%)' },
         { level: 'Excelling', count: preds.filter((p: any) => p.risk_level === 'excelling').length, fill: 'hsl(215 65% 36%)' },
       ];
@@ -605,7 +605,7 @@ export default function InstructorDashboard() {
     { title: 'Active Subjects', value: stats?.activeSubjects ?? '—', icon: BookOpen, color: 'text-accent-foreground' },
     { title: 'Predictions Run', value: stats?.predictionsRun ?? '—', icon: Brain, color: 'text-success' },
     { title: 'Pending Requests', value: stats?.pendingEnrollments ?? '0', icon: Calendar, color: 'text-warning-foreground' },
-    { title: 'Critical', value: stats?.criticalStudents ?? '—', icon: AlertOctagon, color: 'text-destructive' },
+    { title: 'Crucial', value: stats?.criticalStudents ?? '—', icon: AlertOctagon, color: 'text-destructive' },
   ];
 
   const chartConfig = { count: { label: 'Students' }, level: { label: 'Risk Level' } };
@@ -743,7 +743,7 @@ export default function InstructorDashboard() {
                         <span className="font-medium text-foreground">Declined</span>: Risk worsened, or recent scores/attendance dropped versus prior records.
                       </p>
                       <p>
-                        Trend is constrained for clarity: <span className="font-medium text-foreground">Critical</span> will not show as Improved, and
+                        Trend is constrained for clarity: <span className="font-medium text-foreground">Crucial</span> will not show as Improved, and
                         <span className="font-medium text-foreground"> Stable/Excelling</span> will not show as Declined.
                       </p>
                       <p>
@@ -810,7 +810,7 @@ export default function InstructorDashboard() {
             <CardHeader>
               <CardTitle className="text-lg">Student feedback</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Feedback submitted by at-risk/critical students to explain why they are struggling.
+                Feedback submitted by vulnerable/crucial students to explain why they are struggling.
               </p>
             </CardHeader>
             <CardContent>
@@ -908,7 +908,7 @@ export default function InstructorDashboard() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">Students with critical or lower scores that may need instructor intervention.</p>
+                <p className="text-sm text-muted-foreground mb-4">Students with crucial or lower scores that may need instructor intervention.</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {analyticsData.needIntervention.slice(0, 15).map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
@@ -1009,12 +1009,12 @@ export default function InstructorDashboard() {
                                         <div className="flex gap-2 mt-2">
                                           {stats.atRisk > 0 && (
                                             <Badge variant="outline" className="text-xs text-warning-foreground">
-                                              {stats.atRisk} At Risk
+                                              {stats.atRisk} Vulnerable
                                             </Badge>
                                           )}
                                           {stats.critical > 0 && (
                                             <Badge variant="destructive" className="text-xs">
-                                              {stats.critical} Critical
+                                              {stats.critical} Crucial
                                             </Badge>
                                           )}
                                         </div>
@@ -1094,12 +1094,12 @@ export default function InstructorDashboard() {
                                     <>
                                       {totalAtRisk > 0 && (
                                         <Badge variant="outline" className="text-xs text-warning-foreground">
-                                          {totalAtRisk} at risk
+                                          {totalAtRisk} vulnerable
                                         </Badge>
                                       )}
                                       {totalCritical > 0 && (
                                         <Badge variant="destructive" className="text-xs">
-                                          {totalCritical} critical
+                                          {totalCritical} crucial
                                         </Badge>
                                       )}
                                     </>
