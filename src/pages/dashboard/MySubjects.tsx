@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { BookOpen, ChevronRight, KeyRound, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
+import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -181,6 +182,7 @@ export default function MySubjects() {
     onSuccess: (subject) => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
+      if (user?.id) invalidateStudentLinkedCaches(queryClient, user.id);
       toast.success(`Enrollment request sent for ${subject.code} — ${subject.name}. Waiting for instructor approval.`);
       setEnrollCode('');
     },
@@ -194,6 +196,7 @@ export default function MySubjects() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
+      if (user?.id) invalidateStudentLinkedCaches(queryClient, user.id);
       toast.success('Left course');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -269,6 +272,7 @@ export default function MySubjects() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
+      if (user?.id) invalidateStudentLinkedCaches(queryClient, user.id);
       toast.success('Enrollment request sent. Waiting for instructor approval.');
     },
     onError: (e: Error) => toast.error(e.message),

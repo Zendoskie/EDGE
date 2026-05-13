@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History } from 'lucide-react';
 import { toast } from 'sonner';
+import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
@@ -262,12 +263,14 @@ function SubjectStudents({
   });
 
   const enroll = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from('enrollments').insert({ student_id: selectedStudent, subject_id: subjectId });
+    mutationFn: async (studentId: string) => {
+      const { error } = await supabase.from('enrollments').insert({ student_id: studentId, subject_id: subjectId });
       if (error) throw error;
+      return studentId;
     },
-    onSuccess: () => {
+    onSuccess: (studentId) => {
       queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+      invalidateStudentLinkedCaches(queryClient, studentId);
       toast.success('Student enrolled');
       setEnrollOpen(false);
       setSelectedStudent('');
@@ -276,12 +279,14 @@ function SubjectStudents({
   });
 
   const unenroll = useMutation({
-    mutationFn: async (enrollmentId: string) => {
-      const { error } = await supabase.from('enrollments').delete().eq('id', enrollmentId);
+    mutationFn: async (vars: { enrollmentId: string; studentId: string }) => {
+      const { error } = await supabase.from('enrollments').delete().eq('id', vars.enrollmentId);
       if (error) throw error;
+      return vars.studentId;
     },
-    onSuccess: () => {
+    onSuccess: (studentId) => {
       queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+      invalidateStudentLinkedCaches(queryClient, studentId);
       toast.success('Student removed');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -330,7 +335,7 @@ function SubjectStudents({
                         variant="ghost"
                         size="icon"
                         className="text-destructive hover:text-destructive"
-                        onClick={() => unenroll.mutate(e.id)}
+                        onClick={() => unenroll.mutate({ enrollmentId: e.id, studentId: e.student_id })}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -381,6 +386,7 @@ function SubjectStudents({
                                   toast.error(error.message);
                                 } else {
                                   queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+                                  invalidateStudentLinkedCaches(queryClient, e.student_id);
                                   toast.success('Enrollment approved');
                                 }
                               })
@@ -392,7 +398,7 @@ function SubjectStudents({
                           size="sm"
                           variant="outline"
                           onClick={() =>
-                            unenroll.mutate(e.id)
+                            unenroll.mutate({ enrollmentId: e.id, studentId: e.student_id })
                           }
                         >
                           Reject

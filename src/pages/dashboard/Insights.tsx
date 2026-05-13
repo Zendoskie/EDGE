@@ -41,6 +41,14 @@ import {
   Sparkles
 } from 'lucide-react';
 import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
+import {
+  filterAttendanceBySubjectIds,
+  filterPredictionsBySubjectIds,
+  filterSubmissionsByActiveSubjects,
+  getActivityFromSubmission,
+  pickLatestPredictionByCreatedAt,
+  resolveStudentRiskSummary,
+} from '@/lib/student-performance-scope';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
 
@@ -120,17 +128,6 @@ interface StudentStats {
   riskLevel: string | null;
   recommendation: string | null;
   subjectLabel: string | null;
-}
-
-/**
- * PostgREST may return `activities` as an object or a single-element array depending on the query.
- * Match StudentDashboard logic: resolve max_score and subject_id reliably.
- */
-function getActivityFromSubmission(sub: any): { max_score?: number; subject_id?: string | null } | null {
-  const a = sub?.activities;
-  if (a == null) return null;
-  if (Array.isArray(a)) return a[0] ?? null;
-  return a;
 }
 
 function submissionScorePercent(sub: any): number | null {
@@ -287,27 +284,57 @@ function StudentInsights({ userId }: { userId: string }) {
     enabled: !!userId,
   });
 
+  const subjectIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of subjects as any[]) {
+      if (s?.id) ids.add(String(s.id));
+    }
+    return ids;
+  }, [subjects]);
+
+  const predictionsScoped = useMemo(() => {
+    if (subjectsLoading) return [];
+    return filterPredictionsBySubjectIds(predictions as any[], subjectIdSet);
+  }, [predictions, subjectIdSet, subjectsLoading]);
+
+  const attendanceScoped = useMemo(() => {
+    if (subjectsLoading) return [];
+    return filterAttendanceBySubjectIds(attendance as any[], subjectIdSet);
+  }, [attendance, subjectIdSet, subjectsLoading]);
+
+  const scoresScoped = useMemo(() => {
+    if (subjectsLoading) return [];
+    return filterSubmissionsByActiveSubjects(scores as any[], subjectIdSet);
+  }, [scores, subjectIdSet, subjectsLoading]);
+
+  const interventionsScoped = useMemo(() => {
+    if (subjectsLoading) return [];
+    return (interventions as any[]).filter(
+      (i) => typeof i.subject_id === 'string' && subjectIdSet.has(i.subject_id),
+    );
+  }, [interventions, subjectIdSet, subjectsLoading]);
+
   const latestBySubject = useMemo(() => {
-    return predictions.reduce((acc: Record<string, any>, p: any) => {
+    return predictionsScoped.reduce((acc: Record<string, any>, p: any) => {
       const sid = p.subject_id;
       if (!sid) return acc;
       if (!acc[sid] || new Date(p.created_at) > new Date(acc[sid].created_at)) acc[sid] = p;
       return acc;
     }, {});
-  }, [predictions]);
+  }, [predictionsScoped]);
 
-  const latestOverall = predictions.length > 0 ? predictions[0] : null;
-
-  /* Match student dashboard: present + late count as attended */
-  const attendanceStats = attendance.reduce((acc: { total: number; present: number }, record: any) => {
-    acc.total++;
-    if (record.status === 'present' || record.status === 'late') acc.present++;
-    return acc;
-  }, { total: 0, present: 0 });
+  const attendanceStats = attendanceScoped.reduce(
+    (acc: { total: number; present: number }, record: any) => {
+      acc.total++;
+      if (record.status === 'present' || record.status === 'late') acc.present++;
+      return acc;
+    },
+    { total: 0, present: 0 },
+  );
 
   const attendanceRate = attendanceStats.total > 0 ? (attendanceStats.present / attendanceStats.total) * 100 : 0;
 
-  const scoreStats = (scores as any[]).reduce(
+  const scoreStats = (scoresScoped as any[]).reduce(
     (acc: { total: number; count: number }, submission: any) => {
       const pct = submissionScorePercent(submission);
       if (pct === null) return acc;
@@ -320,19 +347,53 @@ function StudentInsights({ userId }: { userId: string }) {
 
   const averageScore = scoreStats.count > 0 ? scoreStats.total / scoreStats.count : 0;
 
-  const riskDistribution = Object.values(latestBySubject).reduce((acc: Record<CanonicalRiskLevel, number>, p: any) => {
-    const lvl = canonicalRiskLevel(p?.risk_level);
-    acc[lvl] = (acc[lvl] || 0) + 1;
-    return acc;
-  }, {} as Record<CanonicalRiskLevel, number>);
+  const riskSummary = useMemo(() => {
+    const latest = pickLatestPredictionByCreatedAt(predictionsScoped as any[]);
+    const attTotal = attendanceScoped.length;
+    const attPresent = attendanceScoped.filter(
+      (a: any) => a.status === 'present' || a.status === 'late',
+    ).length;
+    const attendanceRatePercent = attTotal > 0 ? Math.round((attPresent / attTotal) * 100) : null;
+    let sum = 0;
+    let cnt = 0;
+    for (const submission of scoresScoped as any[]) {
+      const pct = submissionScorePercent(submission);
+      if (pct != null) {
+        sum += pct;
+        cnt++;
+      }
+    }
+    const overallAveragePercent = cnt > 0 ? Math.round(sum / cnt) : null;
+    return resolveStudentRiskSummary({
+      overallAveragePercent,
+      attendanceRatePercent,
+      latestPrediction: latest
+        ? {
+            risk_level: latest.risk_level,
+            created_at: latest.created_at,
+            recommendation: (latest as any).recommendation ?? null,
+            subjects: (latest as any).subjects ?? null,
+          }
+        : null,
+    });
+  }, [predictionsScoped, attendanceScoped, scoresScoped]);
+
+  const riskDistribution = Object.values(latestBySubject).reduce(
+    (acc: Record<CanonicalRiskLevel, number>, p: any) => {
+      const lvl = canonicalRiskLevel(p?.risk_level);
+      acc[lvl] = (acc[lvl] || 0) + 1;
+      return acc;
+    },
+    {} as Record<CanonicalRiskLevel, number>,
+  );
 
   const studentRiskPieData = useMemo(
     () =>
-      RISK_LEVEL_ORDER.map(level => ({
+      RISK_LEVEL_ORDER.map((level) => ({
         level,
         name: riskLabel(level),
         value: riskDistribution[level] ?? 0,
-      })).filter(d => d.value > 0),
+      })).filter((d) => d.value > 0),
     [riskDistribution],
   );
 
@@ -346,17 +407,17 @@ function StudentInsights({ userId }: { userId: string }) {
 
   const studentActivityBarData = useMemo(
     () => [
-      { metric: 'Predictions', count: predictions.length },
-      { metric: 'Interventions', count: interventions.length },
-      { metric: 'Submissions', count: scores.length },
-      { metric: 'Attendance rows', count: attendance.length },
+      { metric: 'Predictions', count: predictionsScoped.length },
+      { metric: 'Interventions', count: interventionsScoped.length },
+      { metric: 'Submissions', count: scoresScoped.length },
+      { metric: 'Attendance rows', count: attendanceScoped.length },
     ],
-    [predictions.length, interventions.length, scores.length, attendance.length],
+    [predictionsScoped.length, interventionsScoped.length, scoresScoped.length, attendanceScoped.length],
   );
 
   const studentScoreTrendData = useMemo(() => {
-    const rows = (scores as any[])
-      .map(s => {
+    const rows = (scoresScoped as any[])
+      .map((s) => {
         const pct = submissionScorePercent(s);
         const date = submissionTrendDateIsoDay(s);
         if (pct === null || !date) return null;
@@ -365,11 +426,13 @@ function StudentInsights({ userId }: { userId: string }) {
       .filter((row): row is { date: string; scorePct: number } => row != null)
       .sort((a, b) => a.date.localeCompare(b.date));
     return rows;
-  }, [scores]);
+  }, [scoresScoped]);
 
   const studentSubjectBarData = useMemo(() => {
     return (subjects as any[]).map((subject: any) => {
-      const subjectScores = (scores as any[]).filter(s => getActivityFromSubmission(s)?.subject_id === subject.id);
+      const subjectScores = (scoresScoped as any[]).filter(
+        (s) => getActivityFromSubmission(s)?.subject_id === subject.id,
+      );
       const subjectAvg =
         subjectScores.length > 0
           ? subjectScores.reduce((acc, s: any) => {
@@ -379,11 +442,11 @@ function StudentInsights({ userId }: { userId: string }) {
           : 0;
       return { code: subject.code ?? '—', avg: Math.round(subjectAvg * 10) / 10 };
     });
-  }, [subjects, scores]);
+  }, [subjects, scoresScoped]);
 
   const studentPredictionsByDay = useMemo(() => {
     const byDay = new Map<string, number>();
-    for (const p of predictions as any[]) {
+    for (const p of predictionsScoped as any[]) {
       if (!p.created_at) continue;
       const d = new Date(p.created_at).toISOString().slice(0, 10);
       byDay.set(d, (byDay.get(d) ?? 0) + 1);
@@ -391,7 +454,7 @@ function StudentInsights({ userId }: { userId: string }) {
     return Array.from(byDay.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }));
-  }, [predictions]);
+  }, [predictionsScoped]);
 
   const anyLoading = predictionsLoading || interventionsLoading || subjectsLoading || attendanceLoading || scoresLoading;
 
@@ -477,10 +540,10 @@ function StudentInsights({ userId }: { userId: string }) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {latestOverall ? riskLabel(canonicalRiskLevel(latestOverall.risk_level)) : 'No Data'}
+                  {subjectsLoading ? '…' : riskSummary.riskStatusLabel === '—' ? 'No Data' : riskSummary.riskStatusLabel}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Latest prediction
+                  Same logic as your dashboard (enrolled subjects only)
                 </p>
               </CardContent>
             </Card>
@@ -720,22 +783,25 @@ function StudentInsights({ userId }: { userId: string }) {
                 <p className="text-muted-foreground text-sm">No predictions yet. Your instructor will run risk analysis per subject; your insights will appear here.</p>
               ) : (
                 <div className="space-y-4">
-                  {Object.entries(latestBySubject).map(([, p]) => (
-                    <div key={p.id} className="border rounded-lg p-4 space-y-2">
+                  {Object.entries(latestBySubject).map(([, p]) => {
+                    const row = p as Prediction;
+                    return (
+                    <div key={row.id} className="border rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">{(p.subjects as any)?.code} — {(p.subjects as any)?.name}</span>
-                        <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))}>
-                          {riskLabel(canonicalRiskLevel(p.risk_level))}
+                        <span className="font-medium">{(row.subjects as any)?.code} — {(row.subjects as any)?.name}</span>
+                        <Badge variant={riskVariant(canonicalRiskLevel(row.risk_level))}>
+                          {riskLabel(canonicalRiskLevel(row.risk_level))}
                         </Badge>
                       </div>
-                      {p.recommendation && (
-                        <p className="text-sm text-muted-foreground">{p.recommendation}</p>
+                      {row.recommendation && (
+                        <p className="text-sm text-muted-foreground">{row.recommendation}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Last updated: {new Date(p.created_at).toLocaleDateString()}
+                        Last updated: {new Date(row.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -754,11 +820,11 @@ function StudentInsights({ userId }: { userId: string }) {
             <CardContent>
               {interventionsLoading ? (
                 <p className="text-muted-foreground text-sm">Loading interventions...</p>
-              ) : interventions.length === 0 ? (
+              ) : interventionsScoped.length === 0 ? (
                 <p className="text-muted-foreground text-sm">No interventions recorded yet.</p>
               ) : (
                 <ul className="space-y-2">
-                  {interventions.map((i: any) => (
+                  {interventionsScoped.map((i: any) => (
                     <li key={i.id} className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0 text-sm">
                       <Badge variant="outline" className="capitalize shrink-0">{i.type}</Badge>
                       <div>
@@ -865,14 +931,25 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
 
   const uniqueStudents = useMemo(() => new Set((enrollments ?? []).map((e: any) => e.student_id)).size, [enrollments]);
 
+  const instructorPredictionsScoped = useMemo(() => {
+    const keys = new Set(
+      (enrollments as { student_id?: string; subject_id?: string }[])
+        .filter((e) => e.student_id && e.subject_id)
+        .map((e) => `${e.student_id}:${e.subject_id}`),
+    );
+    return (predictions as any[]).filter(
+      (p) => p.student_id && p.subject_id && keys.has(`${p.student_id}:${p.subject_id}`),
+    );
+  }, [predictions, enrollments]);
+
   const latestByStudentSubject = useMemo(() => {
     const acc = new Map<string, any>();
-    for (const p of predictions as any[]) {
+    for (const p of instructorPredictionsScoped as any[]) {
       const key = `${p.student_id}:${p.subject_id}`;
       if (!acc.has(key)) acc.set(key, p);
     }
     return Array.from(acc.values());
-  }, [predictions]);
+  }, [instructorPredictionsScoped]);
 
   const distribution = useMemo(() => {
     const d: Record<CanonicalRiskLevel, number> = { critical: 0, at_risk: 0, stable: 0, excelling: 0 };
@@ -899,7 +976,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
 
   const instructorPredictionsByDay = useMemo(() => {
     const byDay = new Map<string, number>();
-    for (const p of predictions as any[]) {
+    for (const p of instructorPredictionsScoped as any[]) {
       if (!p.created_at) continue;
       const d = new Date(p.created_at).toISOString().slice(0, 10);
       byDay.set(d, (byDay.get(d) ?? 0) + 1);
@@ -907,7 +984,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
     return Array.from(byDay.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count }));
-  }, [predictions]);
+  }, [instructorPredictionsScoped]);
 
   /** Per subject: count of student rows (latest per student–subject) flagged crucial or vulnerable */
   const instructorConcernBarData = useMemo(() => {
@@ -1240,11 +1317,11 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
             <CardContent>
               {predictionsLoading ? (
                 <p className="text-muted-foreground text-sm">Loading predictions…</p>
-              ) : predictions.length === 0 ? (
+              ) : instructorPredictionsScoped.length === 0 ? (
                 <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
               ) : (
                 <ul className="space-y-2">
-                  {predictions.slice(0, 20).map((p: any) => (
+                  {instructorPredictionsScoped.slice(0, 20).map((p: any) => (
                     <li key={p.id} className="flex items-start justify-between gap-3 border-b border-border/50 py-2 last:border-0">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">

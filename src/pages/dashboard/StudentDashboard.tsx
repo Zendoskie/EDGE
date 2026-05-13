@@ -15,6 +15,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import {
+  fetchActiveEnrolledSubjectIds,
+  filterAttendanceBySubjectIds,
+  filterPredictionsBySubjectIds,
+  filterSubmissionsByActiveSubjects,
+  pickLatestPredictionByCreatedAt,
+  resolveStudentRiskSummary,
+} from '@/lib/student-performance-scope';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -71,89 +79,78 @@ export default function StudentDashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['student-dashboard-stats', user?.id],
     queryFn: async () => {
-      const { data: enrollments } = await supabase
-        .from('enrollments')
-        .select('subject_id')
-        .eq('student_id', user!.id)
-        .eq('status', 'active');
-      const enrolledCount = enrollments?.length ?? 0;
+      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user!.id);
+      const enrolledCount = subjectIds.length;
+      const subjectSet = new Set(subjectIds);
 
-      const { data: attRecords } = await supabase
+      if (enrolledCount === 0) {
+        return {
+          enrolledSubjects: 0,
+          attendanceRate: '—',
+          overallAverage: '—',
+          riskStatus: '—',
+          riskLevel: null,
+          recommendation: null,
+          subjectLabel: null,
+          riskSource: 'derived' as const,
+        };
+      }
+
+      const { data: attRecordsRaw } = await supabase
         .from('attendance')
-        .select('status')
+        .select('status, subject_id')
         .eq('student_id', user!.id);
-      const total = attRecords?.length ?? 0;
-      const present = attRecords?.filter(a => a.status === 'present' || a.status === 'late').length ?? 0;
+      const attRecords = filterAttendanceBySubjectIds(attRecordsRaw ?? [], subjectSet);
+      const total = attRecords.length;
+      const present = attRecords.filter((a) => a.status === 'present' || a.status === 'late').length;
       const attendanceRateNum = total > 0 ? Math.round((present / total) * 100) : null;
 
-      const { data: subs } = await supabase
+      const { data: subsRaw } = await supabase
         .from('submissions')
-        .select('score, activities(max_score)')
+        .select('score, activities(max_score, subject_id)')
         .eq('student_id', user!.id);
+      const subs = filterSubmissionsByActiveSubjects(subsRaw ?? [], subjectSet);
       let overallAvg: number | null = null;
-      if (subs?.length) {
+      if (subs.length) {
         const weighted: number[] = [];
         subs.forEach((s: any) => {
           const act = s.activities;
-          const max = (act && typeof act === 'object' && 'max_score' in act) ? act.max_score : 100;
+          const max = act && typeof act === 'object' && 'max_score' in act ? act.max_score : 100;
           if (s.score != null && max) weighted.push((Number(s.score) / Number(max)) * 100);
         });
         overallAvg = weighted.length ? Math.round(weighted.reduce((a, b) => a + b, 0) / weighted.length) : null;
       }
 
-      const { data: pred } = await supabase
+      const { data: predsRaw } = await supabase
         .from('predictions')
-        .select('risk_level, recommendation, created_at, subjects(code, name)')
+        .select('risk_level, recommendation, created_at, subject_id, subjects(code, name)')
         .eq('student_id', user!.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
+      const predsScoped = filterPredictionsBySubjectIds(predsRaw ?? [], subjectSet);
+      const pred = pickLatestPredictionByCreatedAt(predsScoped);
 
-      const predLevel = pred?.risk_level ?? null;
-      const predTs = pred?.created_at ? Date.parse(pred.created_at) : 0;
-      const predIsRecent = Number.isFinite(predTs) ? (Date.now() - predTs) <= 14 * 24 * 60 * 60 * 1000 : false;
-
-      const derivedLevel = (() => {
-        const a = overallAvg ?? null;
-        const att = attendanceRateNum ?? null;
-        if (a == null && att == null) return null;
-        const lowScore = a != null && a < 70;
-        const veryLowScore = a != null && a < 60;
-        const lowAttendance = att != null && att < 75;
-        const veryLowAttendance = att != null && att < 60;
-        if (veryLowScore || veryLowAttendance) return 'critical';
-        if (lowScore || lowAttendance) return 'at_risk';
-        return 'stable';
-      })();
-
-      // Use prediction when it's recent, but avoid showing "Vulnerable" when current performance is clearly stable.
-      const resolvedLevel = (() => {
-        if (predIsRecent && predLevel) {
-          if ((predLevel === 'critical' || predLevel === 'at_risk') && derivedLevel === 'stable') {
-            return 'stable';
-          }
-          return predLevel;
-        }
-        return derivedLevel ?? predLevel;
-      })();
-
-      const resolvedSource: 'prediction' | 'derived' = predIsRecent && predLevel ? 'prediction' : 'derived';
-      const levelLabel = resolvedLevel
-        ? (resolvedLevel === 'critical' ? 'Crucial'
-          : resolvedLevel === 'at_risk' ? 'Vulnerable'
-          : resolvedLevel === 'excelling' ? 'Excelling'
-          : 'Stable')
-        : '—';
+      const summary = resolveStudentRiskSummary({
+        overallAveragePercent: overallAvg,
+        attendanceRatePercent: attendanceRateNum,
+        latestPrediction: pred
+          ? {
+              risk_level: pred.risk_level,
+              created_at: pred.created_at,
+              recommendation: (pred as { recommendation?: string | null }).recommendation ?? null,
+              subjects: (pred as { subjects?: { code?: string; name?: string | null } | null }).subjects ?? null,
+            }
+          : null,
+      });
 
       return {
         enrolledSubjects: enrolledCount,
         attendanceRate: attendanceRateNum != null ? `${attendanceRateNum}%` : '—',
         overallAverage: overallAvg != null ? `${overallAvg}%` : '—',
-        riskStatus: levelLabel,
-        riskLevel: resolvedLevel ?? null,
-        recommendation: (pred as any)?.recommendation ?? null,
-        subjectLabel: (pred as any)?.subjects?.code ? `${(pred as any)?.subjects?.code} — ${(pred as any)?.subjects?.name ?? ''}`.trim() : null,
-        riskSource: resolvedSource,
+        riskStatus: summary.riskStatusLabel,
+        riskLevel: summary.resolvedLevel,
+        recommendation: summary.recommendation,
+        subjectLabel: summary.subjectLabel,
+        riskSource: summary.riskSource,
       };
     },
     enabled: !!user?.id,
@@ -162,13 +159,16 @@ export default function StudentDashboard() {
   const { data: recentActivity = [], isLoading: activityLoading } = useQuery({
     queryKey: ['student-recent-activity', user?.id],
     queryFn: async () => {
+      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user!.id);
+      if (subjectIds.length === 0) return [];
+      const subjectSet = new Set(subjectIds);
       const { data: subs } = await supabase
         .from('submissions')
-        .select('score, graded_at, activity_id, activities(id, title, type, max_score, subjects(code, name))')
+        .select('score, graded_at, activity_id, activities(id, title, type, max_score, subject_id, subjects(code, name))')
         .eq('student_id', user!.id)
         .order('graded_at', { ascending: false })
-        .limit(5);
-      return subs ?? [];
+        .limit(40);
+      return filterSubmissionsByActiveSubjects(subs ?? [], subjectSet).slice(0, 5);
     },
     enabled: !!user?.id,
   });
@@ -177,15 +177,19 @@ export default function StudentDashboard() {
     queryKey: ["student-at-risk-subjects", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
+      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user.id);
+      if (subjectIds.length === 0) return [];
+      const subjectSet = new Set(subjectIds);
       const { data, error } = await supabase
         .from("predictions")
         .select("id, subject_id, risk_level, created_at, subjects(code, name)")
         .eq("student_id", user.id)
+        .in("subject_id", subjectIds)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
       const latestBySubject = new Map<string, any>();
-      for (const row of data ?? []) {
+      for (const row of filterPredictionsBySubjectIds(data ?? [], subjectSet)) {
         if (!row.subject_id) continue;
         if (!latestBySubject.has(row.subject_id)) latestBySubject.set(row.subject_id, row);
       }
@@ -200,6 +204,9 @@ export default function StudentDashboard() {
     queryKey: ["student-latest-grade-by-subject", user?.id],
     queryFn: async () => {
       if (!user?.id) return {};
+      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user.id);
+      const subjectSet = new Set(subjectIds);
+      if (subjectSet.size === 0) return {};
       const { data, error } = await supabase
         .from("submissions")
         .select("id, graded_at, submitted_at, activities(subject_id)")
@@ -212,7 +219,7 @@ export default function StudentDashboard() {
       const latest: Record<string, string> = {};
       for (const row of data ?? []) {
         const sid = (row as any)?.activities?.subject_id;
-        if (typeof sid !== "string") continue;
+        if (typeof sid !== "string" || !subjectSet.has(sid)) continue;
         if (latest[sid]) continue;
         const t = (row as any)?.graded_at ?? (row as any)?.submitted_at ?? null;
         if (typeof t === "string" && t) latest[sid] = t;

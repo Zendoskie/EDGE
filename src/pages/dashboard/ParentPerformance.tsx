@@ -8,6 +8,7 @@ import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
+import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -128,13 +129,14 @@ export default function ParentPerformance() {
   );
 
   const { data: predictions = [] } = useQuery({
-    queryKey: ['parent-student-predictions', studentId],
-    enabled: !!studentId,
+    queryKey: ['parent-student-predictions', studentId, enrolledSubjectIds.join(',')],
+    enabled: !!studentId && enrolledSubjectIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('predictions')
         .select('id, subject_id, risk_level, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name)')
         .eq('student_id', studentId!)
+        .in('subject_id', enrolledSubjectIds)
         .order('created_at', { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -157,13 +159,14 @@ export default function ParentPerformance() {
   });
 
   const { data: attendance = [] } = useQuery({
-    queryKey: ['parent-student-attendance', studentId],
-    enabled: !!studentId,
+    queryKey: ['parent-student-attendance', studentId, enrolledSubjectIds.join(',')],
+    enabled: !!studentId && enrolledSubjectIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance')
         .select('subject_id, date, status')
         .eq('student_id', studentId!)
+        .in('subject_id', enrolledSubjectIds)
         .order('date', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -185,15 +188,16 @@ export default function ParentPerformance() {
   });
 
   const { data: submissions = [] } = useQuery({
-    queryKey: ['parent-student-submissions', studentId],
-    enabled: !!studentId,
+    queryKey: ['parent-student-submissions', studentId, enrolledSubjectIds.join(',')],
+    enabled: !!studentId && enrolledSubjectIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('submissions')
-        .select('activity_id, score, submitted_at, graded_at')
+        .select('activity_id, score, submitted_at, graded_at, activities(subject_id)')
         .eq('student_id', studentId!);
       if (error) throw error;
-      return data ?? [];
+      const set = new Set(enrolledSubjectIds);
+      return filterSubmissionsByActiveSubjects(data ?? [], set);
     },
   });
 

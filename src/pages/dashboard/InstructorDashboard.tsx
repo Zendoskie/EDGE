@@ -145,18 +145,26 @@ export default function InstructorDashboard() {
         return { totalStudents: 0, activeSubjects: 0, predictionsRun: 0, atRiskStudents: 0, criticalStudents: 0 };
       }
       const [enrollmentsRes, predictionsRes] = await Promise.all([
-        supabase.from('enrollments').select('student_id, status').in('subject_id', subjectIds),
-        supabase.from('predictions').select('id, risk_level').in('subject_id', subjectIds),
+        supabase.from('enrollments').select('student_id, subject_id, status').in('subject_id', subjectIds),
+        supabase.from('predictions').select('id, risk_level, student_id, subject_id').in('subject_id', subjectIds),
       ]);
       const activeStudents = (enrollmentsRes.data ?? []).filter(e => e.status === 'active');
       const uniqueStudents = new Set(activeStudents.map(e => e.student_id) ?? []).size;
       const pendingCount = (enrollmentsRes.data ?? []).filter(e => e.status === 'pending').length;
-      const atRisk = predictionsRes.data?.filter(p => p.risk_level === 'at_risk').length ?? 0;
-      const critical = predictionsRes.data?.filter(p => p.risk_level === 'critical').length ?? 0;
+      const activeKeys = new Set(
+        activeStudents
+          .filter((e): e is typeof e & { student_id: string; subject_id: string } => Boolean(e.student_id && e.subject_id))
+          .map((e) => `${e.student_id}::${e.subject_id}`),
+      );
+      const predsForActive = (predictionsRes.data ?? []).filter(
+        (p) => p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`),
+      );
+      const atRisk = predsForActive.filter(p => p.risk_level === 'at_risk').length;
+      const critical = predsForActive.filter(p => p.risk_level === 'critical').length;
       return {
         totalStudents: uniqueStudents,
         activeSubjects: subjectIds.length,
-        predictionsRun: predictionsRes.data?.length ?? 0,
+        predictionsRun: predsForActive.length,
         atRiskStudents: atRisk,
         criticalStudents: critical,
         pendingEnrollments: pendingCount,
@@ -174,7 +182,19 @@ export default function InstructorDashboard() {
         .from('predictions')
         .select('id, risk_level, subject_id, student_id, subjects(id, code, name)')
         .in('subject_id', ids);
-      const preds = predictions ?? [];
+      const { data: enrollRows } = await supabase
+        .from('enrollments')
+        .select('student_id, subject_id, status')
+        .in('subject_id', ids)
+        .eq('status', 'active');
+      const activeKeys = new Set(
+        (enrollRows ?? [])
+          .filter((e): e is { student_id: string; subject_id: string } => Boolean(e.student_id && e.subject_id))
+          .map((e) => `${e.student_id}::${e.subject_id}`),
+      );
+      const preds = (predictions ?? []).filter(
+        (p: any) => p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`),
+      );
       const criticalAndAtRisk = preds.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
       const chartData = [
         { level: 'Crucial', count: preds.filter((p: any) => p.risk_level === 'critical').length, fill: 'hsl(0 72% 51%)' },
@@ -209,12 +229,24 @@ export default function InstructorDashboard() {
       if (ids.length === 0) return [];
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, risk_level, recommendation, subject_id, subjects(code, name)')
+        .select('id, risk_level, recommendation, subject_id, student_id, subjects(code, name)')
         .in('subject_id', ids)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(30);
       if (error) throw error;
-      return data ?? [];
+      const { data: enrollRows } = await supabase
+        .from('enrollments')
+        .select('student_id, subject_id, status')
+        .in('subject_id', ids)
+        .eq('status', 'active');
+      const activeKeys = new Set(
+        (enrollRows ?? [])
+          .filter((e): e is { student_id: string; subject_id: string } => Boolean(e.student_id && e.subject_id))
+          .map((e) => `${e.student_id}::${e.subject_id}`),
+      );
+      return (data ?? [])
+        .filter((p) => p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`))
+        .slice(0, 10);
     },
     enabled: !!user?.id && !!subjectsWithPrograms,
   });
@@ -572,7 +604,7 @@ export default function InstructorDashboard() {
       
       const [enrollmentsRes, predictionsRes] = await Promise.all([
         supabase.from('enrollments').select('subject_id, student_id, status').in('subject_id', ids),
-        supabase.from('predictions').select('subject_id, risk_level').in('subject_id', ids),
+        supabase.from('predictions').select('subject_id, risk_level, student_id').in('subject_id', ids),
       ]);
 
       const stats: Record<string, { students: number; atRisk: number; critical: number; predictions: number }> = {};
@@ -587,7 +619,20 @@ export default function InstructorDashboard() {
         }
       });
 
+      const activeKeys = new Set(
+        (enrollmentsRes.data ?? [])
+          .filter((e) => e.status === 'active' && e.student_id && e.subject_id)
+          .map((e) => `${e.student_id}::${e.subject_id}`),
+      );
+
       predictionsRes.data?.forEach(prediction => {
+        if (
+          !prediction.subject_id ||
+          !prediction.student_id ||
+          !activeKeys.has(`${prediction.student_id}::${prediction.subject_id}`)
+        ) {
+          return;
+        }
         if (stats[prediction.subject_id]) {
           stats[prediction.subject_id].predictions++;
           if (prediction.risk_level === 'at_risk') stats[prediction.subject_id].atRisk++;

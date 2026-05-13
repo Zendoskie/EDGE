@@ -312,12 +312,29 @@ serve(async (req) => {
           });
         }
 
-        const { data: preds } = await supabase
+        const { data: predsRaw } = await supabase
           .from("predictions")
-          .select("risk_level, recommendation, subject_id, subjects(code, name)")
+          .select("risk_level, recommendation, subject_id, student_id, subjects(code, name)")
           .in("subject_id", ids)
           .order("created_at", { ascending: false })
-          .limit(80);
+          .limit(120);
+
+        const { data: enrollRows } = await supabase
+          .from("enrollments")
+          .select("student_id, subject_id")
+          .in("subject_id", ids)
+          .eq("status", "active");
+
+        const activeKeys = new Set(
+          (enrollRows ?? [])
+            .filter((e: { student_id?: string; subject_id?: string }) => e.student_id && e.subject_id)
+            .map((e: { student_id: string; subject_id: string }) => `${e.student_id}::${e.subject_id}`),
+        );
+
+        const preds = (predsRaw ?? []).filter((p: {
+          student_id?: string;
+          subject_id?: string;
+        }) => Boolean(p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`))).slice(0, 80);
 
         if (!preds?.length) {
           return new Response(
@@ -340,10 +357,29 @@ serve(async (req) => {
         });
         contextBlock = `You are helping an INSTRUCTOR. Summarize patterns across recent student risk predictions (do not use individual student names).\n\nData:\n${lines.join("\n")}`;
       } else {
+        const { data: enrollRows } = await supabase
+          .from("enrollments")
+          .select("subject_id")
+          .eq("student_id", user.id)
+          .eq("status", "active");
+        const enrolledSubjectIds = (enrollRows ?? [])
+          .map((r: { subject_id?: string | null }) => r.subject_id)
+          .filter((id: string | null): id is string => Boolean(id));
+        if (enrolledSubjectIds.length === 0) {
+          return new Response(
+            JSON.stringify({
+              insight:
+                "No enrolled subjects found yet. Once you are enrolled in a course, prediction summaries can appear here after your instructor runs risk analysis.",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
         const { data: preds } = await supabase
           .from("predictions")
           .select("risk_level, recommendation, created_at, subjects(code, name)")
           .eq("student_id", user.id)
+          .in("subject_id", enrolledSubjectIds)
           .order("created_at", { ascending: false })
           .limit(30);
 
