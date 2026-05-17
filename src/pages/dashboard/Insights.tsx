@@ -51,8 +51,23 @@ import {
 } from '@/lib/student-performance-scope';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
+import { InsightsChartFrame } from '@/components/insights/InsightsChartFrame';
 
 const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ['critical', 'at_risk', 'stable', 'excelling'];
+
+const INSIGHTS_TABS_LIST =
+  'flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] p-1 h-auto sm:grid sm:grid-cols-4 sm:overflow-visible sm:gap-0 sm:py-1 sm:h-12';
+
+const INSIGHTS_TAB_TRIGGER =
+  'shrink-0 min-w-[4.75rem] !text-xs !px-2 sm:min-w-0 sm:flex-1 sm:!text-sm sm:!px-3.5';
+
+const CHART_MARGIN = { top: 8, right: 8, left: 4, bottom: 28 };
+const CHART_MARGIN_TALL_X = { top: 8, right: 8, left: 4, bottom: 52 };
+const MOBILE_AXIS_TICK = { fontSize: 10 };
+
+const CHART_H_SM = 'aspect-auto h-[220px] sm:h-[280px] w-full max-w-full';
+const CHART_H_MD = 'aspect-auto h-[240px] sm:h-[300px] w-full max-w-full';
+const PIE_CHART_CLASS = 'mx-auto aspect-square max-h-[220px] sm:max-h-[280px] w-full max-w-[min(100%,300px)]';
 
 /** Recharts / ChartContainer colors — aligned with semantic risk levels (readable in light & dark) */
 const riskChartConfig = {
@@ -173,7 +188,7 @@ export default function Insights() {
       <div className="space-y-6 animate-fade-in min-w-0">
         <section className="page-section overflow-hidden">
           <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-            <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+            <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
           </div>
         </section>
         <EmptyState
@@ -410,7 +425,7 @@ function StudentInsights({ userId }: { userId: string }) {
       { metric: 'Predictions', count: predictionsScoped.length },
       { metric: 'Interventions', count: interventionsScoped.length },
       { metric: 'Submissions', count: scoresScoped.length },
-      { metric: 'Attendance rows', count: attendanceScoped.length },
+      { metric: 'Attendance', count: attendanceScoped.length },
     ],
     [predictionsScoped.length, interventionsScoped.length, scoresScoped.length, attendanceScoped.length],
   );
@@ -462,7 +477,7 @@ function StudentInsights({ userId }: { userId: string }) {
     <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>
 
@@ -471,29 +486,29 @@ function StudentInsights({ userId }: { userId: string }) {
       </p>
 
       <Tabs defaultValue="overview" className="w-full min-w-0">
-        <TabsList className="grid w-full grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-0 h-auto sm:h-12 py-1">
-          <TabsTrigger value="overview" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+        <TabsList className={INSIGHTS_TABS_LIST}>
+          <TabsTrigger value="overview" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <BarChart3 className="h-4 w-4 shrink-0" />
-            <span className="truncate">Overview</span>
+            <span>Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="analytics" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <Activity className="h-4 w-4 shrink-0" />
-            <span className="truncate">Analytics</span>
+            <span>Analytics</span>
           </TabsTrigger>
-          <TabsTrigger value="predictions" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="predictions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <Brain className="h-4 w-4 shrink-0" />
-            <span className="truncate"><span className="hidden sm:inline">AI </span>Predictions</span>
+            <span>Predictions</span>
           </TabsTrigger>
-          <TabsTrigger value="interventions" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="interventions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <MessageSquare className="h-4 w-4 shrink-0" />
-            <span className="truncate">Interventions</span>
+            <span>Interventions</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-6">
+        <TabsContent value="overview" className="mt-6 min-w-0">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Subjects</CardTitle>
@@ -564,7 +579,8 @@ function StudentInsights({ userId }: { userId: string }) {
                 {studentRiskPieData.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No risk predictions available yet.</p>
                 ) : (
-                  <ChartContainer config={riskChartConfig} className="mx-auto aspect-square max-h-[280px] w-full">
+                  <InsightsChartFrame minWidth={260}>
+                  <ChartContainer config={riskChartConfig} className={PIE_CHART_CLASS}>
                     <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }} aria-label="Risk distribution pie chart">
                       <ChartTooltip content={<ChartTooltipContent nameKey="name" hideIndicator />} />
                       <Pie
@@ -584,6 +600,7 @@ function StudentInsights({ userId }: { userId: string }) {
                       <ChartLegend content={<ChartLegendContent nameKey="name" />} verticalAlign="bottom" />
                     </PieChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
@@ -597,15 +614,17 @@ function StudentInsights({ userId }: { userId: string }) {
                 <p className="text-sm text-muted-foreground">Counts from your enrollments and records.</p>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={countChartConfig} className="h-[280px] w-full">
-                  <BarChart data={studentActivityBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                <InsightsChartFrame>
+                <ChartContainer config={countChartConfig} className={CHART_H_SM}>
+                  <BarChart data={studentActivityBarData} margin={CHART_MARGIN} accessibilityLayer>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
-                    <XAxis dataKey="metric" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <XAxis dataKey="metric" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} interval={0} angle={-25} textAnchor="end" height={48} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} tick={MOBILE_AXIS_TICK} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="count" fill="var(--color-count)" radius={6} name="Records" />
                   </BarChart>
                 </ChartContainer>
+                </InsightsChartFrame>
               </CardContent>
             </Card>
           </div>
@@ -626,15 +645,17 @@ function StudentInsights({ userId }: { userId: string }) {
                 {studentScoreTrendData.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No dated scored submissions yet—charts use graded or submitted date.</p>
                 ) : (
-                  <ChartContainer config={scoreTrendChartConfig} className="h-[280px] w-full">
-                    <LineChart data={studentScoreTrendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                  <InsightsChartFrame>
+                  <ChartContainer config={scoreTrendChartConfig} className={CHART_H_SM}>
+                    <LineChart data={studentScoreTrendData} margin={CHART_MARGIN} accessibilityLayer>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
-                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={32} tick={MOBILE_AXIS_TICK} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Line type="monotone" dataKey="scorePct" stroke="var(--color-scorePct)" strokeWidth={2} dot={{ r: 3 }} name="Score %" />
                     </LineChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
@@ -651,7 +672,8 @@ function StudentInsights({ userId }: { userId: string }) {
                 {studentPredictionsByDay.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No prediction history yet.</p>
                 ) : (
-                  <ChartContainer config={predictionTimelineChartConfig} className="h-[280px] w-full">
+                  <InsightsChartFrame>
+                  <ChartContainer config={predictionTimelineChartConfig} className={CHART_H_SM}>
                     <LineChart data={studentPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
                       <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
@@ -660,12 +682,13 @@ function StudentInsights({ userId }: { userId: string }) {
                       <Line type="stepAfter" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Count" />
                     </LineChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          <Card className="bg-card/90 mt-6">
+          <Card className="bg-card/90 mt-6 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
@@ -674,20 +697,22 @@ function StudentInsights({ userId }: { userId: string }) {
               <p className="text-sm text-muted-foreground">Attendance rate and overall average score (same calculations as the summary cards).</p>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={metricsChartConfig} className="h-[200px] w-full max-w-lg mx-auto">
-                <BarChart data={studentMetricsBarData} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 8 }} accessibilityLayer>
+              <InsightsChartFrame minWidth={260}>
+              <ChartContainer config={metricsChartConfig} className={`${CHART_H_SM} max-w-lg mx-auto`}>
+                <BarChart data={studentMetricsBarData} layout="vertical" margin={{ top: 8, right: 16, left: 4, bottom: 8 }} accessibilityLayer>
                   <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border/50" />
-                  <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="metric" tickLine={false} axisLine={false} width={88} />
+                  <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} tick={MOBILE_AXIS_TICK} />
+                  <YAxis type="category" dataKey="metric" tickLine={false} axisLine={false} width={56} tick={MOBILE_AXIS_TICK} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="value" fill="var(--color-value)" radius={6} name="Percent" />
                 </BarChart>
               </ChartContainer>
+              </InsightsChartFrame>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-6">
+        <TabsContent value="analytics" className="mt-6 min-w-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader>
@@ -701,7 +726,8 @@ function StudentInsights({ userId }: { userId: string }) {
                 {studentScoreTrendData.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No dated scored submissions yet—charts use graded or submitted date.</p>
                 ) : (
-                  <ChartContainer config={scoreTrendChartConfig} className="h-[300px] w-full">
+                  <InsightsChartFrame>
+                  <ChartContainer config={scoreTrendChartConfig} className={CHART_H_MD}>
                     <LineChart data={studentScoreTrendData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
                       <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
@@ -711,6 +737,7 @@ function StudentInsights({ userId }: { userId: string }) {
                       <Line type="monotone" dataKey="scorePct" stroke="var(--color-scorePct)" strokeWidth={2} dot={{ r: 3 }} name="Score %" />
                     </LineChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
@@ -727,23 +754,25 @@ function StudentInsights({ userId }: { userId: string }) {
                 {subjects.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No subjects enrolled</p>
                 ) : (
-                  <ChartContainer config={subjectScoreChartConfig} className="h-[300px] w-full">
-                    <BarChart data={studentSubjectBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                  <InsightsChartFrame>
+                  <ChartContainer config={subjectScoreChartConfig} className={CHART_H_MD}>
+                    <BarChart data={studentSubjectBarData} margin={CHART_MARGIN_TALL_X} accessibilityLayer>
                       <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
-                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
-                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={36} label={{ value: '%', angle: -90, position: 'insideLeft' }} />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} interval={0} angle={-35} textAnchor="end" height={56} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} width={32} tick={MOBILE_AXIS_TICK} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <ChartLegend content={<ChartLegendContent />} />
                       <Bar dataKey="avg" fill="var(--color-avg)" radius={6} name="Avg %" />
                     </BarChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6 space-y-6">
+        <TabsContent value="predictions" className="mt-6 space-y-6 min-w-0">
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -758,7 +787,7 @@ function StudentInsights({ userId }: { userId: string }) {
               {aiInsightLoading ? (
                 <p className="text-sm text-muted-foreground">Generating AI summary…</p>
               ) : (
-                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 sm:px-4 sm:py-4 overflow-hidden min-w-0">
                   <FormattedAssistantContent
                     text={aiInsight ?? 'AI summary unavailable.'}
                     className="text-[15px] leading-7"
@@ -786,15 +815,15 @@ function StudentInsights({ userId }: { userId: string }) {
                   {Object.entries(latestBySubject).map(([, p]) => {
                     const row = p as Prediction;
                     return (
-                    <div key={row.id} className="border rounded-lg p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{(row.subjects as any)?.code} — {(row.subjects as any)?.name}</span>
-                        <Badge variant={riskVariant(canonicalRiskLevel(row.risk_level))}>
+                    <div key={row.id} className="border rounded-lg p-3 sm:p-4 space-y-2 min-w-0">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                        <span className="font-medium text-sm sm:text-base break-words min-w-0">{(row.subjects as any)?.code} — {(row.subjects as any)?.name}</span>
+                        <Badge variant={riskVariant(canonicalRiskLevel(row.risk_level))} className="shrink-0 self-start">
                           {riskLabel(canonicalRiskLevel(row.risk_level))}
                         </Badge>
                       </div>
                       {row.recommendation && (
-                        <p className="text-sm text-muted-foreground">{row.recommendation}</p>
+                        <p className="text-sm text-muted-foreground break-words">{row.recommendation}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
                         Last updated: {new Date(row.created_at).toLocaleDateString()}
@@ -808,7 +837,7 @@ function StudentInsights({ userId }: { userId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="interventions" className="mt-6">
+        <TabsContent value="interventions" className="mt-6 min-w-0">
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -1004,7 +1033,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
     <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <h1 className="text-2xl font-display font-bold">Performance Insights</h1>
+          <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>
 
@@ -1020,29 +1049,29 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
       ) : null}
 
       <Tabs defaultValue="overview" className="w-full min-w-0">
-        <TabsList className="grid w-full grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-0 h-auto sm:h-12 py-1">
-          <TabsTrigger value="overview" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+        <TabsList className={INSIGHTS_TABS_LIST}>
+          <TabsTrigger value="overview" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <BarChart3 className="h-4 w-4 shrink-0" />
-            <span className="truncate">Overview</span>
+            <span>Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="analytics" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <Activity className="h-4 w-4 shrink-0" />
-            <span className="truncate">Analytics</span>
+            <span>Analytics</span>
           </TabsTrigger>
-          <TabsTrigger value="predictions" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="predictions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <Brain className="h-4 w-4 shrink-0" />
-            <span className="truncate"><span className="hidden sm:inline">AI </span>Predictions</span>
+            <span>Predictions</span>
           </TabsTrigger>
-          <TabsTrigger value="interventions" className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1 sm:px-3">
+          <TabsTrigger value="interventions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
             <MessageSquare className="h-4 w-4 shrink-0" />
-            <span className="truncate">Interventions</span>
+            <span>Interventions</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-6">
+        <TabsContent value="overview" className="mt-6 min-w-0">
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Subjects</CardTitle>
@@ -1104,7 +1133,8 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                       : 'No predictions yet. Run predictions from a subject page.'}
                   </p>
                 ) : (
-                  <ChartContainer config={riskChartConfig} className="mx-auto aspect-square max-h-[280px] w-full">
+                  <InsightsChartFrame minWidth={260}>
+                  <ChartContainer config={riskChartConfig} className={PIE_CHART_CLASS}>
                     <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }} aria-label="Instructor risk distribution">
                       <ChartTooltip content={<ChartTooltipContent nameKey="name" hideIndicator />} />
                       <Pie
@@ -1124,6 +1154,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                       <ChartLegend content={<ChartLegendContent nameKey="name" />} verticalAlign="bottom" />
                     </PieChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
@@ -1140,22 +1171,24 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 {subjects.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No subjects yet.</p>
                 ) : (
-                  <ChartContainer config={enrollmentChartConfig} className="h-[280px] w-full">
-                    <BarChart data={instructorEnrollmentBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                  <InsightsChartFrame>
+                  <ChartContainer config={enrollmentChartConfig} className={CHART_H_SM}>
+                    <BarChart data={instructorEnrollmentBarData} margin={CHART_MARGIN_TALL_X} accessibilityLayer>
                       <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
-                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
-                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} interval={0} angle={-35} textAnchor="end" height={56} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} tick={MOBILE_AXIS_TICK} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <ChartLegend content={<ChartLegendContent />} />
                       <Bar dataKey="students" fill="var(--color-students)" radius={6} name="Students" />
                     </BarChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          <Card className="bg-card/90 mt-6">
+          <Card className="bg-card/90 mt-6 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
@@ -1167,22 +1200,24 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               {instructorPredictionsByDay.length === 0 ? (
                 <p className="text-muted-foreground text-sm">No prediction history yet.</p>
               ) : (
-                <ChartContainer config={predictionTimelineChartConfig} className="h-[260px] w-full">
-                  <LineChart data={instructorPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                <InsightsChartFrame>
+                <ChartContainer config={predictionTimelineChartConfig} className={CHART_H_SM}>
+                  <LineChart data={instructorPredictionsByDay} margin={CHART_MARGIN} accessibilityLayer>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} tick={MOBILE_AXIS_TICK} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <ChartLegend content={<ChartLegendContent />} />
                     <Line type="stepAfter" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Predictions" />
                   </LineChart>
                 </ChartContainer>
+                </InsightsChartFrame>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-6">
+        <TabsContent value="analytics" className="mt-6 min-w-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader>
@@ -1198,7 +1233,8 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 ) : latestByStudentSubject.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No predictions yet. Run predictions from a subject page.</p>
                 ) : (
-                  <ChartContainer config={riskChartConfig} className="h-[300px] w-full">
+                  <InsightsChartFrame>
+                  <ChartContainer config={riskChartConfig} className={CHART_H_MD}>
                     <BarChart
                       data={RISK_LEVEL_ORDER.map(level => ({
                         level,
@@ -1219,6 +1255,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                       </Bar>
                     </BarChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
@@ -1239,22 +1276,24 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                 ) : latestByStudentSubject.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No predictions yet.</p>
                 ) : (
-                  <ChartContainer config={concernChartConfig} className="h-[300px] w-full">
-                    <BarChart data={instructorConcernBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                  <InsightsChartFrame>
+                  <ChartContainer config={concernChartConfig} className={CHART_H_MD}>
+                    <BarChart data={instructorConcernBarData} margin={CHART_MARGIN_TALL_X} accessibilityLayer>
                       <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
-                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} />
-                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                      <XAxis dataKey="code" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} interval={0} angle={-35} textAnchor="end" height={56} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} tick={MOBILE_AXIS_TICK} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <ChartLegend content={<ChartLegendContent />} />
                       <Bar dataKey="concern" fill="var(--color-concern)" radius={6} name="Concern count" />
                     </BarChart>
                   </ChartContainer>
+                  </InsightsChartFrame>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          <Card className="bg-card/90 mt-6">
+          <Card className="bg-card/90 mt-6 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
@@ -1266,22 +1305,24 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               {instructorPredictionsByDay.length === 0 ? (
                 <p className="text-muted-foreground text-sm">No prediction history yet.</p>
               ) : (
-                <ChartContainer config={predictionTimelineChartConfig} className="h-[280px] w-full">
-                  <LineChart data={instructorPredictionsByDay} margin={{ top: 8, right: 8, left: 8, bottom: 8 }} accessibilityLayer>
+                <InsightsChartFrame>
+                <ChartContainer config={predictionTimelineChartConfig} className={CHART_H_SM}>
+                  <LineChart data={instructorPredictionsByDay} margin={CHART_MARGIN} accessibilityLayer>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tick={MOBILE_AXIS_TICK} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} tick={MOBILE_AXIS_TICK} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <ChartLegend content={<ChartLegendContent />} />
                     <Line type="monotone" dataKey="count" stroke="var(--color-count)" strokeWidth={2} dot={{ r: 3 }} name="Predictions" />
                   </LineChart>
                 </ChartContainer>
+                </InsightsChartFrame>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6 space-y-6">
+        <TabsContent value="predictions" className="mt-6 space-y-6 min-w-0">
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1296,7 +1337,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               {aiInsightLoading ? (
                 <p className="text-sm text-muted-foreground">Generating AI summary…</p>
               ) : (
-                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 sm:px-4 sm:py-4 overflow-hidden min-w-0">
                   <FormattedAssistantContent
                     text={aiInsight ?? 'AI summary unavailable.'}
                     className="text-[15px] leading-7"
@@ -1345,7 +1386,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="interventions" className="mt-6">
+        <TabsContent value="interventions" className="mt-6 min-w-0">
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
