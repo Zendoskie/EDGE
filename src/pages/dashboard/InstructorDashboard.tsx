@@ -12,6 +12,9 @@ import { Bar, BarChart, XAxis, YAxis, CartesianGrid, Cell } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
+import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
+import { normalizeReferralStatus } from '@/lib/referral-utils';
 
 const riskLabel = (level: string) => {
   if (level === 'critical') return 'Crucial';
@@ -114,6 +117,10 @@ function inferActivityTrend(
 export default function InstructorDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals();
+  const pendingReferralCount = counselingReferrals.filter(
+    (r) => normalizeReferralStatus(r.status) === "pending",
+  ).length;
 
   const { data: subjectsWithPrograms } = useQuery({
     queryKey: ['instructor-subjects-programs', user?.id],
@@ -656,7 +663,7 @@ export default function InstructorDashboard() {
   const chartConfig = { count: { label: 'Students' }, level: { label: 'Risk Level' } };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div>
@@ -666,7 +673,7 @@ export default function InstructorDashboard() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 min-w-0">
         {statCards.map((stat) => (
           <Card key={stat.title} className="bg-card/90 interactive-lift">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -679,6 +686,16 @@ export default function InstructorDashboard() {
           </Card>
         ))}
       </div>
+
+      <CounselingReferralsCard
+        referrals={counselingReferrals}
+        loading={referralsLoading}
+        compact
+        showStudent
+        linkSubjects
+        title={`Counseling referrals${pendingReferralCount > 0 ? ` (${pendingReferralCount} pending)` : ""}`}
+        description="Recent guidance counseling referrals and their approval status."
+      />
 
       <Card className="bg-card/90 border-border/70">
         <CardHeader>
@@ -700,11 +717,11 @@ export default function InstructorDashboard() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 h-12">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="courses">Courses by Program</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+      <Tabs defaultValue="overview" className="w-full min-w-0">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 h-auto sm:h-12 py-1">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+          <TabsTrigger value="courses" className="text-xs sm:text-sm">Courses by Program</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-xs sm:text-sm">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -721,7 +738,8 @@ export default function InstructorDashboard() {
                 {!analyticsData?.chartData?.length ? (
                   <p className="text-muted-foreground text-sm py-8 text-center">No prediction data yet. Run predictions from a subject page.</p>
                 ) : (
-                  <ChartContainer config={chartConfig} className="h-[200px] w-full">
+                  <div className="w-full min-w-0 overflow-x-auto">
+                  <ChartContainer config={chartConfig} className="h-[200px] w-full min-w-[240px]">
                     <BarChart data={analyticsData.chartData} layout="vertical" margin={{ left: 0, right: 24 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                       <XAxis type="number" />
@@ -734,11 +752,12 @@ export default function InstructorDashboard() {
                       </Bar>
                     </BarChart>
                   </ChartContainer>
+                  </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card className="bg-card/90 interactive-lift">
+            <Card className="bg-card/90 interactive-lift min-w-0 w-full">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <GraduationCap className="h-5 w-5" />

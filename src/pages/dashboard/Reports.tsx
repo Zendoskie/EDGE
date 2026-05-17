@@ -294,7 +294,7 @@ export default function Reports() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div>
@@ -440,6 +440,7 @@ export default function Reports() {
                     {rows.length === 0 ? (
                       <p className="text-muted-foreground text-sm">No enrolled students.</p>
                     ) : (
+                      <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -470,6 +471,7 @@ export default function Reports() {
                           ))}
                         </TableBody>
                       </Table>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -480,7 +482,7 @@ export default function Reports() {
       </Tabs>
 
       <Dialog open={!!selectedPreview} onOpenChange={(open) => !open && setSelectedPreview(null)}>
-        <DialogContent className="max-w-7xl w-[96vw]">
+        <DialogContent className="max-w-7xl w-[min(100vw-1rem,80rem)] max-h-[90dvh] overflow-y-auto p-3 sm:p-6">
           <DialogHeader>
             <DialogTitle>
               {selectedPreview?.title}
@@ -492,8 +494,8 @@ export default function Reports() {
           {!selectedPreview || selectedPreview.rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No enrolled students.</p>
           ) : (
-            <div className="max-h-[76vh] overflow-auto rounded-md border bg-muted/20 p-4">
-              <div className="mx-auto min-w-[1050px] bg-white text-slate-900 border border-slate-300 shadow-sm">
+            <div className="max-h-[76vh] overflow-auto rounded-md border bg-muted/20 p-2 sm:p-4">
+              <div className="mx-auto w-full min-w-0 md:min-w-[1050px] bg-white text-slate-900 border border-slate-300 shadow-sm">
                 <div className="border-b border-slate-300 px-6 py-4">
                   <p className="text-xl font-bold tracking-tight">
                     {selectedPreview.mode === 'all' ? 'EDGE Performance Summary Report' : 'EDGE Class Performance Report'}

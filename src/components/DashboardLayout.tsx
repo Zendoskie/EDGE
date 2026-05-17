@@ -4,6 +4,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useEdgeRealtimeNotifications } from "@/hooks/useEdgeRealtimeNotifications";
 import { useStudentInboxPoll } from "@/hooks/useStudentInboxPoll";
+import { useReferralRealtime } from "@/hooks/useReferralRealtime";
+import { useReferralInboxPoll } from "@/hooks/useReferralInboxPoll";
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -91,6 +93,8 @@ function DashboardHeader() {
 function DashboardShell({ userId, role }: { userId: string; role: AppRole | null }) {
   useEdgeRealtimeNotifications(userId, role ?? undefined);
   useStudentInboxPoll(userId, role ?? undefined);
+  useReferralRealtime(userId, role ?? undefined);
+  useReferralInboxPoll(userId, role ?? undefined);
 
   const { data: coachContext } = useQuery<StudentPredictionContext>({
     queryKey: ["ai-coach-student-context", userId, role],

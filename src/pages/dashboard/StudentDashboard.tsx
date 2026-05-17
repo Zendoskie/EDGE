@@ -23,6 +23,8 @@ import {
   pickLatestPredictionByCreatedAt,
   resolveStudentRiskSummary,
 } from '@/lib/student-performance-scope';
+import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
+import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -57,6 +59,8 @@ export default function StudentDashboard() {
   const [selectedReasons, setSelectedReasons] = useState<Record<string, boolean>>({});
   const [details, setDetails] = useState("");
   const [feedbackSubjectId, setFeedbackSubjectId] = useState<string | null>(null);
+
+  const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals();
 
   const programCode = (user?.user_metadata as any)?.course as string | undefined;
   const yearLevel = (user?.user_metadata as any)?.year_level as string | undefined;
@@ -380,6 +384,14 @@ export default function StudentDashboard() {
               </Card>
             ))}
       </div>
+
+      <CounselingReferralsCard
+        referrals={counselingReferrals}
+        loading={referralsLoading}
+        showInstructor
+        title="Counseling referrals"
+        description="Track whether your guidance counseling referrals are pending, approved, or rejected."
+      />
 
       <Card className="bg-card/90 border-border/70">
         <CardHeader>

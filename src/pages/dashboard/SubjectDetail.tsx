@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
+import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
@@ -130,11 +131,11 @@ export default function SubjectDetail() {
       </section>
 
       <Tabs defaultValue="students" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-12">
-          <TabsTrigger value="students" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Students</TabsTrigger>
-          <TabsTrigger value="attendance" className="gap-1.5"><CalendarCheck className="h-3.5 w-3.5" /> Attendance</TabsTrigger>
-          <TabsTrigger value="activities" className="gap-1.5"><ClipboardList className="h-3.5 w-3.5" /> Activities</TabsTrigger>
-          <TabsTrigger value="predictions" className="gap-1.5"><Brain className="h-3.5 w-3.5" /> Predictions</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 h-auto sm:h-12 py-1">
+          <TabsTrigger value="students" className="gap-1 text-xs sm:text-sm sm:gap-1.5"><Users className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Students</span></TabsTrigger>
+          <TabsTrigger value="attendance" className="gap-1 text-xs sm:text-sm sm:gap-1.5"><CalendarCheck className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Attendance</span></TabsTrigger>
+          <TabsTrigger value="activities" className="gap-1 text-xs sm:text-sm sm:gap-1.5"><ClipboardList className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Activities</span></TabsTrigger>
+          <TabsTrigger value="predictions" className="gap-1 text-xs sm:text-sm sm:gap-1.5"><Brain className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Predictions</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="students">
@@ -1201,7 +1202,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     queryFn: async () => {
       const { data, error } = await supabase
         .from('counseling_referrals')
-        .select('id, student_id, status, created_at')
+        .select('id, student_id, status, created_at, reviewed_at')
         .eq('subject_id', subjectId)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -1342,6 +1343,12 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
       }
       queryClient.invalidateQueries({ queryKey: ['counseling-referrals', subjectId] });
+      if (interventionPrediction?.student_id) {
+        void queryClient.invalidateQueries({
+          queryKey: ['student-counseling-referrals', interventionPrediction.student_id],
+        });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');
@@ -1369,6 +1376,15 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     (a: PredictionRow, b: PredictionRow) =>
       (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1),
   );
+
+  const referralByStudent = useMemo(() => {
+    const map = new Map<string, { status: string }>();
+    for (const r of counselingReferrals) {
+      const sid = (r as { student_id?: string }).student_id;
+      if (sid && !map.has(sid)) map.set(sid, r as { status: string });
+    }
+    return map;
+  }, [counselingReferrals]);
 
   const summary = {
     critical: predictions.filter((p: PredictionRow) => p.risk_level === 'critical').length,
@@ -1457,11 +1473,13 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <span><strong>{summary.stable}</strong> stable</span>
                 <span><strong>{summary.excelling}</strong> excelling</span>
               </div>
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Risk Level</TableHead>
+                    <TableHead>Referral</TableHead>
                     <TableHead>Attendance</TableHead>
                     <TableHead>Quiz Avg</TableHead>
                     <TableHead>Assignment Avg</TableHead>
@@ -1470,10 +1488,19 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sorted.map((p: PredictionRow) => (
+                  {sorted.map((p: PredictionRow) => {
+                    const referral = p.student_id ? referralByStudent.get(p.student_id) : undefined;
+                    return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
                       <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
+                      <TableCell>
+                        {referral ? (
+                          <ReferralStatusBadge status={referral.status} />
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
                       <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
                       <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
@@ -1482,9 +1509,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                         <Button size="sm" variant="outline" onClick={() => setInterventionPrediction(p)}>Log intervention</Button>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
+              </div>
             </>
           )}
         </CardContent>

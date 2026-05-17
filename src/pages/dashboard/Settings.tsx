@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import StudentProfileSetup from '@/components/StudentProfileSetup';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 
 export default function Settings() {
   const { user, role } = useAuth();
@@ -133,7 +134,7 @@ export default function Settings() {
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div>
@@ -143,7 +144,7 @@ export default function Settings() {
         </div>
       </section>
 
-      <Card className="bg-card/90">
+      <Card className="bg-card/90 w-full min-w-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <SettingsIcon className="h-5 w-5" />
@@ -167,7 +168,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card className="bg-card/90">
+      <Card className="bg-card/90 w-full min-w-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <SettingsIcon className="h-5 w-5" />
@@ -222,7 +223,7 @@ export default function Settings() {
       )}
 
       {role === 'student' && (
-        <Card className="bg-card/90">
+        <Card className="bg-card/90 w-full min-w-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <SettingsIcon className="h-5 w-5" />
@@ -238,7 +239,33 @@ export default function Settings() {
             ) : parentRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground">No parent/guardian requests yet.</p>
             ) : (
-              <div className="rounded-xl border border-border/50 overflow-x-auto">
+              <>
+                <ul className="divide-y divide-border/60 md:hidden">
+                  {parentRequests.map((r: { id: string; parent_name: string; parent_email: string; student_id_no: string; status: string }) => (
+                    <li key={r.id} className="space-y-3 py-4 first:pt-0 last:pb-0 min-w-0">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Parent / Guardian</p>
+                        <p className="font-medium break-words">{r.parent_name}</p>
+                        <p className="text-xs text-muted-foreground break-all">{r.parent_email}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-muted-foreground">ID used: {r.student_id_no}</span>
+                        <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">
+                          {r.status}
+                        </Badge>
+                      </div>
+                      {r.status === 'pending' ? (
+                        <div className="flex flex-col gap-2">
+                          <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No action needed</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden rounded-xl border border-border/50 md:block md:overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -249,32 +276,21 @@ export default function Settings() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {parentRequests.map((r: any) => (
+                    {parentRequests.map((r: { id: string; parent_name: string; parent_email: string; student_id_no: string; status: string }) => (
                       <TableRow key={r.id}>
                         <TableCell>
                           <div className="font-medium">{r.parent_name}</div>
                           <div className="text-xs text-muted-foreground">{r.parent_email}</div>
                         </TableCell>
                         <TableCell>{r.student_id_no}</TableCell>
-                        <TableCell className="capitalize">{r.status}</TableCell>
+                        <TableCell>
+                          <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">{r.status}</Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })}
-                                disabled={decideParentRequest.isPending}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })}
-                                disabled={decideParentRequest.isPending}
-                              >
-                                Reject
-                              </Button>
+                            <div className="flex justify-end gap-2 flex-wrap">
+                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">No action needed</span>
@@ -285,6 +301,7 @@ export default function Settings() {
                   </TableBody>
                 </Table>
               </div>
+              </>
             )}
           </CardContent>
         </Card>
