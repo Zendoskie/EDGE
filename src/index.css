@@ -313,4 +313,27 @@
   .content-grid {
     @apply mx-auto w-full max-w-[1280px];
   }
+
+  /**
+   * Insights: fit more chart + text on phone (dropdown picks section).
+   * `zoom` on Chromium/WebKit; transform fallback elsewhere.
+   */
+  @media (max-width: 639px) {
+    .insights-tab-panel {
+      zoom: 0.85;
+    }
+  }
+
+  @supports not (zoom: 1) {
+    @media (max-width: 639px) {
+      .insights-tab-panel {
+        zoom: unset;
+        transform: scale(0.85);
+        transform-origin: top center;
+        width: 117.65%;
+        margin-left: -8.82%;
+        padding-bottom: 0.5rem;
+      }
+    }
+  }
 }

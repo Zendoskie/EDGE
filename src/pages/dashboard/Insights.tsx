@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bar,
@@ -52,22 +52,22 @@ import {
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
 import { InsightsChartFrame } from '@/components/insights/InsightsChartFrame';
+import {
+  InsightsDesktopTabsList,
+  InsightsTabMobileSelect,
+  INSIGHTS_TAB_PANEL_CLASS,
+  type InsightsTabValue,
+} from '@/components/insights/InsightsTabNavigation';
 
 const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ['critical', 'at_risk', 'stable', 'excelling'];
-
-const INSIGHTS_TABS_LIST =
-  'flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] p-1 h-auto sm:grid sm:grid-cols-4 sm:overflow-visible sm:gap-0 sm:py-1 sm:h-12';
-
-const INSIGHTS_TAB_TRIGGER =
-  'shrink-0 min-w-[4.75rem] !text-xs !px-2 sm:min-w-0 sm:flex-1 sm:!text-sm sm:!px-3.5';
 
 const CHART_MARGIN = { top: 8, right: 8, left: 4, bottom: 28 };
 const CHART_MARGIN_TALL_X = { top: 8, right: 8, left: 4, bottom: 52 };
 const MOBILE_AXIS_TICK = { fontSize: 10 };
 
-const CHART_H_SM = 'aspect-auto h-[220px] sm:h-[280px] w-full max-w-full';
-const CHART_H_MD = 'aspect-auto h-[240px] sm:h-[300px] w-full max-w-full';
-const PIE_CHART_CLASS = 'mx-auto aspect-square max-h-[220px] sm:max-h-[280px] w-full max-w-[min(100%,300px)]';
+const CHART_H_SM = 'aspect-auto h-[200px] sm:h-[280px] w-full max-w-full';
+const CHART_H_MD = 'aspect-auto h-[220px] sm:h-[300px] w-full max-w-full';
+const PIE_CHART_CLASS = 'mx-auto aspect-square max-h-[200px] sm:max-h-[280px] w-full max-w-[min(100%,280px)] sm:max-w-[min(100%,300px)]';
 
 /** Recharts / ChartContainer colors — aligned with semantic risk levels (readable in light & dark) */
 const riskChartConfig = {
@@ -472,6 +472,7 @@ function StudentInsights({ userId }: { userId: string }) {
   }, [predictionsScoped]);
 
   const anyLoading = predictionsLoading || interventionsLoading || subjectsLoading || attendanceLoading || scoresLoading;
+  const [activeTab, setActiveTab] = useState<InsightsTabValue>('overview');
 
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
@@ -485,27 +486,11 @@ function StudentInsights({ userId }: { userId: string }) {
         Disclaimer: This system provides academic-related insights only.
       </p>
 
-      <Tabs defaultValue="overview" className="w-full min-w-0">
-        <TabsList className={INSIGHTS_TABS_LIST}>
-          <TabsTrigger value="overview" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <BarChart3 className="h-4 w-4 shrink-0" />
-            <span>Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <Activity className="h-4 w-4 shrink-0" />
-            <span>Analytics</span>
-          </TabsTrigger>
-          <TabsTrigger value="predictions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <Brain className="h-4 w-4 shrink-0" />
-            <span>Predictions</span>
-          </TabsTrigger>
-          <TabsTrigger value="interventions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <MessageSquare className="h-4 w-4 shrink-0" />
-            <span>Interventions</span>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as InsightsTabValue)} className="w-full min-w-0">
+        <InsightsTabMobileSelect value={activeTab} onValueChange={setActiveTab} />
+        <InsightsDesktopTabsList />
 
-        <TabsContent value="overview" className="mt-6 min-w-0">
+        <TabsContent value="overview" className={INSIGHTS_TAB_PANEL_CLASS}>
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -712,7 +697,7 @@ function StudentInsights({ userId }: { userId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-6 min-w-0">
+        <TabsContent value="analytics" className={INSIGHTS_TAB_PANEL_CLASS}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader>
@@ -772,7 +757,7 @@ function StudentInsights({ userId }: { userId: string }) {
           </div>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6 space-y-6 min-w-0">
+        <TabsContent value="predictions" className={`${INSIGHTS_TAB_PANEL_CLASS} space-y-6`}>
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -837,7 +822,7 @@ function StudentInsights({ userId }: { userId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="interventions" className="mt-6 min-w-0">
+        <TabsContent value="interventions" className={INSIGHTS_TAB_PANEL_CLASS}>
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -1028,6 +1013,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
   }, [subjects, latestByStudentSubject]);
 
   const anyLoading = subjectsLoading || enrollmentsLoading || predictionsLoading || interventionsLoading;
+  const [activeTab, setActiveTab] = useState<InsightsTabValue>('overview');
 
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
@@ -1048,27 +1034,11 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         />
       ) : null}
 
-      <Tabs defaultValue="overview" className="w-full min-w-0">
-        <TabsList className={INSIGHTS_TABS_LIST}>
-          <TabsTrigger value="overview" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <BarChart3 className="h-4 w-4 shrink-0" />
-            <span>Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <Activity className="h-4 w-4 shrink-0" />
-            <span>Analytics</span>
-          </TabsTrigger>
-          <TabsTrigger value="predictions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <Brain className="h-4 w-4 shrink-0" />
-            <span>Predictions</span>
-          </TabsTrigger>
-          <TabsTrigger value="interventions" className={`flex items-center justify-center gap-1 sm:gap-2 ${INSIGHTS_TAB_TRIGGER}`}>
-            <MessageSquare className="h-4 w-4 shrink-0" />
-            <span>Interventions</span>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as InsightsTabValue)} className="w-full min-w-0">
+        <InsightsTabMobileSelect value={activeTab} onValueChange={setActiveTab} />
+        <InsightsDesktopTabsList />
 
-        <TabsContent value="overview" className="mt-6 min-w-0">
+        <TabsContent value="overview" className={INSIGHTS_TAB_PANEL_CLASS}>
           {anyLoading ? <p className="text-sm text-muted-foreground">Loading insights…</p> : null}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1217,7 +1187,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-6 min-w-0">
+        <TabsContent value="analytics" className={INSIGHTS_TAB_PANEL_CLASS}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader>
@@ -1322,7 +1292,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="predictions" className="mt-6 space-y-6 min-w-0">
+        <TabsContent value="predictions" className={`${INSIGHTS_TAB_PANEL_CLASS} space-y-6`}>
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1386,7 +1356,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="interventions" className="mt-6 min-w-0">
+        <TabsContent value="interventions" className={INSIGHTS_TAB_PANEL_CLASS}>
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
