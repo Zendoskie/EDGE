@@ -26,9 +26,6 @@ export function InsightsTabMobileSelect({
   value: InsightsTabValue;
   onValueChange: (value: InsightsTabValue) => void;
 }) {
-  const active = TAB_ITEMS.find((t) => t.value === value) ?? TAB_ITEMS[0];
-  const ActiveIcon = active.icon;
-
   return (
     <div className="mb-4 sm:hidden">
       <label htmlFor="insights-tab-select" className="sr-only">
@@ -36,10 +33,7 @@ export function InsightsTabMobileSelect({
       </label>
       <Select value={value} onValueChange={(v) => onValueChange(v as InsightsTabValue)}>
         <SelectTrigger id="insights-tab-select" className="h-11 w-full bg-card/90">
-          <span className="flex items-center gap-2 truncate">
-            <ActiveIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            <SelectValue placeholder="Choose section" />
-          </span>
+          <SelectValue placeholder="Choose section" />
         </SelectTrigger>
         <SelectContent>
           {TAB_ITEMS.map((item) => {
