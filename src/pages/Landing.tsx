@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AI_COACH_MODEL_LABEL, AI_COACH_MODEL_SHORT } from "@/lib/ai-model";
 import { ShinyText } from "@/components/landing/ShinyText";
+import { AcademicDisclaimer } from "@/components/AcademicDisclaimer";
 
 const LANDING_HERO_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_105406_16f4600d-7a92-4292-b96e-b19156c7830a.mp4";
@@ -638,6 +639,15 @@ export default function Landing() {
           </div>
         </PopInSection>
         </div>
+
+        <footer className="border-t border-border/70 bg-muted/20">
+          <div className="container mx-auto max-w-6xl px-4 py-8 sm:py-10">
+            <AcademicDisclaimer variant="footer" className="mt-0 max-w-4xl mx-auto" />
+            <p className="mt-6 text-center text-xs text-muted-foreground">
+              EDGE — Student Risk Analysis and AI Coaching System
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
   );

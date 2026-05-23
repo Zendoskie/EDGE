@@ -80,6 +80,10 @@ This project includes `vercel.json` with a rewrite so every path serves `index.h
 
 Configure your host so unknown paths fall back to `index.html` (for example Netlify `_redirects` or Cloudflare Pages **SPA** / `_routes.json` behavior).
 
+### Research and academic disclaimer
+
+Formal disclaimer language for the research paper, thesis, and system evaluation is documented in [`docs/ACADEMIC_DISCLAIMER.md`](docs/ACADEMIC_DISCLAIMER.md). The same text appears in the landing page footer and on views that display prediction or risk results.
+
 ### Notes
 
 - The frontend relies on Supabase auth and database access.

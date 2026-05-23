@@ -40,6 +40,7 @@ import {
   Activity,
   Sparkles
 } from 'lucide-react';
+import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import {
   filterAttendanceBySubjectIds,
@@ -482,10 +483,6 @@ function StudentInsights({ userId }: { userId: string }) {
         </div>
       </section>
 
-      <p className="text-xs text-muted-foreground">
-        Disclaimer: This system provides academic-related insights only.
-      </p>
-
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as InsightsTabValue)} className="w-full min-w-0">
         <InsightsTabMobileSelect value={activeTab} onValueChange={setActiveTab} />
         <InsightsDesktopTabsList />
@@ -758,6 +755,7 @@ function StudentInsights({ userId }: { userId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className={`${INSIGHTS_TAB_PANEL_CLASS} space-y-6`}>
+          <AcademicDisclaimer variant="reminder" />
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1022,10 +1020,6 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
           <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>
-
-      <p className="text-xs text-muted-foreground">
-        Disclaimer: This system provides academic-related insights only.
-      </p>
 
       {subjects.length === 0 && !subjectsLoading ? (
         <EmptyState
@@ -1293,6 +1287,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
         </TabsContent>
 
         <TabsContent value="predictions" className={`${INSIGHTS_TAB_PANEL_CLASS} space-y-6`}>
+          <AcademicDisclaimer variant="reminder" />
           <Card className="bg-card/90 min-w-0 w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

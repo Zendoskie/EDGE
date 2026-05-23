@@ -17,6 +17,7 @@ import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList,
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
+import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
@@ -213,6 +214,7 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
               {riskLabel(myPrediction.risk_level)}
             </Badge>
             {myPrediction.recommendation && <p className="mt-2 text-sm text-muted-foreground">{myPrediction.recommendation}</p>}
+            <AcademicDisclaimer variant="reminder" className="mt-3" />
           </CardContent>
         </Card>
       )}
@@ -1467,6 +1469,9 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
             </div>
           ) : (
             <>
+              <div className="px-4 sm:px-6 pt-4 pb-1">
+                <AcademicDisclaimer variant="reminder" />
+              </div>
               <div className="px-6 py-2 flex gap-4 text-sm border-b bg-muted/30 flex-wrap">
                 <span><strong>{summary.critical}</strong> crucial</span>
                 <span><strong>{summary.at_risk}</strong> vulnerable</span>

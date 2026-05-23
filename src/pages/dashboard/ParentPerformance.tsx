@@ -9,6 +9,7 @@ import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
+import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -557,6 +558,7 @@ export default function ParentPerformance() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <AcademicDisclaimer variant="reminder" className="mb-3" />
           {predictionsResolved.length === 0 ? (
             <p className="text-sm text-muted-foreground">No predictions available yet.</p>
           ) : (

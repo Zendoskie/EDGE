@@ -14,9 +14,6 @@ export default function LearningAssistant() {
         <div>
           <h1 className="text-2xl font-display font-bold">Learning Assistant</h1>
           <p className="text-muted-foreground">Your AI-powered academic companion</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Disclaimer: This system provides academic-related insights only.
-          </p>
         </div>
         <Badge className="flex items-center gap-2">
           <Brain className="h-4 w-4" />
