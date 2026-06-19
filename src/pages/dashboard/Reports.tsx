@@ -11,12 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
-const riskLabel = (level: string) => {
-  if (level === 'critical') return 'Crucial';
-  if (level === 'at_risk') return 'Vulnerable';
-  if (level === 'excelling') return 'Excelling';
-  return level ? 'Stable' : '—';
-};
+import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
+import { RiskBadge } from '@/components/RiskBadge';
 
 export default function Reports() {
   const { user } = useAuth();
@@ -216,7 +212,7 @@ export default function Reports() {
       r.attendance != null ? r.attendance.toFixed(1) : '',
       r.quiz_avg != null ? r.quiz_avg.toFixed(1) : '',
       r.assignment_avg != null ? r.assignment_avg.toFixed(1) : '',
-      riskLabel(r.risk_level ?? ''),
+      riskLabel(canonicalRiskLevel(r.risk_level ?? '')),
       (r.recommendation ?? '').replace(/,/g, ';'),
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -259,7 +255,7 @@ export default function Reports() {
             <td>${r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
             <td>${r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
             <td>${r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
-            <td>${riskLabel(r.risk_level ?? '')}</td>
+            <td>${riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
             <td>${recommendation}</td>
           </tr>
         `;
@@ -428,9 +424,7 @@ export default function Reports() {
                           <TableCell>{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</TableCell>
                           <TableCell>{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</TableCell>
                           <TableCell>
-                            <Badge variant={r.risk_level === 'critical' || r.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
-                              {riskLabel(r.risk_level ?? '')}
-                            </Badge>
+                            <RiskBadge level={r.risk_level} />
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                         </TableRow>
@@ -512,9 +506,7 @@ export default function Reports() {
                               <TableCell>{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</TableCell>
                               <TableCell>{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</TableCell>
                               <TableCell>
-                                <Badge variant={r.risk_level === 'critical' || r.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
-                                  {riskLabel(r.risk_level ?? '')}
-                                </Badge>
+                                <RiskBadge level={r.risk_level} />
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                             </TableRow>
@@ -647,7 +639,7 @@ export default function Reports() {
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
-                        <td className="border border-slate-200 px-3 py-2 align-top">{riskLabel(r.risk_level ?? '')}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top whitespace-normal">{r.recommendation}</td>
                       </tr>
                     ))}

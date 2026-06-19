@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
+import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
+import { RiskBadge } from '@/components/RiskBadge';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
@@ -136,7 +137,7 @@ export default function ParentPerformance() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, subject_id, risk_level, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name)')
+        .select('id, subject_id, risk_level, risk_score, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name)')
         .eq('student_id', studentId!)
         .in('subject_id', enrolledSubjectIds)
         .order('created_at', { ascending: false })
@@ -523,9 +524,7 @@ export default function ParentPerformance() {
           </CardHeader>
           <CardContent>
             {latestPrediction ? (
-              <Badge variant={riskVariant(canonicalRiskLevel(latestPrediction.risk_level))}>
-                {riskLabel(canonicalRiskLevel(latestPrediction.risk_level))}
-              </Badge>
+              <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
             ) : (
               <p className="text-sm text-muted-foreground">No predictions yet</p>
             )}
@@ -571,9 +570,7 @@ export default function ParentPerformance() {
                     <p className="text-sm font-medium">
                       {p.resolvedSubject.code} — {p.resolvedSubject.name}
                     </p>
-                    <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))}>
-                      {riskLabel(canonicalRiskLevel(p.risk_level))}
-                    </Badge>
+                    <RiskBadge level={p.risk_level} score={p.risk_score} />
                   </div>
                   {p.recommendation ? <p className="text-sm text-muted-foreground">{p.recommendation}</p> : null}
                   <p className="text-xs text-muted-foreground">

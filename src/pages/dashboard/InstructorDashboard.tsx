@@ -15,19 +15,8 @@ import { toast } from 'sonner';
 import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
 import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
-
-const riskLabel = (level: string) => {
-  if (level === 'critical') return 'Crucial';
-  if (level === 'at_risk') return 'Vulnerable';
-  if (level === 'excelling') return 'Excelling';
-  return 'Stable';
-};
-
-const riskVariant = (level: string): 'destructive' | 'default' | 'secondary' => {
-  if (level === 'critical' || level === 'at_risk') return 'destructive';
-  if (level === 'excelling') return 'default';
-  return 'secondary';
-};
+import { RiskBadge } from '@/components/RiskBadge';
+import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 
 const getYearFromSubject = (subject: any) => {
   const code = subject.code || '';
@@ -203,12 +192,11 @@ export default function InstructorDashboard() {
         (p: any) => p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`),
       );
       const criticalAndAtRisk = preds.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
-      const chartData = [
-        { level: 'Crucial', count: preds.filter((p: any) => p.risk_level === 'critical').length, fill: 'hsl(0 72% 51%)' },
-        { level: 'Vulnerable', count: preds.filter((p: any) => p.risk_level === 'at_risk').length, fill: 'hsl(38 92% 50%)' },
-        { level: 'Stable', count: preds.filter((p: any) => p.risk_level === 'stable').length, fill: 'hsl(215 15% 50%)' },
-        { level: 'Excelling', count: preds.filter((p: any) => p.risk_level === 'excelling').length, fill: 'hsl(215 65% 36%)' },
-      ];
+      const chartData = RISK_LEVEL_ORDER.map((level) => ({
+        level: riskLabel(level),
+        count: preds.filter((p: any) => p.risk_level === level).length,
+        fill: riskChartColor(level),
+      }));
       const programCount: Record<string, number> = {};
       const programMeta: Record<string, { code: string; name?: string | null }> = {};
       for (const s of subjectsWithPrograms ?? []) {
@@ -236,7 +224,7 @@ export default function InstructorDashboard() {
       if (ids.length === 0) return [];
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, risk_level, recommendation, subject_id, student_id, subjects(code, name)')
+        .select('id, risk_level, risk_score, recommendation, subject_id, student_id, subjects(code, name)')
         .in('subject_id', ids)
         .order('created_at', { ascending: false })
         .limit(30);
@@ -429,7 +417,7 @@ export default function InstructorDashboard() {
               : null;
 
         const reasons: string[] = [];
-        if (latestRisk === 'critical' || latestRisk === 'at_risk') reasons.push(`Risk level: ${riskLabel(latestRisk)}`);
+        if (latestRisk === 'critical' || latestRisk === 'at_risk') reasons.push(`Risk level: ${riskLabel(canonicalRiskLevel(latestRisk))}`);
         if (attendancePct != null && attendancePct < 75) reasons.push(`Low attendance: ${attendancePct}%`);
         if (displayScoreAvg != null && displayScoreAvg < 70) reasons.push(`Low score average: ${displayScoreAvg}%`);
         if (trend === 'declined') reasons.push('Declining trend detected');
@@ -851,7 +839,7 @@ export default function InstructorDashboard() {
                           {row.studentName} ({row.studentNo}) — {row.subjectCode}
                         </p>
                         <div className="flex gap-2">
-                          <Badge variant={riskVariant(row.latestRisk)}>Status: {riskLabel(row.latestRisk)}</Badge>
+                          <RiskBadge level={row.latestRisk} />
                           <Badge variant={row.trend === 'declined' ? 'destructive' : row.trend === 'improved' ? 'default' : 'secondary'}>
                             Trend: {row.trend}
                           </Badge>
@@ -893,9 +881,7 @@ export default function InstructorDashboard() {
                             {f.subject?.name ?? ''} • {f.student?.student_id ?? '—'} • {f.created_at ? new Date(f.created_at).toLocaleString() : ''}
                           </p>
                         </div>
-                        <Badge variant={f.risk_level === 'critical' || f.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
-                          {riskLabel(f.risk_level)}
-                        </Badge>
+                        <RiskBadge level={f.risk_level} />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {(f.reasons ?? []).slice(0, 6).map((r: string) => (
@@ -976,9 +962,7 @@ export default function InstructorDashboard() {
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {analyticsData.needIntervention.slice(0, 15).map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                      <Badge variant={p.risk_level === 'critical' ? 'destructive' : 'outline'}>
-                        {riskLabel(p.risk_level)}
-                      </Badge>
+                      <RiskBadge level={p.risk_level} />
                       <span className="text-sm truncate flex-1 mx-3">{(p.subjects as any)?.code}</span>
                       <Button variant="ghost" size="sm" asChild>
                         <Link to={`/dashboard/subjects/${p.subject_id}`}>Intervene</Link>
@@ -1004,7 +988,7 @@ export default function InstructorDashboard() {
                 <ul className="space-y-2 text-sm">
                   {recentPredictions.slice(0, 5).map((p: any) => (
                     <li key={p.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                      <span>{(p.subjects as any)?.code} — {riskLabel(p.risk_level)}</span>
+                      <span>{(p.subjects as any)?.code} — {riskLabel(canonicalRiskLevel(p.risk_level))}{p.risk_score != null ? ` (${Number(p.risk_score).toFixed(1)})` : ''}</span>
                       <span className="text-muted-foreground text-xs">{(p.subjects as any)?.name}</span>
                     </li>
                   ))}

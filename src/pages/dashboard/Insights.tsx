@@ -41,7 +41,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
-import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
+import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskChartColor, RISK_LEVEL_ORDER } from '@/lib/risk-utils';
+import { RiskBadge } from '@/components/RiskBadge';
 import {
   filterAttendanceBySubjectIds,
   filterPredictionsBySubjectIds,
@@ -61,8 +62,6 @@ import {
   type InsightsTabValue,
 } from '@/components/insights/InsightsTabNavigation';
 
-const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ['critical', 'at_risk', 'stable', 'excelling'];
-
 const CHART_MARGIN = { top: 8, right: 8, left: 4, bottom: 28 };
 const CHART_MARGIN_TALL_X = { top: 8, right: 8, left: 4, bottom: 52 };
 const MOBILE_AXIS_TICK = { fontSize: 10 };
@@ -71,12 +70,11 @@ const CHART_H_SM = 'aspect-auto h-[200px] sm:h-[280px] w-full max-w-full';
 const CHART_H_MD = 'aspect-auto h-[220px] sm:h-[300px] w-full max-w-full';
 const PIE_CHART_CLASS = 'mx-auto aspect-square max-h-[200px] sm:max-h-[280px] w-full max-w-[min(100%,280px)] sm:max-w-[min(100%,300px)]';
 
-/** Recharts / ChartContainer colors — aligned with semantic risk levels (readable in light & dark) */
 const riskChartConfig = {
-  critical: { label: 'Crucial', theme: { light: 'hsl(0 72% 51%)', dark: 'hsl(0 72% 58%)' } },
-  at_risk: { label: 'Vulnerable', theme: { light: 'hsl(38 92% 50%)', dark: 'hsl(38 92% 56%)' } },
-  stable: { label: 'Stable', theme: { light: 'hsl(215 16% 42%)', dark: 'hsl(215 16% 68%)' } },
-  excelling: { label: 'Excelling', theme: { light: 'hsl(142 76% 36%)', dark: 'hsl(142 68% 48%)' } },
+  critical: { label: 'Crucial', theme: { light: riskChartColor('critical'), dark: riskChartColor('critical') } },
+  at_risk: { label: 'Vulnerable', theme: { light: riskChartColor('at_risk'), dark: riskChartColor('at_risk') } },
+  stable: { label: 'Stable', theme: { light: riskChartColor('stable'), dark: riskChartColor('stable') } },
+  excelling: { label: 'Excelling', theme: { light: riskChartColor('excelling'), dark: riskChartColor('excelling') } },
 } satisfies ChartConfig;
 
 const metricsChartConfig = {
@@ -813,9 +811,7 @@ function StudentInsights({ userId }: { userId: string }) {
                     <div key={row.id} className="border rounded-lg p-3 sm:p-4 space-y-2 min-w-0">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <span className="font-medium text-sm sm:text-base break-words min-w-0">{(row.subjects as any)?.code} — {(row.subjects as any)?.name}</span>
-                        <Badge variant={riskVariant(canonicalRiskLevel(row.risk_level))} className="shrink-0 self-start">
-                          {riskLabel(canonicalRiskLevel(row.risk_level))}
-                        </Badge>
+                        <RiskBadge level={row.risk_level} score={row.risk_score} className="shrink-0 self-start" />
                       </div>
                       {metrics ? (
                         <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
@@ -914,7 +910,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
       if (subjectIds.length === 0) return [];
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, created_at, risk_level, recommendation, subject_id, student_id, subjects(code, name)')
+        .select('id, created_at, risk_level, risk_score, recommendation, subject_id, student_id, subjects(code, name)')
         .in('subject_id', subjectIds)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -1354,9 +1350,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                           {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
                         </p>
                       </div>
-                      <Badge variant={riskVariant(canonicalRiskLevel(p.risk_level))} className="shrink-0">
-                        {riskLabel(canonicalRiskLevel(p.risk_level))}
-                      </Badge>
+                      <RiskBadge level={p.risk_level} score={p.risk_score} className="shrink-0" />
                     </li>
                   ))}
                 </ul>

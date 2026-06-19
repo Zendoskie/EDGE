@@ -9,7 +9,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Brain, History, Send, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { canonicalRiskLevel, riskLabel, riskVariant, type CanonicalRiskLevel } from "@/lib/risk-utils";
+import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from "@/lib/risk-utils";
+import { RiskBadge } from "@/components/RiskBadge";
 import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 import { FormattedAssistantContent } from "@/components/FormattedAssistantContent";
 import { AI_COACH_MODEL_LABEL } from "@/lib/ai-model";
@@ -285,7 +286,7 @@ export function AICoachPopup(props: {
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
                 AI Coach
-                {shouldAutoOpen ? <Badge variant={riskVariant(canonical)}>{riskLabel(canonical)}</Badge> : null}
+                {shouldAutoOpen ? <RiskBadge level={canonical} score={focusSubject?.riskScore} /> : null}
               </DialogTitle>
               <DialogDescription className="space-y-1">
                 <span className="block">

@@ -17,6 +17,9 @@ import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList,
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ASSESSMENT_TYPES, formatAssessmentTypeLabel, type AssessmentType } from '@/lib/assessment-types';
+import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
+import { RiskBadge } from '@/components/RiskBadge';
+import { riskLabel } from '@/lib/risk-utils';
 import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import type {
@@ -185,10 +188,27 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
     enabled: !!userId,
   });
 
-  const riskLabel = (level: string) => level === 'critical' ? 'Crucial' : level === 'at_risk' ? 'Vulnerable' : level === 'excelling' ? 'Excelling' : 'Stable';
-
   return (
     <div className="space-y-6">
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Risk Analysis</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {myPrediction ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <RiskBadge level={myPrediction.risk_level} score={myPrediction.risk_score} />
+              {myPrediction.risk_score != null && (
+                <span className="text-muted-foreground">
+                  Score: <span className="font-medium text-foreground">{Number(myPrediction.risk_score).toFixed(1)}</span>/100
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No risk classification yet for this subject.</p>
+          )}
+        </CardContent>
+      </Card>
       <Card className="bg-card/90 border-border/70">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Attendance &amp; scores</CardTitle>
@@ -207,14 +227,11 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
           </p>
         </CardContent>
       </Card>
-      {myPrediction && (
+      {myPrediction?.recommendation && (
         <Card>
-          <CardHeader><CardTitle className="text-lg">Risk & recommendation</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Recommendation</CardTitle></CardHeader>
           <CardContent>
-            <Badge variant={myPrediction.risk_level === 'critical' || myPrediction.risk_level === 'at_risk' ? 'destructive' : myPrediction.risk_level === 'excelling' ? 'default' : 'secondary'}>
-              {riskLabel(myPrediction.risk_level)}
-            </Badge>
-            {myPrediction.recommendation && <p className="mt-2 text-sm text-muted-foreground">{myPrediction.recommendation}</p>}
+            <p className="text-sm text-muted-foreground">{myPrediction.recommendation}</p>
             <AcademicDisclaimer variant="reminder" className="mt-3" />
           </CardContent>
         </Card>
@@ -494,10 +511,14 @@ function SubjectAttendance({
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       refetchAttendance();
       queryClient.invalidateQueries({ queryKey: ['attendance-history', subjectId] });
       toast.success('Attendance updated');
+      const result = await recalculateSubjectRisk(subjectId);
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1018,9 +1039,13 @@ function ActivityScoring({
       });
       await Promise.all(ops);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['submissions', activityId] });
       toast.success('Scores saved');
+      const result = await recalculateSubjectRisk(subjectId);
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1420,20 +1445,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const riskColor = (level: string) => {
-    if (level === 'critical') return 'destructive';
-    if (level === 'at_risk') return 'destructive';
-    if (level === 'excelling') return 'default';
-    return 'secondary';
-  };
-
-  const riskLabel = (level: string) => {
-    if (level === 'critical') return 'Crucial';
-    if (level === 'at_risk') return 'Vulnerable';
-    if (level === 'excelling') return 'Excelling';
-    return 'Stable';
-  };
-
   const riskOrder = { critical: 0, at_risk: 1, stable: 2, excelling: 3 };
   const sorted = [...predictions].sort(
     (a: PredictionRow, b: PredictionRow) =>
@@ -1506,7 +1517,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-lg">AI Predictions</CardTitle>
+          <CardTitle className="text-lg">Risk Analysis</CardTitle>
           <div className="flex gap-2">
             {atRiskPredictions.length > 0 && (
               <Button size="sm" variant="outline" onClick={() => setBulkNotifyOpen(true)}>
@@ -1516,7 +1527,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
             )}
             <Button size="sm" onClick={generatePredictions} disabled={generating}>
               <Brain className="mr-2 h-4 w-4" />
-              {generating ? 'Analyzing...' : 'Generate Predictions'}
+              {generating ? 'Calculating...' : 'Recalculate Risk Scores'}
             </Button>
           </div>
         </CardHeader>
@@ -1526,7 +1537,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
           ) : predictions.length === 0 ? (
             <div className="p-12 text-center">
               <Brain className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground text-sm">No predictions yet. Add students, record attendance & scores, then click "Generate Predictions".</p>
+              <p className="text-muted-foreground text-sm">No risk scores yet. Add students, record attendance &amp; scores, then click &quot;Recalculate Risk Scores&quot; (or scores update automatically when you save grades or attendance).</p>
             </div>
           ) : (
             <>
@@ -1544,7 +1555,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
-                    <TableHead>Risk Level</TableHead>
+                    <TableHead>Risk Score</TableHead>
+                    <TableHead>Classification</TableHead>
                     <TableHead>Referral</TableHead>
                     <TableHead>Attendance</TableHead>
                     <TableHead>Quiz Avg</TableHead>
@@ -1559,7 +1571,10 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                     return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
-                      <TableCell><Badge variant={riskColor(p.risk_level)}>{riskLabel(p.risk_level)}</Badge></TableCell>
+                      <TableCell className="font-mono tabular-nums">
+                        {p.risk_score != null ? `${Number(p.risk_score).toFixed(1)}` : '—'}
+                      </TableCell>
+                      <TableCell><RiskBadge level={p.risk_level} /></TableCell>
                       <TableCell>
                         {referral ? (
                           <ReferralStatusBadge status={referral.status} />

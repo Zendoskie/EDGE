@@ -9,7 +9,7 @@ import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { normalizeReferralStatus } from '@/lib/referral-utils';
+import { RiskBadge } from '@/components/RiskBadge';
 
 export default function GuidanceReferrals() {
   const { user, role } = useAuth();
@@ -195,9 +195,7 @@ export default function GuidanceReferrals() {
                         Student: {(f.student?.full_name ?? f.student?.email ?? f.student_id)} ({f.student?.student_id ?? '—'})
                       </p>
                     </div>
-                    <Badge variant={f.risk_level === 'critical' || f.risk_level === 'at_risk' ? 'destructive' : 'secondary'}>
-                      {f.risk_level === 'critical' ? 'Crucial' : f.risk_level === 'at_risk' ? 'Vulnerable' : f.risk_level}
-                    </Badge>
+                    <RiskBadge level={f.risk_level} />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(f.reasons ?? []).slice(0, 8).map((reason: string) => (

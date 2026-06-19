@@ -71,9 +71,7 @@ export function mapPredictionToCoachingMetrics(row: PredictionRow): SubjectCoach
   const riskScore =
     row.risk_score != null && Number.isFinite(row.risk_score)
       ? Math.round(row.risk_score * 10) / 10
-      : row.confidence != null && Number.isFinite(row.confidence)
-        ? Math.round(row.confidence * 1000) / 10
-        : null;
+      : null;
 
   const activityScorePercent =
     pctDirect(row.activity_average) ??

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeRiskClassification } from "../_shared/risk-scoring.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,89 +39,39 @@ interface StudentMetrics {
   project_score: number | null;
   activity_average: number | null;
   laboratory_exam_average: number | null;
+  midterm_exam_average: number | null;
+  final_exam_average: number | null;
   activity_completion_rate: number | null;
   comprehension_rating: number | null;
 }
 
 function classifyStudent(metrics: StudentMetrics): {
-  risk_level: RiskLevel;
+  risk_level: "critical" | "at_risk" | "stable" | "excelling";
   confidence: number;
-  risk_score: number;
+  risk_score: number | null;
+  academic_performance: number | null;
+  exam_average: number | null;
 } {
-  const att = metrics.attendance_rate ?? null;
-  const quiz = metrics.quiz_average ?? null;
-  const assign = metrics.assignment_average ?? null;
-  const project = metrics.project_score ?? null;
-  const completion = metrics.activity_completion_rate ?? null;
+  const attendancePercent =
+    metrics.attendance_rate != null ? metrics.attendance_rate * 100 : null;
 
-  const attPct = att != null ? att * 100 : null;
-  const quizPct = quiz;
-  const assignPct = assign;
-  const projectPct = project;
-  const avgGrade = [quizPct, assignPct, projectPct].filter((x) => x != null).length
-    ? ([quizPct, assignPct, projectPct].filter((x) => x != null) as number[]).reduce((a, b) => a + b, 0) /
-      ([quizPct, assignPct, projectPct].filter((x) => x != null).length)
-    : null;
-  const completionPct = completion != null ? completion * 100 : null;
+  const result = computeRiskClassification({
+    activityAverage: metrics.activity_average,
+    quizAverage: metrics.quiz_average,
+    projectScore: metrics.project_score,
+    attendancePercent,
+    laboratoryExamAverage: metrics.laboratory_exam_average,
+    midtermExamAverage: metrics.midterm_exam_average,
+    finalExamAverage: metrics.final_exam_average,
+  });
 
-  const reasons: string[] = [];
-  let atRiskScore = 0;
-  let excellingScore = 0;
-
-  if (attPct != null) {
-    if (attPct < 60) {
-      atRiskScore += 3;
-      reasons.push(`attendance (${attPct.toFixed(0)}%)`);
-    } else if (attPct < 70) {
-      atRiskScore += 2;
-      reasons.push(`attendance (${attPct.toFixed(0)}%)`);
-    } else if (attPct >= 90) excellingScore += 1;
-  }
-  if (avgGrade != null) {
-    if (avgGrade < 50) {
-      atRiskScore += 3;
-      reasons.push(`averages (${avgGrade.toFixed(0)}%)`);
-    } else if (avgGrade < 60) {
-      atRiskScore += 2;
-      reasons.push(`averages (${avgGrade.toFixed(0)}%)`);
-    } else if (avgGrade >= 85) excellingScore += 1;
-  }
-  if (completionPct != null) {
-    if (completionPct < 40) {
-      atRiskScore += 3;
-      reasons.push(`activity completion (${completionPct.toFixed(0)}%)`);
-    } else if (completionPct < 50) {
-      atRiskScore += 2;
-      reasons.push(`activity completion (${completionPct.toFixed(0)}%)`);
-    } else if (completionPct >= 80) excellingScore += 1;
-  }
-
-  // Critical: very low scores or multiple severe indicators
-  if (atRiskScore >= 5 || (avgGrade != null && avgGrade < 50) || (attPct != null && attPct < 50)) {
-    return {
-      risk_level: "critical",
-      confidence: Math.min(0.95, 0.7 + atRiskScore * 0.05),
-      risk_score: atRiskScore,
-    };
-  }
-
-  if (atRiskScore >= 2) {
-    return {
-      risk_level: "at_risk",
-      confidence: Math.min(0.95, 0.6 + atRiskScore * 0.1),
-      risk_score: atRiskScore,
-    };
-  }
-
-  if (excellingScore >= 2 && (attPct == null || attPct >= 85) && (avgGrade == null || avgGrade >= 80)) {
-    return {
-      risk_level: "excelling",
-      confidence: 0.85,
-      risk_score: Math.max(0, atRiskScore - excellingScore),
-    };
-  }
-
-  return { risk_level: "stable", confidence: 0.75, risk_score: atRiskScore };
+  return {
+    risk_level: result.risk_level,
+    confidence: result.confidence,
+    risk_score: result.risk_score,
+    academic_performance: result.academic_performance,
+    exam_average: result.exam_average,
+  };
 }
 
 function deriveComprehensionRating(opts: {
@@ -281,6 +232,8 @@ serve(async (req) => {
       const projectScore = avg(activityMap["project"] || []);
       const activityAvg = avg(activityMap["activity"] || []);
       const labExamAvg = avg(activityMap["laboratory_exam"] || []);
+      const midtermExamAvg = avg(activityMap["midterm_exam"] || []);
+      const finalExamAvg = avg(activityMap["final_exam"] || []);
       const totalActivities = (activities || []).length;
       const completedActivities = studentSubs.filter((s) => s.score != null).length;
       const completionRate = totalActivities > 0 ? completedActivities / totalActivities : null;
@@ -300,6 +253,8 @@ serve(async (req) => {
         project_score: projectScore,
         activity_average: activityAvg,
         laboratory_exam_average: labExamAvg,
+        midterm_exam_average: midtermExamAvg,
+        final_exam_average: finalExamAvg,
         activity_completion_rate: completionRate,
         comprehension_rating: comprehensionRating,
       };
@@ -326,7 +281,8 @@ serve(async (req) => {
     await supabase.from("predictions").delete().eq("subject_id", subject_id);
 
     const rows = studentMetrics.map((metrics) => {
-      const { risk_level, confidence, risk_score } = classifyStudent(metrics);
+      const { risk_level, confidence, risk_score, academic_performance, exam_average } =
+        classifyStudent(metrics);
       const previous = previousByStudent.get(metrics.student_id);
       return {
         student_id: metrics.student_id,
@@ -344,6 +300,10 @@ serve(async (req) => {
         project_score: metrics.project_score,
         activity_average: metrics.activity_average,
         laboratory_exam_average: metrics.laboratory_exam_average,
+        midterm_exam_average: metrics.midterm_exam_average,
+        final_exam_average: metrics.final_exam_average,
+        exam_average,
+        academic_performance,
         activity_completion_rate: metrics.activity_completion_rate,
         comprehension_rating: metrics.comprehension_rating,
       };
