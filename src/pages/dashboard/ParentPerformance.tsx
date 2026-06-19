@@ -8,6 +8,7 @@ import { canonicalRiskLevel, riskLabel, riskVariant } from '@/lib/risk-utils';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 
@@ -194,7 +195,7 @@ export default function ParentPerformance() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('submissions')
-        .select('activity_id, score, submitted_at, graded_at, activities(subject_id)')
+        .select('activity_id, score, assessment_type, submitted_at, graded_at, activities(subject_id)')
         .eq('student_id', studentId!);
       if (error) throw error;
       const set = new Set(enrolledSubjectIds);
@@ -407,6 +408,7 @@ export default function ParentPerformance() {
           max_score: max,
           score,
           pct,
+          assessmentType: (submission?.assessment_type as string | null) ?? null,
         };
       });
       const graded = items.filter((i) => i.pct != null);
@@ -688,6 +690,7 @@ export default function ParentPerformance() {
                             <p className="font-medium">{a.title}</p>
                             <p className="text-xs text-muted-foreground capitalize">
                               {a.type}
+                              {a.assessmentType ? ` · ${formatAssessmentTypeLabel(a.assessmentType)}` : ''}
                               {a.due_date ? ` · Due ${new Date(a.due_date).toLocaleDateString()}` : ''}
                             </p>
                           </div>

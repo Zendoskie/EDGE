@@ -62,9 +62,8 @@ export interface LatestPredictionInput {
   subjects?: { code?: string | null; name?: string | null } | null;
 }
 
-const PREDICTION_RECENCY_MS = 14 * 24 * 60 * 60 * 1000;
 
-/** Headline risk: latest in-enrollment prediction within 14d merged with derived-from-grades heuristic (legacy StudentDashboard behavior). */
+/** Headline risk: latest in-enrollment prediction from the risk analysis module when available. */
 export function resolveStudentRiskSummary(params: {
   overallAveragePercent: number | null;
   attendanceRatePercent: number | null;
@@ -76,35 +75,14 @@ export function resolveStudentRiskSummary(params: {
   recommendation: string | null;
   subjectLabel: string | null;
 } {
-  const { overallAveragePercent: a, attendanceRatePercent: att, latestPrediction: pred } = params;
-
-  const derivedLevel: StudentRiskResolutionLevel = (() => {
-    if (a == null && att == null) return null;
-    const lowScore = a != null && a < 70;
-    const veryLowScore = a != null && a < 60;
-    const lowAttendance = att != null && att < 75;
-    const veryLowAttendance = att != null && att < 60;
-    if (veryLowScore || veryLowAttendance) return 'critical';
-    if (lowScore || lowAttendance) return 'at_risk';
-    return 'stable';
-  })();
+  const { latestPrediction: pred } = params;
 
   const predLevelRaw = pred?.risk_level ?? null;
   const predCanonical = predLevelRaw != null ? canonicalRiskLevel(predLevelRaw) : null;
-  const predTs = pred?.created_at ? Date.parse(pred.created_at) : 0;
-  const predIsRecent = Number.isFinite(predTs) ? Date.now() - predTs <= PREDICTION_RECENCY_MS : false;
 
-  const resolvedLevel: StudentRiskResolutionLevel = (() => {
-    if (predIsRecent && predCanonical) {
-      if ((predCanonical === 'critical' || predCanonical === 'at_risk') && derivedLevel === 'stable') {
-        return 'stable';
-      }
-      return predCanonical;
-    }
-    return derivedLevel ?? predCanonical;
-  })();
+  const resolvedLevel: StudentRiskResolutionLevel = predCanonical;
 
-  const riskSource: 'prediction' | 'derived' = predIsRecent && predLevelRaw ? 'prediction' : 'derived';
+  const riskSource: 'prediction' | 'derived' = predLevelRaw ? 'prediction' : 'derived';
 
   const riskStatusLabel = resolvedLevel
     ? resolvedLevel === 'critical'

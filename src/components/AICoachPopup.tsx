@@ -13,6 +13,10 @@ import { canonicalRiskLevel, riskLabel, riskVariant, type CanonicalRiskLevel } f
 import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 import { FormattedAssistantContent } from "@/components/FormattedAssistantContent";
 import { AI_COACH_MODEL_LABEL } from "@/lib/ai-model";
+import {
+  formatCoachingMetricsBlock,
+  type SubjectCoachingMetrics,
+} from "@/lib/coaching-context";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; ts?: number };
 type AICoachResponse = {
@@ -27,35 +31,34 @@ const LEGACY_STARTER_SNIPPET = "biggest challenge right now";
 
 function buildContextualStarter(
   canonical: CanonicalRiskLevel,
-  recommendation?: string | null,
+  metrics?: SubjectCoachingMetrics | null,
   subjectLabel?: string | null,
 ): ChatMsg[] {
   const status = riskLabel(canonical);
-  const rec = recommendation?.trim();
   const subj = subjectLabel?.trim();
+  const metricsSummary = metrics ? formatCoachingMetricsBlock(metrics) : null;
 
   let content: string;
-  if (rec && subj) {
+  if (metricsSummary && subj) {
     content = [
-      `Hi—I've already reviewed your latest assessment. You're marked ${status} for ${subj}.`,
-      `Here's what your record flags:`,
+      `Hi—I've loaded your latest risk analysis for ${subj}. Your system-computed status is ${status}.`,
       "",
-      rec,
+      metricsSummary,
       "",
-      "I'll use that as our focus—you don't need to explain the problem from scratch. Ask a question, or tell me when you want a concrete first step.",
+      "I won't re-evaluate your risk level. I'll use these results to suggest study strategies, weak areas, and improvement actions. What would you like to focus on first?",
     ].join("\n");
-  } else if (rec) {
+  } else if (metricsSummary) {
     content = [
-      `Hi—I've reviewed your latest assessment (${status}). Your record indicates:`,
+      `Hi—I've loaded your latest risk analysis (${status}).`,
       "",
-      rec,
+      metricsSummary,
       "",
-      "We can work from that directly. Ask anything, or say when you're ready for a simple plan.",
+      "Ask me for coaching recommendations, study strategies, or a concrete plan for the next week.",
     ].join("\n");
   } else if (subj) {
-    content = `Hi—I've reviewed your record: you're ${status} in ${subj}. I'm here to help with specific next steps based on what your instructors already see. What would you like to tackle first?`;
+    content = `Hi—your risk analysis marks you as ${status} in ${subj}. I provide coaching based on computed results only. What would you like to work on first?`;
   } else {
-    content = `Hi—I've reviewed your academic record: your current status is ${status}. I'm here to help with concrete next steps—you don't need to re-explain everything from scratch. What would help most right now?`;
+    content = `Hi—your current risk classification is ${status} (computed by the risk analysis system). I can help with study strategies and improvement actions. What would help most right now?`;
   }
 
   return [{ role: "assistant", content, ts: Date.now() }];
@@ -109,9 +112,10 @@ function readStoredMessages(dismissKey: string): ChatMsg[] | null {
 
 export function AICoachPopup(props: {
   riskLevel?: string | null;
-  recommendation?: string | null;
   subjectLabel?: string | null;
   atRiskSubjects?: string[];
+  metrics?: SubjectCoachingMetrics | null;
+  coachingSubjects?: SubjectCoachingMetrics[];
   storageKey?: string;
   variant?: "compact" | "detailed";
 }) {
@@ -144,16 +148,16 @@ export function AICoachPopup(props: {
 
   const contextHint = useMemo(() => {
     const bits: string[] = [];
-    bits.push(`Risk level: ${riskLabel(canonical)}`);
-    if (props.subjectLabel) bits.push(`Subject: ${props.subjectLabel}`);
+    bits.push(`Risk classification (system): ${riskLabel(canonical)}`);
+    if (props.metrics) bits.push(formatCoachingMetricsBlock(props.metrics));
+    if (props.subjectLabel) bits.push(`Focus subject: ${props.subjectLabel}`);
     if (props.atRiskSubjects?.length) bits.push(`Vulnerable subjects: ${props.atRiskSubjects.join(", ")}`);
-    if (props.recommendation) bits.push(`Recommendation: ${props.recommendation}`);
     return bits.join("\n");
-  }, [canonical, props.subjectLabel, props.atRiskSubjects, props.recommendation]);
+  }, [canonical, props.metrics, props.subjectLabel, props.atRiskSubjects]);
 
   useEffect(() => {
     const saved = readStoredMessages(storageKey);
-    const nextStarter = buildContextualStarter(canonical, props.recommendation, props.subjectLabel);
+    const nextStarter = buildContextualStarter(canonical, props.metrics, props.subjectLabel);
 
     if (saved?.some((m) => m.role === "user")) {
       setMessages(saved);
@@ -169,7 +173,7 @@ export function AICoachPopup(props: {
       if (prev.length > 1) return prev;
       return nextStarter;
     });
-  }, [storageKey, canonical, props.recommendation, props.subjectLabel]);
+  }, [storageKey, canonical, props.metrics, props.subjectLabel]);
 
   useEffect(() => {
   // Auto-open only for crucial/vulnerable students.
@@ -236,7 +240,7 @@ export function AICoachPopup(props: {
   );
 
   const resetChat = () => {
-    const fresh = buildContextualStarter(canonical, props.recommendation, props.subjectLabel);
+    const fresh = buildContextualStarter(canonical, props.metrics, props.subjectLabel);
     setMessages(fresh);
     try {
       localStorage.removeItem(persistKey);
@@ -285,12 +289,10 @@ export function AICoachPopup(props: {
               </DialogTitle>
               <DialogDescription className="space-y-1">
                 <span className="block">
-                  {canonical === "critical"
-                    ? "Let’s make a simple plan for the next 24–48 hours."
-                    : "Let’s make a simple plan for the next 7 days."}
+                  Coaching based on your system-computed risk analysis—not a new risk assessment.
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Disclaimer: This AI coach is only for academic risk support. Out-of-scope requests are declined.
+                  Disclaimer: Academic coaching only. Risk classification comes from the risk analysis module.
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   Model: <span className="font-medium text-foreground">{AI_COACH_MODEL_LABEL}</span>
@@ -369,18 +371,18 @@ export function AICoachPopup(props: {
                 </CollapsibleContent>
               </Collapsible>
             ) : null}
-            {props.variant === "detailed" && (props.subjectLabel || props.recommendation) ? (
-              <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground mb-3">
-                {props.subjectLabel ? (
-                  <div className="mb-1">
-                    <span className="font-medium text-foreground">Subject:</span> {props.subjectLabel}
-                  </div>
-                ) : null}
-                {props.recommendation ? (
-                  <div>
-                    <span className="font-medium text-foreground">Latest recommendation:</span> {props.recommendation}
-                  </div>
-                ) : null}
+            {props.variant === "detailed" && props.metrics ? (
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground mb-3 space-y-2">
+                <div className="font-medium text-foreground">System-computed metrics</div>
+                <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed">
+                  {formatCoachingMetricsBlock(props.metrics)}
+                </pre>
+              </div>
+            ) : null}
+            {props.coachingSubjects && props.coachingSubjects.length > 1 ? (
+              <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground mb-3">
+                <span className="font-medium text-foreground">All enrolled subjects: </span>
+                {props.coachingSubjects.map((s) => s.subjectCode).join(", ")}
               </div>
             ) : null}
           </div>

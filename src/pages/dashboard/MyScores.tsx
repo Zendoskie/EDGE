@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
 function formatDue(due: string | null): string {
   if (!due) return '—';
@@ -61,7 +62,7 @@ export default function MyScores() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('submissions')
-        .select('activity_id, score')
+        .select('activity_id, score, assessment_type')
         .eq('student_id', user.id);
       if (error) {
         console.warn('MyScores: submissions query failed', error);
@@ -122,6 +123,8 @@ export default function MyScores() {
   });
 
   const getScore = (activityId: string) => submissions.find((s: any) => s.activity_id === activityId)?.score;
+  const getAssessmentType = (activityId: string) =>
+    submissions.find((s: any) => s.activity_id === activityId)?.assessment_type;
   const getSubject = (subjectId: string) => subjectsList.find((s: any) => s.id === subjectId);
   const getGradingSystem = (subjectId: string) => gradingSystems.find((g: any) => g.subject_id === subjectId);
 
@@ -131,6 +134,7 @@ export default function MyScores() {
     const withScores = acts.map((a: any) => ({
       ...a,
       score: getScore(a.id),
+      assessmentType: getAssessmentType(a.id),
       pct: (() => {
         const s = getScore(a.id);
         if (s == null || a.max_score == null) return null;
@@ -240,8 +244,13 @@ export default function MyScores() {
                         const isOverdue = a.due_date && new Date(a.due_date) < new Date() && a.score == null;
                         return (
                           <li key={a.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 text-sm">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="capitalize">{a.type}</span>
+                              {a.assessmentType ? (
+                                <Badge variant="outline" className="text-xs font-normal">
+                                  {formatAssessmentTypeLabel(a.assessmentType)}
+                                </Badge>
+                              ) : null}
                               <span className="font-medium">{a.title}</span>
                               {a.due_date && (
                                 <span className={`text-xs ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>

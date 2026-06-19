@@ -51,6 +51,7 @@ import {
   resolveStudentRiskSummary,
 } from '@/lib/student-performance-scope';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
+import { formatCoachingMetricsBlock, mapPredictionToCoachingMetrics } from '@/lib/coaching-context';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
 import { InsightsChartFrame } from '@/components/insights/InsightsChartFrame';
 import {
@@ -109,6 +110,14 @@ const concernChartConfig = {
 interface Prediction {
   id: string;
   risk_level: string;
+  risk_score?: number | null;
+  confidence?: number | null;
+  attendance_rate?: number | null;
+  activity_average?: number | null;
+  activity_completion_rate?: number | null;
+  quiz_average?: number | null;
+  laboratory_exam_average?: number | null;
+  comprehension_rating?: number | null;
   recommendation?: string;
   created_at: string;
   subject_id: string;
@@ -760,10 +769,10 @@ function StudentInsights({ userId }: { userId: string }) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                AI Summary
+                AI Coaching Summary
               </CardTitle>
               <p className="text-muted-foreground text-sm">
-                A short, actionable summary based on your latest predictions.
+                Personalized study strategies and improvement actions based on your system-computed risk analysis metrics.
               </p>
             </CardHeader>
             <CardContent>
@@ -784,9 +793,11 @@ function StudentInsights({ userId }: { userId: string }) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Brain className="h-5 w-5" />
-                AI-powered risk & recommendations
+                Risk analysis results
               </CardTitle>
-              <p className="text-muted-foreground text-sm">Your academic risk level and personalized recommendations per subject (when your instructor runs predictions).</p>
+              <p className="text-muted-foreground text-sm">
+                System-computed risk classification and metrics per subject. Coaching recommendations are generated separately by the AI Coach.
+              </p>
             </CardHeader>
             <CardContent>
               {predictionsLoading ? (
@@ -797,6 +808,7 @@ function StudentInsights({ userId }: { userId: string }) {
                 <div className="space-y-4">
                   {Object.entries(latestBySubject).map(([, p]) => {
                     const row = p as Prediction;
+                    const metrics = mapPredictionToCoachingMetrics(row);
                     return (
                     <div key={row.id} className="border rounded-lg p-3 sm:p-4 space-y-2 min-w-0">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
@@ -805,9 +817,11 @@ function StudentInsights({ userId }: { userId: string }) {
                           {riskLabel(canonicalRiskLevel(row.risk_level))}
                         </Badge>
                       </div>
-                      {row.recommendation && (
-                        <p className="text-sm text-muted-foreground break-words">{row.recommendation}</p>
-                      )}
+                      {metrics ? (
+                        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                          {formatCoachingMetricsBlock(metrics)}
+                        </pre>
+                      ) : null}
                       <p className="text-xs text-muted-foreground">
                         Last updated: {new Date(row.created_at).toLocaleDateString()}
                       </p>
@@ -1292,10 +1306,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                AI Summary
+                Instructor coaching summary
               </CardTitle>
               <p className="text-muted-foreground text-sm">
-                A short pattern summary to help you plan interventions.
+                Coaching priorities and weak-area patterns from system-computed risk metrics—not new risk classifications.
               </p>
             </CardHeader>
             <CardContent>

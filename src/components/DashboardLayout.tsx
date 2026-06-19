@@ -4,6 +4,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useEdgeRealtimeNotifications } from "@/hooks/useEdgeRealtimeNotifications";
 import { useStudentInboxPoll } from "@/hooks/useStudentInboxPoll";
+import { useInstructorRealtimeNotifications } from "@/hooks/useInstructorRealtimeNotifications";
+import { useInstructorInboxPoll } from "@/hooks/useInstructorInboxPoll";
 import { useReferralRealtime } from "@/hooks/useReferralRealtime";
 import { useReferralInboxPoll } from "@/hooks/useReferralInboxPoll";
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
@@ -14,35 +16,20 @@ import type { AppRole } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICoachPopup } from "@/components/AICoachPopup";
+import {
+  buildStudentCoachingContext,
+  formatAtRiskSubjectLabels,
+  formatSubjectLabel,
+  type SubjectCoachingMetrics,
+} from "@/lib/coaching-context";
 
 type StudentPredictionContext = {
   riskLevel: string | null;
-  recommendation: string | null;
   subjectLabel: string | null;
   atRiskSubjects: string[];
+  metrics: SubjectCoachingMetrics | null;
+  coachingSubjects: SubjectCoachingMetrics[];
 };
-
-const RISK_PRIORITY: Record<string, number> = {
-  excelling: 0,
-  stable: 1,
-  at_risk: 2,
-  critical: 3,
-};
-
-function normalizeRisk(level: unknown): "critical" | "at_risk" | "stable" | "excelling" {
-  if (typeof level !== "string") return "stable";
-  const normalized = level.trim().toLowerCase().replace(/\s+/g, "_");
-  if (normalized === "critical") return "critical";
-  if (normalized === "at_risk" || normalized === "at-risk" || normalized === "atrisk") return "at_risk";
-  if (normalized === "excelling") return "excelling";
-  return "stable";
-}
-
-function predictionDateTs(value: unknown): number {
-  if (typeof value !== "string") return 0;
-  const ts = Date.parse(value);
-  return Number.isFinite(ts) ? ts : 0;
-}
 
 function DashboardHeader() {
   const { state } = useSidebar();
@@ -93,6 +80,8 @@ function DashboardHeader() {
 function DashboardShell({ userId, role }: { userId: string; role: AppRole | null }) {
   useEdgeRealtimeNotifications(userId, role ?? undefined);
   useStudentInboxPoll(userId, role ?? undefined);
+  useInstructorRealtimeNotifications(userId, role ?? undefined);
+  useInstructorInboxPoll(userId, role ?? undefined);
   useReferralRealtime(userId, role ?? undefined);
   useReferralInboxPoll(userId, role ?? undefined);
 
@@ -112,12 +101,14 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
         .filter((id): id is string => typeof id === "string" && id.length > 0);
 
       if (enrolledSubjectIds.length === 0) {
-        return { riskLevel: null, recommendation: null, subjectLabel: null, atRiskSubjects: [] };
+        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
       }
 
       const { data, error } = await supabase
         .from("predictions")
-        .select("risk_level, recommendation, created_at, subject_id, subjects(code, name)")
+        .select(
+          "risk_level, risk_score, confidence, attendance_rate, activity_average, activity_completion_rate, quiz_average, laboratory_exam_average, comprehension_rating, recommendation, created_at, subject_id, subjects(code, name)",
+        )
         .eq("student_id", userId)
         .in("subject_id", enrolledSubjectIds)
         .order("created_at", { ascending: false })
@@ -125,75 +116,26 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
 
       if (error) throw error;
       if (!data?.length) {
-        return { riskLevel: null, recommendation: null, subjectLabel: null, atRiskSubjects: [] };
+        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
       }
 
-      const bySubject = new Map<string, any>();
-      for (const row of data as any[]) {
-        const sid = typeof row?.subject_id === "string" ? row.subject_id : null;
-        if (!sid || bySubject.has(sid)) continue;
-        bySubject.set(sid, row);
+      const coaching = buildStudentCoachingContext(data as any[]);
+      const focus = coaching.focusSubject;
+      if (!focus) {
+        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
       }
-
-      const latestPerSubject = Array.from(bySubject.values());
-      if (latestPerSubject.length === 0) {
-        return { riskLevel: null, recommendation: null, subjectLabel: null, atRiskSubjects: [] };
-      }
-
-      const ranked = [...latestPerSubject].sort((a: any, b: any) => {
-        const pa = RISK_PRIORITY[normalizeRisk(a?.risk_level)] ?? 1;
-        const pb = RISK_PRIORITY[normalizeRisk(b?.risk_level)] ?? 1;
-        if (pa !== pb) return pb - pa;
-        return predictionDateTs(b?.created_at) - predictionDateTs(a?.created_at);
-      });
-
-      const focus = ranked[0];
-      const focusRisk = normalizeRisk(focus?.risk_level);
-      const focusedSubjects = ranked.filter((p: any) => {
-        const level = normalizeRisk(p?.risk_level);
-        return level === "critical" || level === "at_risk";
-      });
-      const subjectsToMention = focusedSubjects.length > 0 ? focusedSubjects : ranked.slice(0, 3);
 
       const subjectLabel =
-        focusedSubjects.length > 1
-          ? `${focusedSubjects.length} subjects need attention`
-          : focus?.subjects?.code
-            ? `${focus.subjects.code} — ${focus.subjects?.name ?? ""}`.trim()
-            : null;
-
-      const recommendationLines = subjectsToMention.map((p: any) => {
-        const code = p?.subjects?.code ?? "Subject";
-        const level = normalizeRisk(p?.risk_level);
-        const rec = typeof p?.recommendation === "string" ? p.recommendation.trim() : "";
-        const riskText =
-          level === "critical"
-            ? "crucial"
-            : level === "at_risk"
-              ? "vulnerable"
-              : level === "excelling"
-                ? "excelling"
-                : "stable";
-        return `${code} (${riskText})${rec ? `: ${rec}` : ""}`;
-      });
-
-      const atRiskSubjects = focusedSubjects
-        .map((p: any) => {
-          const code = typeof p?.subjects?.code === "string" ? p.subjects.code : "Subject";
-          const name = typeof p?.subjects?.name === "string" ? p.subjects.name : "";
-          const level = normalizeRisk(p?.risk_level) === "critical" ? "Crucial" : "Vulnerable";
-          return `${code}${name ? ` — ${name}` : ""} (${level})`;
-        })
-        .slice(0, 6);
+        coaching.atRiskSubjects.length > 1
+          ? `${coaching.atRiskSubjects.length} subjects need attention`
+          : formatSubjectLabel(focus);
 
       return {
-        riskLevel: focusRisk,
+        riskLevel: focus.riskClassification,
         subjectLabel,
-        atRiskSubjects,
-        recommendation:
-          recommendationLines.length > 0
-            ? `Cross-subject status:\n${recommendationLines.join("\n")}`
-            : null,
+        atRiskSubjects: formatAtRiskSubjectLabels(coaching.atRiskSubjects),
+        metrics: focus,
+        coachingSubjects: coaching.subjects,
       };
     },
   });
@@ -206,9 +148,10 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
           <DashboardHeader />
           <AICoachPopup
             riskLevel={coachContext?.riskLevel ?? null}
-            recommendation={coachContext?.recommendation ?? null}
             subjectLabel={coachContext?.subjectLabel ?? null}
             atRiskSubjects={coachContext?.atRiskSubjects ?? []}
+            metrics={coachContext?.metrics ?? null}
+            coachingSubjects={coachContext?.coachingSubjects ?? []}
             storageKey="edge_ai_coach_dismissed_dashboard_header_v1"
             variant="compact"
           />

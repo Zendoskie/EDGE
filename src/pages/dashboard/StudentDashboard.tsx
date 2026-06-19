@@ -25,6 +25,7 @@ import {
 } from '@/lib/student-performance-scope';
 import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
 import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -41,6 +42,7 @@ interface RecentActivity {
   score: number | null;
   graded_at: string | null;
   activity_id: string;
+  assessment_type: string | null;
   activities: {
     id: string;
     title: string;
@@ -168,7 +170,7 @@ export default function StudentDashboard() {
       const subjectSet = new Set(subjectIds);
       const { data: subs } = await supabase
         .from('submissions')
-        .select('score, graded_at, activity_id, activities(id, title, type, max_score, subject_id, subjects(code, name))')
+        .select('score, graded_at, activity_id, assessment_type, activities(id, title, type, max_score, subject_id, subjects(code, name))')
         .eq('student_id', user!.id)
         .order('graded_at', { ascending: false })
         .limit(40);
@@ -332,7 +334,7 @@ export default function StudentDashboard() {
     { title: 'Enrolled Subjects', value: stats?.enrolledSubjects ?? '—', icon: BookOpen, color: 'text-primary' },
     { title: 'Attendance Rate', value: stats?.attendanceRate ?? '—', icon: CalendarCheck, color: 'text-success' },
     { title: 'Overall Average', value: stats?.overallAverage ?? '—', icon: BarChart3, color: 'text-accent-foreground' },
-    { title: 'Risk Status', value: stats?.riskStatus ? `${stats.riskStatus}${stats?.riskSource ? ` (${stats.riskSource === 'prediction' ? 'AI' : 'Current' })` : ''}` : '—', icon: Brain, color: 'text-muted-foreground' },
+    { title: 'Risk Status', value: stats?.riskStatus ? `${stats.riskStatus}${stats?.riskSource ? ` (${stats.riskSource === 'prediction' ? 'Risk Analysis' : 'Pending'})` : ''}` : '—', icon: Brain, color: 'text-muted-foreground' },
   ];
 
   return (
@@ -552,7 +554,12 @@ export default function StudentDashboard() {
                 const maxScore = act?.max_score ?? 100;
                 return (
                   <li key={s.activity_id ?? s.graded_at} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                    <span>{subj?.code ?? '—'} — {act?.title ?? 'Activity'}</span>
+                    <div className="min-w-0">
+                      <span>{subj?.code ?? '—'} — {act?.title ?? 'Activity'}</span>
+                      {s.assessment_type ? (
+                        <p className="text-xs text-muted-foreground">{formatAssessmentTypeLabel(s.assessment_type)}</p>
+                      ) : null}
+                    </div>
                     <Badge variant="secondary">{s.score != null ? `${Math.round((Number(s.score) / Number(maxScore)) * 100)}%` : '—'}</Badge>
                   </li>
                 );

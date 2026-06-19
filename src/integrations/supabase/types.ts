@@ -271,47 +271,65 @@ export type Database = {
       }
       predictions: {
         Row: {
+          activity_average: number | null
           activity_completion_rate: number | null
           assignment_average: number | null
           attendance_rate: number | null
+          comprehension_rating: number | null
           confidence: number | null
           created_at: string | null
           id: string
+          laboratory_exam_average: number | null
           prediction_type: string
+          previous_attendance_rate: number | null
+          previous_risk_level: string | null
           project_score: number | null
           quiz_average: number | null
           recommendation: string | null
           risk_level: string
+          risk_score: number | null
           student_id: string | null
           subject_id: string | null
         }
         Insert: {
+          activity_average?: number | null
           activity_completion_rate?: number | null
           assignment_average?: number | null
           attendance_rate?: number | null
+          comprehension_rating?: number | null
           confidence?: number | null
           created_at?: string | null
           id?: string
+          laboratory_exam_average?: number | null
           prediction_type: string
+          previous_attendance_rate?: number | null
+          previous_risk_level?: string | null
           project_score?: number | null
           quiz_average?: number | null
           recommendation?: string | null
           risk_level: string
+          risk_score?: number | null
           student_id?: string | null
           subject_id?: string | null
         }
         Update: {
+          activity_average?: number | null
           activity_completion_rate?: number | null
           assignment_average?: number | null
           attendance_rate?: number | null
+          comprehension_rating?: number | null
           confidence?: number | null
           created_at?: string | null
           id?: string
+          laboratory_exam_average?: number | null
           prediction_type?: string
+          previous_attendance_rate?: number | null
+          previous_risk_level?: string | null
           project_score?: number | null
           quiz_average?: number | null
           recommendation?: string | null
           risk_level?: string
+          risk_score?: number | null
           student_id?: string | null
           subject_id?: string | null
         }
@@ -521,6 +539,7 @@ export type Database = {
       submissions: {
         Row: {
           activity_id: string | null
+          assessment_type: string | null
           graded_at: string | null
           graded_by: string | null
           id: string
@@ -530,6 +549,7 @@ export type Database = {
         }
         Insert: {
           activity_id?: string | null
+          assessment_type?: string | null
           graded_at?: string | null
           graded_by?: string | null
           id?: string
@@ -539,6 +559,7 @@ export type Database = {
         }
         Update: {
           activity_id?: string | null
+          assessment_type?: string | null
           graded_at?: string | null
           graded_by?: string | null
           id?: string

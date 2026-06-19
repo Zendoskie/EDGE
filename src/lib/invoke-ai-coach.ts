@@ -5,7 +5,7 @@ const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undef
 
 /**
  * Calls the `ai-coach` Edge Function with a fresh JWT.
- * Uses fetch so error JSON bodies (e.g. Invalid JWT, OpenAI errors) are visible.
+ * The coach generates recommendations from system-computed risk analysis metrics only.
  */
 export async function invokeAiCoach(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   if (!SUPABASE_URL || !ANON_KEY) {

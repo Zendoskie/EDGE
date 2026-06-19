@@ -9,6 +9,7 @@ import { FileText, Printer, Download, Eye } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
 const riskLabel = (level: string) => {
   if (level === 'critical') return 'Crucial';
@@ -66,14 +67,14 @@ export default function Reports() {
             .eq('subject_id', s.id);
           const { data: activities } = await supabase
             .from('activities')
-            .select('id, type, max_score')
+            .select('id, title, type, max_score')
             .eq('subject_id', s.id);
           const activityIds = activities?.map((a) => a.id) ?? [];
           let submissions: any[] = [];
           if (activityIds.length) {
             const { data: subData } = await supabase
               .from('submissions')
-              .select('student_id, activity_id, score')
+              .select('student_id, activity_id, score, assessment_type')
               .in('activity_id', activityIds);
             submissions = subData ?? [];
           }
@@ -116,13 +117,61 @@ export default function Reports() {
             };
           });
 
-          return { subject: s, rows, program: (s as any).programs };
+          return { subject: s, rows, program: (s as any).programs, gradeRecords: buildGradeRecords(profiles ?? [], activities ?? [], submissions) };
         })
       );
       return reportData;
     },
     enabled: !!user?.id,
   });
+
+  function buildGradeRecords(
+    profiles: Array<{ user_id: string; full_name?: string | null; student_id?: string | null }>,
+    activitiesList: Array<{ id: string; title?: string | null; type?: string | null; max_score?: number | null }>,
+    submissionsList: Array<{ student_id?: string | null; activity_id?: string | null; score?: number | null; assessment_type?: string | null }>,
+  ) {
+    const records: Array<{
+      student_id: string;
+      full_name: string;
+      student_id_code: string;
+      activity_title: string;
+      activity_type: string;
+      assessment_type: string | null;
+      score: number | null;
+      max_score: number | null;
+      percent: number | null;
+    }> = [];
+
+    for (const sub of submissionsList) {
+      if (sub.score == null || !sub.student_id || !sub.activity_id) continue;
+      const prof = profiles.find((p) => p.user_id === sub.student_id);
+      const act = activitiesList.find((a) => a.id === sub.activity_id);
+      const max = act?.max_score ?? null;
+      const pct = max ? (Number(sub.score) / Number(max)) * 100 : null;
+      records.push({
+        student_id: sub.student_id,
+        full_name: prof?.full_name ?? '—',
+        student_id_code: prof?.student_id ?? '—',
+        activity_title: act?.title ?? '—',
+        activity_type: act?.type ?? '—',
+        assessment_type: sub.assessment_type ?? null,
+        score: sub.score,
+        max_score: max,
+        percent: pct,
+      });
+    }
+
+    return records.sort((a, b) => a.full_name.localeCompare(b.full_name));
+  }
+
+  const allGradeRecords = subjects.flatMap((r) =>
+    (r.gradeRecords ?? []).map((record) => ({
+      ...record,
+      subject_code: r.subject.code,
+      subject_name: r.subject.name,
+      program: (r.program as any)?.code ?? '—',
+    })),
+  );
 
   const allRows = subjects.flatMap((r) =>
     r.rows.map((row) => ({
@@ -332,6 +381,7 @@ export default function Reports() {
         <TabsList className="print:hidden h-11">
           <TabsTrigger value="all">All Courses</TabsTrigger>
           <TabsTrigger value="per-class">Per Class</TabsTrigger>
+          <TabsTrigger value="grades">Grade Records</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
           <Card className="bg-card/90 interactive-lift">
@@ -478,6 +528,57 @@ export default function Reports() {
               ))
             )}
           </div>
+        </TabsContent>
+        <TabsContent value="grades">
+          <Card className="bg-card/90 interactive-lift">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-5 w-5" />
+                Grade records with assessment types
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Individual grade entries across all subjects, including the assessment type recorded by the instructor.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <p className="text-muted-foreground text-sm">Loading...</p>
+              ) : allGradeRecords.length === 0 ? (
+                <p className="text-muted-foreground text-sm py-8 text-center">No graded records yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Student</TableHead>
+                        <TableHead>Student ID</TableHead>
+                        <TableHead>Activity</TableHead>
+                        <TableHead>Assessment Type</TableHead>
+                        <TableHead>Score</TableHead>
+                        <TableHead>%</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allGradeRecords.map((r, i) => (
+                        <TableRow key={`${r.student_id}-${r.subject_code}-${r.activity_title}-${i}`}>
+                          <TableCell className="font-medium">{r.subject_code}</TableCell>
+                          <TableCell>{r.full_name}</TableCell>
+                          <TableCell>{r.student_id_code}</TableCell>
+                          <TableCell>{r.activity_title}</TableCell>
+                          <TableCell>{formatAssessmentTypeLabel(r.assessment_type)}</TableCell>
+                          <TableCell>
+                            {r.score != null && r.max_score != null ? `${r.score} / ${r.max_score}` : '—'}
+                          </TableCell>
+                          <TableCell>{r.percent != null ? `${r.percent.toFixed(1)}%` : '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

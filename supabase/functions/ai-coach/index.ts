@@ -7,8 +7,6 @@ const MAX_INSIGHT_TOKENS = 500;
 const MAX_MESSAGE_LENGTH = 1000;
 const RATE_LIMIT_REQUESTS = 20;
 const RATE_LIMIT_WINDOW = 60;
-const OUT_OF_SCOPE_REPLY =
-  "I cannot give you the information you needed about that. I can only help with academic risk, grades, attendance, study planning, and school performance improvement.";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -55,6 +53,40 @@ function validateMessage(message: unknown): string | null {
 
 type CanonicalRiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 
+type SubjectCoachingMetrics = {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string | null;
+  riskClassification: CanonicalRiskLevel;
+  riskScore: number | null;
+  attendancePercent: number | null;
+  activityScorePercent: number | null;
+  quizScorePercent: number | null;
+  laboratoryExamPercent: number | null;
+  comprehensionRating: number | null;
+  createdAt: string | null;
+};
+
+const COACHING_ROLE_PROMPT = [
+  "You are an academic coaching assistant for university students.",
+  "CRITICAL: You do NOT determine, change, or override student risk classification.",
+  "Risk classification and all performance metrics are computed by the EDGE risk analysis system. Treat them as fixed facts.",
+  "",
+  "Your responsibilities ONLY:",
+  "1. Generate personalized coaching recommendations based on the provided metrics.",
+  "2. Suggest practical study strategies.",
+  "3. Identify weak areas evidenced by the metrics.",
+  "4. Recommend concrete improvement actions for the next 7 days.",
+  "",
+  "Never reassess risk level. Never invent metrics. Never claim to be a counselor or therapist.",
+  "If the user mentions self-harm, urge them to contact emergency services or a trusted person.",
+  "Formatting: plain text only—no markdown, no asterisks, no bold. Use short paragraphs; use 1. 2. numbering for steps.",
+  "Ask at most one question per reply.",
+].join("\n");
+
+const OUT_OF_SCOPE_COACHING_REPLY =
+  "I cannot help with that topic. I can only provide academic coaching—study strategies, weak areas, and improvement actions based on your computed risk analysis results.";
+
 function canonicalRiskLevel(level: unknown): CanonicalRiskLevel {
   if (typeof level !== "string") return "stable";
   const normalized = level.trim().toLowerCase().replace(/\s+/g, "_");
@@ -93,6 +125,130 @@ type ApiResponse = {
 };
 
 type ChatCompletionMessage = { role: "system" | "user" | "assistant"; content: string };
+
+function pctFromRate(rate: number | null | undefined): number | null {
+  if (rate == null || !Number.isFinite(rate)) return null;
+  return rate <= 1 ? Math.round(rate * 1000) / 10 : Math.round(rate * 10) / 10;
+}
+
+function pctDirect(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.round(value * 10) / 10;
+}
+
+function riskStatusLabel(level: CanonicalRiskLevel): string {
+  if (level === "critical") return "Crucial";
+  if (level === "at_risk") return "Vulnerable";
+  if (level === "excelling") return "Excelling";
+  return "Stable";
+}
+
+function mapPredictionRow(row: {
+  subject_id?: string | null;
+  risk_level?: string | null;
+  risk_score?: number | null;
+  confidence?: number | null;
+  attendance_rate?: number | null;
+  activity_average?: number | null;
+  activity_completion_rate?: number | null;
+  quiz_average?: number | null;
+  laboratory_exam_average?: number | null;
+  comprehension_rating?: number | null;
+  created_at?: string | null;
+  subjects?: { code?: string | null; name?: string | null } | null;
+}): SubjectCoachingMetrics | null {
+  const subjectId = typeof row.subject_id === "string" ? row.subject_id : null;
+  if (!subjectId) return null;
+
+  const riskClassification = canonicalRiskLevel(row.risk_level);
+  const riskScore =
+    row.risk_score != null && Number.isFinite(row.risk_score)
+      ? Math.round(row.risk_score * 10) / 10
+      : row.confidence != null && Number.isFinite(row.confidence)
+        ? Math.round(row.confidence * 1000) / 10
+        : null;
+
+  const activityScorePercent =
+    pctDirect(row.activity_average) ??
+    (row.activity_completion_rate != null ? pctFromRate(row.activity_completion_rate) : null);
+
+  return {
+    subjectId,
+    subjectCode: row.subjects?.code ?? "Subject",
+    subjectName: row.subjects?.name ?? null,
+    riskClassification,
+    riskScore,
+    attendancePercent: pctFromRate(row.attendance_rate),
+    activityScorePercent,
+    quizScorePercent: pctDirect(row.quiz_average),
+    laboratoryExamPercent: pctDirect(row.laboratory_exam_average),
+    comprehensionRating:
+      row.comprehension_rating != null && Number.isFinite(row.comprehension_rating)
+        ? Math.round(row.comprehension_rating * 10) / 10
+        : null,
+    createdAt: row.created_at ?? null,
+  };
+}
+
+function buildLatestPerSubject<T extends { subject_id?: string | null; created_at?: string | null }>(
+  rows: T[],
+): T[] {
+  const bySubject = new Map<string, T>();
+  for (const row of rows) {
+    const sid = typeof row.subject_id === "string" ? row.subject_id : null;
+    if (!sid || bySubject.has(sid)) continue;
+    bySubject.set(sid, row);
+  }
+  return Array.from(bySubject.values());
+}
+
+function rankCoachingSubjects(subjects: SubjectCoachingMetrics[]): SubjectCoachingMetrics[] {
+  return [...subjects].sort((a, b) => {
+    const pa = RISK_PRIORITY[a.riskClassification];
+    const pb = RISK_PRIORITY[b.riskClassification];
+    if (pa !== pb) return pb - pa;
+    return createdAtTs(b.createdAt) - createdAtTs(a.createdAt);
+  });
+}
+
+function formatMetricsBlock(metrics: SubjectCoachingMetrics): string {
+  const lines = [
+    `Subject: ${metrics.subjectCode}${metrics.subjectName ? ` — ${metrics.subjectName}` : ""}`,
+    `Risk classification (system-computed): ${riskStatusLabel(metrics.riskClassification)}`,
+    metrics.riskScore != null ? `Risk score: ${metrics.riskScore}` : null,
+    metrics.attendancePercent != null ? `Attendance: ${metrics.attendancePercent}%` : null,
+    metrics.activityScorePercent != null ? `Activity scores: ${metrics.activityScorePercent}%` : null,
+    metrics.quizScorePercent != null ? `Quiz scores: ${metrics.quizScorePercent}%` : null,
+    metrics.laboratoryExamPercent != null ? `Laboratory exam scores: ${metrics.laboratoryExamPercent}%` : null,
+    metrics.comprehensionRating != null ? `Comprehension rating: ${metrics.comprehensionRating}/5` : null,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+async function fetchStudentCoachingSubjects(
+  supabase: ReturnType<typeof createClient>,
+  studentId: string,
+  enrolledSubjectIds: string[],
+): Promise<SubjectCoachingMetrics[]> {
+  const { data: preds } = await supabase
+    .from("predictions")
+    .select(
+      "risk_level, risk_score, confidence, attendance_rate, activity_average, activity_completion_rate, quiz_average, laboratory_exam_average, comprehension_rating, created_at, subject_id, subjects(code, name)",
+    )
+    .eq("student_id", studentId)
+    .in("subject_id", enrolledSubjectIds)
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  if (!preds?.length) return [];
+
+  const latestRows = buildLatestPerSubject(preds as Array<{ subject_id?: string | null; created_at?: string | null }>);
+  const mapped = latestRows
+    .map((row) => mapPredictionRow(row as Parameters<typeof mapPredictionRow>[0]))
+    .filter((m): m is SubjectCoachingMetrics => m != null);
+
+  return rankCoachingSubjects(mapped);
+}
 
 function latestRealUserMessage(messages: ChatMessage[]): string {
   const contextPrefix = "Context (do not quote verbatim):";
@@ -314,7 +470,9 @@ serve(async (req) => {
 
         const { data: predsRaw } = await supabase
           .from("predictions")
-          .select("risk_level, recommendation, subject_id, student_id, subjects(code, name)")
+          .select(
+            "risk_level, risk_score, confidence, attendance_rate, activity_average, activity_completion_rate, quiz_average, laboratory_exam_average, comprehension_rating, subject_id, student_id, subjects(code, name)",
+          )
           .in("subject_id", ids)
           .order("created_at", { ascending: false })
           .limit(120);
@@ -345,17 +503,31 @@ serve(async (req) => {
           );
         }
 
-        const lines = (preds ?? []).map((p: {
-          risk_level?: string;
-          recommendation?: string | null;
-          subjects?: { code?: string; name?: string | null } | null;
-        }) => {
-          const code = p.subjects?.code ?? "?";
-          const rl = canonicalRiskLevel(p.risk_level);
-          const rec = p.recommendation ? ` Rec: ${String(p.recommendation).slice(0, 120)}` : "";
-          return `- ${code}: ${rl}${rec}`;
-        });
-        contextBlock = `You are helping an INSTRUCTOR. Summarize patterns across recent student risk predictions (do not use individual student names).\n\nData:\n${lines.join("\n")}`;
+        const latestInstructorRows: Array<Parameters<typeof mapPredictionRow>[0]> = [];
+        const seenStudentSubject = new Set<string>();
+        for (const row of preds ?? []) {
+          const sid = row.student_id as string | undefined;
+          const subj = row.subject_id as string | undefined;
+          if (!sid || !subj || !activeKeys.has(`${sid}::${subj}`)) continue;
+          const key = `${sid}::${subj}`;
+          if (seenStudentSubject.has(key)) continue;
+          seenStudentSubject.add(key);
+          latestInstructorRows.push(row as Parameters<typeof mapPredictionRow>[0]);
+          if (latestInstructorRows.length >= 80) break;
+        }
+        const lines = latestInstructorRows
+          .map((p) => {
+            const metrics = mapPredictionRow(p as Parameters<typeof mapPredictionRow>[0]);
+            return metrics ? formatMetricsBlock(metrics) : null;
+          })
+          .filter(Boolean);
+        contextBlock = [
+          "You are helping an INSTRUCTOR review class-wide risk analysis results.",
+          "Do NOT reclassify students. Summarize patterns, weak areas, and coaching priorities across subjects.",
+          "",
+          "System-computed metrics (latest per student/subject):",
+          lines.join("\n\n"),
+        ].join("\n");
       } else {
         const { data: enrollRows } = await supabase
           .from("enrollments")
@@ -377,7 +549,9 @@ serve(async (req) => {
 
         const { data: preds } = await supabase
           .from("predictions")
-          .select("risk_level, recommendation, created_at, subjects(code, name)")
+          .select(
+            "risk_level, risk_score, confidence, attendance_rate, activity_average, activity_completion_rate, quiz_average, laboratory_exam_average, comprehension_rating, created_at, subject_id, subjects(code, name)",
+          )
           .eq("student_id", user.id)
           .in("subject_id", enrolledSubjectIds)
           .order("created_at", { ascending: false })
@@ -386,27 +560,33 @@ serve(async (req) => {
         if (!preds?.length) {
           return new Response(
             JSON.stringify({
-              insight: "No predictions yet. When your instructor runs risk analysis, an AI summary will appear here.",
+              insight:
+                "No risk analysis results yet. When your instructor runs risk analysis, personalized coaching will appear here.",
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
 
-        const lines = preds.map((p: {
-          risk_level?: string;
-          recommendation?: string | null;
-          subjects?: { code?: string; name?: string | null } | null;
-        }) => {
-          const code = p.subjects?.code ?? "?";
-          const rl = canonicalRiskLevel(p.risk_level);
-          const rec = p.recommendation ? ` ${String(p.recommendation).slice(0, 200)}` : "";
-          return `- ${code}: ${rl}.${rec}`;
-        });
-        contextBlock = `You are helping a STUDENT. Give supportive, practical guidance (2 short paragraphs max) based on these per-subject predictions:\n\n${lines.join("\n")}`;
+        const coachingSubjects = rankCoachingSubjects(
+          buildLatestPerSubject(preds as Array<{ subject_id?: string | null; created_at?: string | null }>)
+            .map((row) => mapPredictionRow(row as Parameters<typeof mapPredictionRow>[0]))
+            .filter((m): m is SubjectCoachingMetrics => m != null),
+        );
+
+        const lines = coachingSubjects.map((m) => formatMetricsBlock(m));
+        contextBlock = [
+          "You are helping a STUDENT with academic coaching.",
+          "Use ONLY the system-computed metrics below. Do not change their risk classification.",
+          "Provide: weak areas, study strategies, and 2–3 improvement actions.",
+          "",
+          lines.join("\n\n"),
+        ].join("\n");
       }
 
-      const system =
-        "You are an academic success assistant. Be concise, supportive, and actionable. Do not claim to be a therapist. Do not invent data not in the context. Write plain sentences and short paragraphs only: no markdown, no asterisks, no bold markers, and no bullet punctuation—use numbers (1. 2.) if you need an ordered list.";
+      const system = [
+        COACHING_ROLE_PROMPT,
+        "Write 2 short paragraphs: first identify weak areas from the metrics, then give study strategies and improvement actions.",
+      ].join("\n\n");
 
       const insight = await openAiChatCompletions({
         apiKey: aiConfig.apiKey,
@@ -484,60 +664,30 @@ serve(async (req) => {
       );
     }
 
-    const { data: preds } = await supabase
-      .from("predictions")
-      .select("risk_level, recommendation, created_at, subject_id, subjects(code, name)")
-      .eq("student_id", user.id)
-      .in("subject_id", enrolledSubjectIds)
-      .order("created_at", { ascending: false })
-      .limit(300);
+    const coachingSubjects = await fetchStudentCoachingSubjects(supabase, user.id, enrolledSubjectIds);
 
-    if (!preds?.length) {
+    if (coachingSubjects.length === 0) {
       return new Response(
         JSON.stringify({
           reply:
-            "No subject risk predictions are available yet. Ask your instructor to run risk analysis so I can give targeted help.",
+            "No risk analysis results are available yet. Ask your instructor to run risk analysis so I can give targeted coaching based on your computed metrics.",
           risk_level: "stable",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const latestPerSubject = new Map<string, (typeof preds)[number]>();
-    for (const row of preds) {
-      const subjectId = row.subject_id;
-      if (!subjectId || latestPerSubject.has(subjectId)) continue;
-      latestPerSubject.set(subjectId, row);
-    }
-
-    const subjectPredictions = Array.from(latestPerSubject.values());
-    subjectPredictions.sort((a, b) => {
-      const pa = RISK_PRIORITY[canonicalRiskLevel(a.risk_level)];
-      const pb = RISK_PRIORITY[canonicalRiskLevel(b.risk_level)];
-      if (pa !== pb) return pb - pa;
-      return createdAtTs(b.created_at) - createdAtTs(a.created_at);
-    });
-
-    const topPrediction = subjectPredictions[0];
-    const risk = canonicalRiskLevel(topPrediction?.risk_level);
+    const focusSubject = coachingSubjects[0];
+    const risk = focusSubject.riskClassification;
     const lastUserMessage = latestRealUserMessage(effectiveMessages);
     if (!isAcademicRiskRelated(lastUserMessage)) {
       return new Response(
         JSON.stringify({
-          reply: OUT_OF_SCOPE_REPLY,
+          reply: OUT_OF_SCOPE_COACHING_REPLY,
           risk_level: risk,
-          subject: null,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    if (risk !== "critical" && risk !== "at_risk") {
-      return new Response(
-        JSON.stringify({
-          reply:
-            "You’re not currently flagged as at-risk. If you still want help, tell me the subject and what you’re struggling with (time, attendance, or understanding).",
-          risk_level: risk,
+          subject: focusSubject.subjectCode || focusSubject.subjectName
+            ? { code: focusSubject.subjectCode, name: focusSubject.subjectName }
+            : null,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -563,42 +713,22 @@ serve(async (req) => {
       );
     }
 
-    const topAtRiskSubjects = subjectPredictions.filter((p) => {
-      const level = canonicalRiskLevel(p.risk_level);
-      return level === "critical" || level === "at_risk";
-    });
-    const coachingFocusSubjects = topAtRiskSubjects.length > 0 ? topAtRiskSubjects : subjectPredictions.slice(0, 3);
+    const prioritySubjects = coachingSubjects.filter(
+      (s) => s.riskClassification === "critical" || s.riskClassification === "at_risk",
+    );
+    const coachingFocusSubjects = prioritySubjects.length > 0 ? prioritySubjects : coachingSubjects.slice(0, 3);
 
-    const subjectCode = topPrediction?.subjects?.code ?? null;
-    const subjectName = topPrediction?.subjects?.name ?? null;
-    const recommendation = safeString(topPrediction?.recommendation);
-    const allSubjectContext = coachingFocusSubjects
-      .map((p) => {
-        const code = p.subjects?.code ?? "Subject";
-        const name = p.subjects?.name ? ` — ${p.subjects.name}` : "";
-        const level = canonicalRiskLevel(p.risk_level);
-        const rec = safeString(p.recommendation);
-        return `${code}${name} | ${level}${rec ? ` | ${rec}` : ""}`;
-      })
-      .join("\n");
+    const allSubjectContext = coachingFocusSubjects.map((m) => formatMetricsBlock(m)).join("\n\n");
 
     const system = [
-      "You are an academic support coach for university students.",
-      "Scope limitation: only respond to academic-risk coaching concerns (attendance, grades, subject performance, study planning, and school interventions).",
-      `If the user asks something outside this scope, reply exactly with: "${OUT_OF_SCOPE_REPLY}"`,
-      "Goal: help at-risk students take concrete next steps in the next 7 days across all their enrolled subjects.",
-      "Style: empathetic, supportive, concise, and action-oriented.",
-      "Formatting: plain text only—no markdown, no asterisks or star bullets, no **bold**. Use short paragraphs; use 1. 2. numbering if steps are needed.",
-      "Do NOT mention internal systems or that you are an AI model.",
-      "Do NOT claim to be a counselor or therapist. If user mentions self-harm, urge them to contact emergency services or a trusted person.",
-      "Ask at most one question per reply.",
-      "The student's risk levels and recommendations are already known—do NOT open by asking them to choose among attendance, missing work, or understanding lessons as if the problem were unknown. Build on the recommendations and conversation.",
-      "When multiple subjects appear, prioritize critical and at-risk subjects first. Do not ignore a failing subject just because another subject is stable.",
+      COACHING_ROLE_PROMPT,
+      "Scope limitation: only respond to academic coaching (study strategies, weak areas, improvement actions).",
+      `If the user asks something outside this scope, reply exactly with: "${OUT_OF_SCOPE_COACHING_REPLY}"`,
+      "Build on the system-computed metrics below. Do not ask the student to re-explain metrics you already have.",
+      "When multiple subjects appear, prioritize critical and vulnerable subjects first.",
       "",
-      `Student is flagged as: ${risk === "critical" ? "CRITICAL" : "AT RISK"}.`,
-      subjectCode || subjectName ? `Subject: ${[subjectCode, subjectName].filter(Boolean).join(" — ")}` : "",
-      recommendation ? `System recommendation: ${recommendation}` : "",
-      allSubjectContext ? `Cross-subject context (latest per enrolled subject):\n${allSubjectContext}` : "",
+      "System-computed student metrics:",
+      allSubjectContext,
     ]
       .filter(Boolean)
       .join("\n");
@@ -614,14 +744,34 @@ serve(async (req) => {
 
     const finalReply =
       reply ||
-      (recommendation
-        ? `I'm having trouble responding right now. Your record highlights: ${recommendation.slice(0, 280)}${recommendation.length > 280 ? "…" : ""} Please try again in a moment.`
-        : "I'm having trouble responding right now. Please try again in a moment.");
+      "I'm having trouble generating coaching advice right now. Please try again in a moment.";
+
+    const recommendationText = finalReply.trim().slice(0, 2000);
+    if (recommendationText) {
+      const { data: latestPred } = await supabase
+        .from("predictions")
+        .select("id, recommendation")
+        .eq("student_id", user.id)
+        .eq("subject_id", focusSubject.subjectId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestPred?.id && latestPred.recommendation !== recommendationText) {
+        const { error: recError } = await supabase
+          .from("predictions")
+          .update({ recommendation: recommendationText })
+          .eq("id", latestPred.id);
+        if (recError) console.error("ai-coach recommendation persist:", recError);
+      }
+    }
 
     const response: ApiResponse = {
       reply: finalReply,
       risk_level: risk,
-      subject: subjectCode || subjectName ? { code: subjectCode, name: subjectName } : null,
+      subject: focusSubject.subjectCode || focusSubject.subjectName
+        ? { code: focusSubject.subjectCode, name: focusSubject.subjectName }
+        : null,
     };
 
     return new Response(JSON.stringify(response), {

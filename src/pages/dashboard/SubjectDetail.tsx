@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
+import { ASSESSMENT_TYPES, formatAssessmentTypeLabel, type AssessmentType } from '@/lib/assessment-types';
 import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import type {
@@ -928,6 +929,7 @@ function ActivityScoring({
 }) {
   const queryClient = useQueryClient();
   const [scores, setScores] = useState<Record<string, string>>({});
+  const [assessmentType, setAssessmentType] = useState<AssessmentType | ''>('');
 
   const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
     queryKey: ['enrollments', subjectId],
@@ -961,7 +963,7 @@ function ActivityScoring({
     }
   });
 
-  // Sync scores when submissions load
+  // Sync scores and assessment type when submissions load
   const prevSubmissions = submissions;
   if (prevSubmissions.length > 0 && Object.keys(scores).length === 0) {
     const initial: Record<string, string> = {};
@@ -970,9 +972,24 @@ function ActivityScoring({
     });
     if (Object.keys(initial).length > 0) setScores(initial);
   }
+  if (prevSubmissions.length > 0 && !assessmentType) {
+    const existingType = prevSubmissions.find(s => s.assessment_type)?.assessment_type;
+    if (existingType) setAssessmentType(existingType as AssessmentType);
+  }
 
   const saveScores = useMutation({
     mutationFn: async () => {
+      const hasScoresToSave = enrollments.some((e: EnrollmentListRow) => {
+        const scoreVal = scores[e.student_id];
+        if (scoreVal === undefined || scoreVal === '') return false;
+        const numScore = Number(scoreVal);
+        return !isNaN(numScore) && numScore >= 0 && numScore <= maxScore;
+      });
+
+      if (hasScoresToSave && !assessmentType) {
+        throw new Error('Assessment Type is required before saving grades.');
+      }
+
       const ops = enrollments.map(async (e: EnrollmentListRow) => {
         const studentId = e.student_id;
         const scoreVal = scores[studentId];
@@ -981,16 +998,20 @@ function ActivityScoring({
         if (isNaN(numScore) || numScore < 0 || numScore > maxScore) return;
 
         const existing = submissions.find(s => s.student_id === studentId);
+        const gradePayload = {
+          score: numScore,
+          assessment_type: assessmentType,
+          graded_by: userId,
+          graded_at: new Date().toISOString(),
+        };
         if (existing) {
-          const { error } = await supabase.from('submissions').update({ score: numScore, graded_by: userId, graded_at: new Date().toISOString() }).eq('id', existing.id);
+          const { error } = await supabase.from('submissions').update(gradePayload).eq('id', existing.id);
           if (error) throw error;
         } else {
           const { error } = await supabase.from('submissions').insert({
             activity_id: activityId,
             student_id: studentId,
-            score: numScore,
-            graded_by: userId,
-            graded_at: new Date().toISOString(),
+            ...gradePayload,
           });
           if (error) throw error;
         }
@@ -1112,12 +1133,41 @@ function ActivityScoring({
           )}
         </div>
       </div>
+      <div className="grid gap-3 sm:grid-cols-2 sm:items-end max-w-md">
+        <div className="space-y-2">
+          <Label htmlFor={`assessment-type-${activityId}`}>Assessment Type</Label>
+          <Select
+            value={assessmentType || undefined}
+            onValueChange={(v) => setAssessmentType(v as AssessmentType)}
+          >
+            <SelectTrigger id={`assessment-type-${activityId}`}>
+              <SelectValue placeholder="Select assessment type" />
+            </SelectTrigger>
+            <SelectContent>
+              {ASSESSMENT_TYPES.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!assessmentType && (
+            <p className="text-xs text-muted-foreground">Required when saving grades.</p>
+          )}
+        </div>
+        {assessmentType ? (
+          <div className="text-sm text-muted-foreground pb-2">
+            Selected: <span className="font-medium text-foreground">{formatAssessmentTypeLabel(assessmentType)}</span>
+          </div>
+        ) : null}
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Student</TableHead>
             <TableHead className="w-32">Score (/ {maxScore})</TableHead>
             <TableHead className="w-24">%</TableHead>
+            <TableHead className="w-36">Assessment Type</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1153,13 +1203,24 @@ function ActivityScoring({
                 <TableCell className="text-muted-foreground text-sm">
                   {pct === '—' ? '—' : `${pct}%`}
                 </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {formatAssessmentTypeLabel(
+                    assessmentType ||
+                      submissions.find(s => s.student_id === e.student_id)?.assessment_type,
+                  )}
+                </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => saveScores.mutate()} disabled={saveScores.isPending}>
+        <Button
+          size="sm"
+          onClick={() => saveScores.mutate()}
+          disabled={saveScores.isPending || !assessmentType}
+          title={!assessmentType ? 'Select an Assessment Type before saving' : undefined}
+        >
           <Save className="mr-2 h-4 w-4" />
           {saveScores.isPending ? 'Saving...' : 'Save Scores'}
         </Button>

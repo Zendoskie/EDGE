@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
+import {
+  studentCoachingRecommendationNotification,
+  studentPredictionNotifications,
+} from "@/lib/notification-events";
 
 /**
  * Realtime: pushes inbox items when the student’s rows change (requires tables in `supabase_realtime`).
@@ -39,6 +43,43 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
         body: date ? `${date}: ${status}` : `Status: ${status}`,
         dedupeKey: `att:${id}:${date}:${status}`,
       });
+    };
+
+    const pushPredictionInsert = async (row: Record<string, unknown>) => {
+      let subjectCode: string | null = null;
+      if (typeof row.subject_id === "string") {
+        const { data } = await supabase
+          .from("subjects")
+          .select("code")
+          .eq("id", row.subject_id)
+          .maybeSingle();
+        subjectCode = data?.code ?? null;
+      }
+
+      for (const n of studentPredictionNotifications(row, subjectCode)) {
+        addRef.current(n);
+      }
+    };
+
+    const pushPredictionUpdate = async (
+      row: Record<string, unknown>,
+      oldRow: Record<string, unknown> | undefined,
+    ) => {
+      const prevRec =
+        typeof oldRow?.recommendation === "string" ? oldRow.recommendation : null;
+
+      let subjectCode: string | null = null;
+      if (typeof row.subject_id === "string") {
+        const { data } = await supabase
+          .from("subjects")
+          .select("code")
+          .eq("id", row.subject_id)
+          .maybeSingle();
+        subjectCode = data?.code ?? null;
+      }
+
+      const n = studentCoachingRecommendationNotification(row, subjectCode, prevRec);
+      if (n) addRef.current(n);
     };
 
     const channel = supabase
@@ -95,12 +136,22 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
         },
         (payload) => {
           const row = payload.new as Record<string, unknown> | undefined;
-          const id = String(row?.id ?? payload.commit_timestamp ?? Date.now());
-          addRef.current({
-            title: "Academic insight updated",
-            body: "A new risk prediction is available. Check Performance Insights.",
-            dedupeKey: `pred:${id}`,
-          });
+          if (!row) return;
+          void pushPredictionInsert(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "predictions",
+          filter: `student_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | undefined;
+          if (!row) return;
+          void pushPredictionUpdate(row, payload.old as Record<string, unknown> | undefined);
         },
       )
       .on(

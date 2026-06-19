@@ -36,10 +36,17 @@ interface StudentMetrics {
   quiz_average: number | null;
   assignment_average: number | null;
   project_score: number | null;
+  activity_average: number | null;
+  laboratory_exam_average: number | null;
   activity_completion_rate: number | null;
+  comprehension_rating: number | null;
 }
 
-function classifyStudent(metrics: StudentMetrics): { risk_level: RiskLevel; confidence: number; recommendation: string } {
+function classifyStudent(metrics: StudentMetrics): {
+  risk_level: RiskLevel;
+  confidence: number;
+  risk_score: number;
+} {
   const att = metrics.attendance_rate ?? null;
   const quiz = metrics.quiz_average ?? null;
   const assign = metrics.assignment_average ?? null;
@@ -90,34 +97,51 @@ function classifyStudent(metrics: StudentMetrics): { risk_level: RiskLevel; conf
 
   // Critical: very low scores or multiple severe indicators
   if (atRiskScore >= 5 || (avgGrade != null && avgGrade < 50) || (attPct != null && attPct < 50)) {
-    const recommendation =
-      reasons.length > 0
-        ? `Urgent: Focus on improving ${reasons.join(" and ")}. Recommend counseling, tutoring, or academic support.`
-        : "Multiple critical indicators. Immediate intervention recommended.";
-    return { risk_level: "critical", confidence: Math.min(0.95, 0.7 + atRiskScore * 0.05), recommendation };
+    return {
+      risk_level: "critical",
+      confidence: Math.min(0.95, 0.7 + atRiskScore * 0.05),
+      risk_score: atRiskScore,
+    };
   }
 
   if (atRiskScore >= 2) {
-    const recommendation =
-      reasons.length > 0
-        ? `Focus on improving ${reasons.join(" and ")}. Consider office hours or tutoring.`
-        : "Multiple indicators suggest risk. Review attendance and graded work.";
-    return { risk_level: "at_risk", confidence: Math.min(0.95, 0.6 + atRiskScore * 0.1), recommendation };
+    return {
+      risk_level: "at_risk",
+      confidence: Math.min(0.95, 0.6 + atRiskScore * 0.1),
+      risk_score: atRiskScore,
+    };
   }
 
   if (excellingScore >= 2 && (attPct == null || attPct >= 85) && (avgGrade == null || avgGrade >= 80)) {
     return {
       risk_level: "excelling",
       confidence: 0.85,
-      recommendation: "Strong performance. Consider mentoring peers or enrichment if available.",
+      risk_score: Math.max(0, atRiskScore - excellingScore),
     };
   }
 
-  const stableRecommendation =
-    reasons.length > 0
-      ? `Monitor ${reasons.join(" and ")}. Small improvements can help.`
-      : "Metrics are in a moderate range. Keep consistent effort and attendance.";
-  return { risk_level: "stable", confidence: 0.75, recommendation: stableRecommendation };
+  return { risk_level: "stable", confidence: 0.75, risk_score: atRiskScore };
+}
+
+function deriveComprehensionRating(opts: {
+  quiz_average: number | null;
+  activity_average: number | null;
+  feedbackReasons: string[];
+}): number {
+  const hasComprehensionConcern = opts.feedbackReasons.some((r) =>
+    /difficulty understanding|understanding lessons/i.test(r)
+  );
+  const quiz = opts.quiz_average;
+  const activity = opts.activity_average;
+  const gap =
+    quiz != null && activity != null && activity > quiz + 12
+      ? true
+      : quiz != null && quiz < 55;
+
+  if (hasComprehensionConcern || gap) return 2;
+  if (quiz != null && quiz < 70) return 3;
+  if (quiz != null && quiz >= 85 && (activity == null || activity >= 80)) return 5;
+  return 4;
 }
 
 async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
@@ -211,13 +235,26 @@ serve(async (req) => {
 
     const activityIds = (activities || []).map((a) => a.id);
 
-    let submissions: Array<{ student_id: string; activity_id: string; score: number | null }> = [];
+    let submissions: Array<{ student_id: string; activity_id: string; score: number | null; assessment_type: string | null }> = [];
     if (activityIds.length > 0) {
       const { data } = await supabase
         .from("submissions")
-        .select("student_id, activity_id, score")
+        .select("student_id, activity_id, score, assessment_type")
         .in("activity_id", activityIds);
       submissions = data || [];
+    }
+
+    const { data: feedbackRows } = await supabase
+      .from("student_feedback")
+      .select("student_id, reasons, created_at")
+      .eq("subject_id", subject_id)
+      .order("created_at", { ascending: false });
+
+    const latestFeedbackByStudent = new Map<string, string[]>();
+    for (const row of feedbackRows ?? []) {
+      const sid = row.student_id as string | undefined;
+      if (!sid || latestFeedbackByStudent.has(sid)) continue;
+      latestFeedbackByStudent.set(sid, Array.isArray(row.reasons) ? row.reasons.map(String) : []);
     }
 
     const studentMetrics: StudentMetrics[] = studentIds.map((sid) => {
@@ -231,8 +268,9 @@ serve(async (req) => {
       for (const sub of studentSubs) {
         const act = (activities || []).find((a) => a.id === sub.activity_id);
         if (!act || sub.score == null) continue;
-        if (!activityMap[act.type]) activityMap[act.type] = [];
-        activityMap[act.type].push({ score: sub.score, max: act.max_score, type: act.type });
+        const assessmentType = sub.assessment_type || act.type;
+        if (!activityMap[assessmentType]) activityMap[assessmentType] = [];
+        activityMap[assessmentType].push({ score: sub.score, max: act.max_score, type: assessmentType });
       }
 
       const avg = (items: { score: number; max: number }[]) =>
@@ -241,9 +279,17 @@ serve(async (req) => {
       const quizAvg = avg(activityMap["quiz"] || []);
       const assignmentAvg = avg(activityMap["assignment"] || []);
       const projectScore = avg(activityMap["project"] || []);
+      const activityAvg = avg(activityMap["activity"] || []);
+      const labExamAvg = avg(activityMap["laboratory_exam"] || []);
       const totalActivities = (activities || []).length;
       const completedActivities = studentSubs.filter((s) => s.score != null).length;
       const completionRate = totalActivities > 0 ? completedActivities / totalActivities : null;
+      const feedbackReasons = latestFeedbackByStudent.get(sid) ?? [];
+      const comprehensionRating = deriveComprehensionRating({
+        quiz_average: quizAvg,
+        activity_average: activityAvg,
+        feedbackReasons,
+      });
 
       return {
         student_id: sid,
@@ -252,26 +298,54 @@ serve(async (req) => {
         quiz_average: quizAvg,
         assignment_average: assignmentAvg,
         project_score: projectScore,
+        activity_average: activityAvg,
+        laboratory_exam_average: labExamAvg,
         activity_completion_rate: completionRate,
+        comprehension_rating: comprehensionRating,
       };
     });
+
+    const { data: existingPreds } = await supabase
+      .from("predictions")
+      .select("student_id, risk_level, attendance_rate")
+      .eq("subject_id", subject_id);
+
+    const previousByStudent = new Map<
+      string,
+      { risk_level: string | null; attendance_rate: number | null }
+    >();
+    for (const row of existingPreds ?? []) {
+      const sid = row.student_id as string | undefined;
+      if (!sid || previousByStudent.has(sid)) continue;
+      previousByStudent.set(sid, {
+        risk_level: (row.risk_level as string | null) ?? null,
+        attendance_rate: row.attendance_rate as number | null,
+      });
+    }
 
     await supabase.from("predictions").delete().eq("subject_id", subject_id);
 
     const rows = studentMetrics.map((metrics) => {
-      const { risk_level, confidence, recommendation } = classifyStudent(metrics);
+      const { risk_level, confidence, risk_score } = classifyStudent(metrics);
+      const previous = previousByStudent.get(metrics.student_id);
       return {
         student_id: metrics.student_id,
         subject_id,
-        prediction_type: "ai_classification",
+        prediction_type: "risk_analysis",
         risk_level,
         confidence,
-        recommendation,
+        risk_score,
+        recommendation: null,
+        previous_risk_level: previous?.risk_level ?? null,
+        previous_attendance_rate: previous?.attendance_rate ?? null,
         attendance_rate: metrics.attendance_rate,
         quiz_average: metrics.quiz_average,
         assignment_average: metrics.assignment_average,
         project_score: metrics.project_score,
+        activity_average: metrics.activity_average,
+        laboratory_exam_average: metrics.laboratory_exam_average,
         activity_completion_rate: metrics.activity_completion_rate,
+        comprehension_rating: metrics.comprehension_rating,
       };
     });
 
@@ -305,9 +379,8 @@ serve(async (req) => {
         const subj = `EDGE Alert: ${n.risk_level === "critical" ? "Critical" : "At Risk"} — ${subject.code}`;
         const html = `
           <p>Hello ${profileMap[n.student_id]?.full_name || "student"},</p>
-          <p>You have been identified as <strong>${n.risk_level === "critical" ? "Critical" : "At Risk"}</strong> for <strong>${subject.code} — ${subject.name}</strong>.</p>
-          <p><strong>Recommendation:</strong> ${n.recommendation || "Please check EDGE for details and reach out to your instructor."}</p>
-          <p>Please log in to EDGE for more details.</p>
+          <p>You have been identified as <strong>${n.risk_level === "critical" ? "Critical" : "At Risk"}</strong> for <strong>${subject.code} — ${subject.name}</strong> by the EDGE risk analysis system.</p>
+          <p>Log in to EDGE and open the AI Coach for personalized study strategies and improvement actions based on your latest metrics.</p>
         `;
 
         try {

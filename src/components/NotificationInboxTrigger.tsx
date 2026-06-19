@@ -57,8 +57,8 @@ export function NotificationInboxTrigger() {
         <ScrollArea className="h-[min(60vh,280px)]">
           {items.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Nothing new yet. When your instructors update grades, attendance, or predictions, entries will show up
-              here.
+              Nothing new yet. Updates about grades, attendance, risk analysis, AI coaching, and counseling referrals
+              will appear here.
             </p>
           ) : (
             <ul className="divide-y divide-border/60">

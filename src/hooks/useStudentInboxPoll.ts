@@ -1,11 +1,39 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
+import {
+  studentCoachingRecommendationNotification,
+  studentPredictionNotifications,
+} from "@/lib/notification-events";
 
 const POLL_KEY_PREFIX = "edge_inbox_poll_";
+const COACHING_REC_SEEN_PREFIX = "edge_coaching_rec_seen_";
 
 function pollStorageKey(userId: string) {
   return `${POLL_KEY_PREFIX}${userId}`;
+}
+
+function coachingRecSeenKey(userId: string) {
+  return `${COACHING_REC_SEEN_PREFIX}${userId}`;
+}
+
+function loadCoachingRecSeen(userId: string): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(coachingRecSeenKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCoachingRecSeen(userId: string, map: Record<string, string>) {
+  try {
+    localStorage.setItem(coachingRecSeenKey(userId), JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -141,19 +169,47 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
 
         const { data: preds } = await supabase
           .from("predictions")
-          .select("id, created_at, subjects(code)")
+          .select(
+            "id, created_at, risk_level, previous_risk_level, attendance_rate, previous_attendance_rate, recommendation, subject_id, subjects(code)",
+          )
           .eq("student_id", userId)
           .gt("created_at", lastPoll);
 
         for (const p of preds ?? []) {
-          const row = p as { id: string; subjects: { code?: string } | null };
-          const code = row.subjects?.code ?? "your course";
-          addRef.current({
-            title: "Academic insight updated",
-            body: `New prediction for ${code}. Open Performance Insights.`,
-            dedupeKey: `pred:${row.id}`,
-          });
+          const row = p as {
+            id: string;
+            subjects: { code?: string } | null;
+          };
+          const code = row.subjects?.code ?? null;
+          for (const n of studentPredictionNotifications(row, code)) {
+            addRef.current(n);
+          }
         }
+
+        const coachingSeen = loadCoachingRecSeen(userId);
+        const { data: coachingRows } = await supabase
+          .from("predictions")
+          .select("id, recommendation, subject_id, subjects(code)")
+          .eq("student_id", userId)
+          .not("recommendation", "is", null);
+
+        const nextCoachingSeen = { ...coachingSeen };
+        for (const p of coachingRows ?? []) {
+          const row = p as {
+            id: string;
+            recommendation: string | null;
+            subjects: { code?: string } | null;
+          };
+          const rec = row.recommendation?.trim() ?? "";
+          if (!rec) continue;
+          const prev = coachingSeen[row.id];
+          if (prev === rec) continue;
+
+          const n = studentCoachingRecommendationNotification(row, row.subjects?.code ?? null, prev ?? null);
+          if (n) addRef.current(n);
+          nextCoachingSeen[row.id] = rec;
+        }
+        saveCoachingRecSeen(userId, nextCoachingSeen);
 
         const { data: attRows } = await supabase
           .from("attendance")
