@@ -34,9 +34,7 @@ export default function Reports() {
       risk_level: string | null;
       recommendation: string;
       engagement_level?: string | null;
-      total_logins?: number | null;
       participation_count?: number | null;
-      last_login_at?: string | null;
       recent_activity_summary?: string;
       subject_code?: string;
       program?: string;
@@ -129,9 +127,7 @@ export default function Reports() {
       const studentIdList = [...allStudentIds];
       let engagementByStudent = new Map<string, {
         engagement_level: string;
-        total_login_count: number;
         participation_count: number;
-        last_login_at: string | null;
       }>();
       const recentActivityByStudent = new Map<string, string>();
 
@@ -139,7 +135,7 @@ export default function Reports() {
         const [{ data: summaries }, { data: activities }] = await Promise.all([
           supabase
             .from('student_engagement_summary')
-            .select('student_id, engagement_level, total_login_count, participation_count, last_login_at')
+            .select('student_id, engagement_level, participation_count')
             .in('student_id', studentIdList),
           supabase
             .from('student_activity')
@@ -168,9 +164,7 @@ export default function Reports() {
           return {
             ...row,
             engagement_level: eng?.engagement_level ?? null,
-            total_logins: eng?.total_login_count ?? null,
             participation_count: eng?.participation_count ?? null,
-            last_login_at: eng?.last_login_at ?? null,
             recent_activity_summary: recentActivityByStudent.get(row.student_id) ?? '—',
           };
         }),
@@ -262,7 +256,7 @@ export default function Reports() {
   const downloadCSV = (data: typeof allRows, filename: string) => {
     const headers = [
       'Subject', 'Program', 'Student', 'Email', 'Student ID', 'Attendance %', 'Quiz Avg %', 'Assignment Avg %',
-      'Risk Level', 'Engagement Level', 'Total Logins', 'Participation Count', 'Last Login', 'Recent Activity',
+      'Risk Level', 'Engagement Level', 'Participation Count', 'Recent Activity',
       'Recommendation',
     ];
     const rows = data.map((r) => [
@@ -276,9 +270,7 @@ export default function Reports() {
       r.assignment_avg != null ? r.assignment_avg.toFixed(1) : '',
       riskLabel(canonicalRiskLevel(r.risk_level ?? '')),
       r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '',
-      r.total_logins != null ? String(r.total_logins) : '',
       r.participation_count != null ? String(r.participation_count) : '',
-      r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '',
       (r.recent_activity_summary ?? '').replace(/,/g, ';'),
       (r.recommendation ?? '').replace(/,/g, ';'),
     ]);
@@ -304,9 +296,7 @@ export default function Reports() {
       risk_level: string | null;
       recommendation: string;
       engagement_level?: string | null;
-      total_logins?: number | null;
       participation_count?: number | null;
-      last_login_at?: string | null;
       recent_activity_summary?: string;
     }>,
   ) => {
@@ -332,9 +322,7 @@ export default function Reports() {
             <td>${r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
             <td>${riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
             <td>${engagement}</td>
-            <td>${r.total_logins ?? '—'}</td>
             <td>${r.participation_count ?? '—'}</td>
-            <td>${r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '—'}</td>
             <td>${(r.recent_activity_summary ?? '—').replace(/</g, '&lt;')}</td>
             <td>${recommendation}</td>
           </tr>
@@ -372,15 +360,13 @@ export default function Reports() {
                 <th>Assign. Avg</th>
                 <th>Risk</th>
                 <th>Engagement</th>
-                <th>Logins</th>
                 <th>Participation</th>
-                <th>Last Login</th>
                 <th>Recent Activity</th>
                 <th>Recommendation</th>
               </tr>
             </thead>
             <tbody>
-              ${bodyRows || '<tr><td colspan="13">No enrolled students.</td></tr>'}
+              ${bodyRows || '<tr><td colspan="11">No enrolled students.</td></tr>'}
             </tbody>
           </table>
         </body>
@@ -495,8 +481,7 @@ export default function Reports() {
                         <TableHead>Assign. Avg</TableHead>
                         <TableHead>Risk</TableHead>
                         <TableHead>Engagement</TableHead>
-                        <TableHead>Logins</TableHead>
-                        <TableHead>Last Login</TableHead>
+                        <TableHead>Participation</TableHead>
                         <TableHead>Recommendation</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -521,10 +506,7 @@ export default function Reports() {
                               '—'
                             )}
                           </TableCell>
-                          <TableCell>{r.total_logins ?? '—'}</TableCell>
-                          <TableCell className="text-sm">
-                            {r.last_login_at ? new Date(r.last_login_at).toLocaleDateString() : '—'}
-                          </TableCell>
+                          <TableCell>{r.participation_count ?? '—'}</TableCell>
                           <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                         </TableRow>
                       ))}
@@ -594,7 +576,7 @@ export default function Reports() {
                             <TableHead>Assign. Avg</TableHead>
                             <TableHead>Risk</TableHead>
                             <TableHead>Engagement</TableHead>
-                            <TableHead>Logins</TableHead>
+                            <TableHead>Participation</TableHead>
                             <TableHead>Recommendation</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -616,7 +598,7 @@ export default function Reports() {
                                   '—'
                                 )}
                               </TableCell>
-                              <TableCell>{r.total_logins ?? '—'}</TableCell>
+                              <TableCell>{r.participation_count ?? '—'}</TableCell>
                               <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                             </TableRow>
                           ))}
@@ -730,9 +712,7 @@ export default function Reports() {
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Assign. Avg</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Risk</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Engagement</th>
-                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Logins</th>
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Participation</th>
-                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Last Login</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Recent Activity</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Recommendation</th>
                     </tr>
@@ -757,11 +737,7 @@ export default function Reports() {
                         <td className="border border-slate-200 px-3 py-2 align-top">
                           {r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '—'}
                         </td>
-                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.total_logins ?? '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.participation_count ?? '—'}</td>
-                        <td className="border border-slate-200 px-3 py-2 align-top">
-                          {r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '—'}
-                        </td>
                         <td className="border border-slate-200 px-3 py-2 align-top">{r.recent_activity_summary ?? '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top whitespace-normal">{r.recommendation}</td>
                       </tr>
