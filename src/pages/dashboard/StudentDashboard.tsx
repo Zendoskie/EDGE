@@ -25,7 +25,9 @@ import {
 } from '@/lib/student-performance-scope';
 import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
 import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
+import { StudentEngagementCard } from '@/components/StudentEngagementCard';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -57,6 +59,7 @@ interface RecentActivity {
 export default function StudentDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  useTrackPageView('view_subject_page', null, 'Student dashboard');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selectedReasons, setSelectedReasons] = useState<Record<string, boolean>>({});
   const [details, setDetails] = useState("");
@@ -386,6 +389,8 @@ export default function StudentDashboard() {
               </Card>
             ))}
       </div>
+
+      <StudentEngagementCard />
 
       <CounselingReferralsCard
         referrals={counselingReferrals}

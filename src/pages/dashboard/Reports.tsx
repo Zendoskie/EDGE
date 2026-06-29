@@ -13,6 +13,8 @@ import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
+import { EngagementBadge } from '@/components/EngagementBadge';
+import { engagementLabel, canonicalEngagementLevel, formatActivityTypeLabel } from '@/lib/engagement-utils';
 
 export default function Reports() {
   const { user } = useAuth();
@@ -31,6 +33,11 @@ export default function Reports() {
       assignment_avg: number | null;
       risk_level: string | null;
       recommendation: string;
+      engagement_level?: string | null;
+      total_logins?: number | null;
+      participation_count?: number | null;
+      last_login_at?: string | null;
+      recent_activity_summary?: string;
       subject_code?: string;
       program?: string;
     }>;
@@ -45,6 +52,7 @@ export default function Reports() {
         .eq('instructor_id', user!.id)
         .order('code');
       if (!subs?.length) return [];
+      const allStudentIds = new Set<string>();
       const reportData = await Promise.all(
         subs.map(async (s) => {
           const { data: enrollments } = await supabase
@@ -53,6 +61,7 @@ export default function Reports() {
             .eq('subject_id', s.id)
             .eq('status', 'active');
           const studentIds = enrollments?.map((e) => e.student_id).filter(Boolean) ?? [];
+          studentIds.forEach((id) => allStudentIds.add(id as string));
           const { data: profiles } = await supabase
             .from('profiles')
             .select('user_id, full_name, email, student_id')
@@ -116,7 +125,56 @@ export default function Reports() {
           return { subject: s, rows, program: (s as any).programs, gradeRecords: buildGradeRecords(profiles ?? [], activities ?? [], submissions) };
         })
       );
-      return reportData;
+
+      const studentIdList = [...allStudentIds];
+      let engagementByStudent = new Map<string, {
+        engagement_level: string;
+        total_login_count: number;
+        participation_count: number;
+        last_login_at: string | null;
+      }>();
+      const recentActivityByStudent = new Map<string, string>();
+
+      if (studentIdList.length > 0) {
+        const [{ data: summaries }, { data: activities }] = await Promise.all([
+          supabase
+            .from('student_engagement_summary')
+            .select('student_id, engagement_level, total_login_count, participation_count, last_login_at')
+            .in('student_id', studentIdList),
+          supabase
+            .from('student_activity')
+            .select('student_id, activity_type, activity_description, created_at')
+            .in('student_id', studentIdList)
+            .order('created_at', { ascending: false })
+            .limit(500),
+        ]);
+
+        engagementByStudent = new Map(
+          (summaries ?? []).map((row) => [row.student_id, row]),
+        );
+
+        for (const act of activities ?? []) {
+          const sid = act.student_id as string;
+          if (!sid || recentActivityByStudent.has(sid)) continue;
+          const label = act.activity_description?.trim() || formatActivityTypeLabel(act.activity_type);
+          recentActivityByStudent.set(sid, label);
+        }
+      }
+
+      return reportData.map((item) => ({
+        ...item,
+        rows: item.rows.map((row) => {
+          const eng = engagementByStudent.get(row.student_id);
+          return {
+            ...row,
+            engagement_level: eng?.engagement_level ?? null,
+            total_logins: eng?.total_login_count ?? null,
+            participation_count: eng?.participation_count ?? null,
+            last_login_at: eng?.last_login_at ?? null,
+            recent_activity_summary: recentActivityByStudent.get(row.student_id) ?? '—',
+          };
+        }),
+      }));
     },
     enabled: !!user?.id,
   });
@@ -202,7 +260,11 @@ export default function Reports() {
   };
 
   const downloadCSV = (data: typeof allRows, filename: string) => {
-    const headers = ['Subject', 'Program', 'Student', 'Email', 'Student ID', 'Attendance %', 'Quiz Avg %', 'Assignment Avg %', 'Risk Level', 'Recommendation'];
+    const headers = [
+      'Subject', 'Program', 'Student', 'Email', 'Student ID', 'Attendance %', 'Quiz Avg %', 'Assignment Avg %',
+      'Risk Level', 'Engagement Level', 'Total Logins', 'Participation Count', 'Last Login', 'Recent Activity',
+      'Recommendation',
+    ];
     const rows = data.map((r) => [
       r.subject_code,
       r.program,
@@ -213,6 +275,11 @@ export default function Reports() {
       r.quiz_avg != null ? r.quiz_avg.toFixed(1) : '',
       r.assignment_avg != null ? r.assignment_avg.toFixed(1) : '',
       riskLabel(canonicalRiskLevel(r.risk_level ?? '')),
+      r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '',
+      r.total_logins != null ? String(r.total_logins) : '',
+      r.participation_count != null ? String(r.participation_count) : '',
+      r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '',
+      (r.recent_activity_summary ?? '').replace(/,/g, ';'),
       (r.recommendation ?? '').replace(/,/g, ';'),
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -236,6 +303,11 @@ export default function Reports() {
       assignment_avg: number | null;
       risk_level: string | null;
       recommendation: string;
+      engagement_level?: string | null;
+      total_logins?: number | null;
+      participation_count?: number | null;
+      last_login_at?: string | null;
+      recent_activity_summary?: string;
     }>,
   ) => {
     const printWindow = window.open('', '_blank');
@@ -247,6 +319,9 @@ export default function Reports() {
     const bodyRows = rows
       .map((r) => {
         const recommendation = (r.recommendation ?? '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const engagement = r.engagement_level
+          ? engagementLabel(canonicalEngagementLevel(r.engagement_level))
+          : '—';
         return `
           <tr>
             <td>${r.full_name ?? '—'}</td>
@@ -256,6 +331,11 @@ export default function Reports() {
             <td>${r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
             <td>${r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
             <td>${riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
+            <td>${engagement}</td>
+            <td>${r.total_logins ?? '—'}</td>
+            <td>${r.participation_count ?? '—'}</td>
+            <td>${r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '—'}</td>
+            <td>${(r.recent_activity_summary ?? '—').replace(/</g, '&lt;')}</td>
             <td>${recommendation}</td>
           </tr>
         `;
@@ -291,11 +371,16 @@ export default function Reports() {
                 <th>Quiz Avg</th>
                 <th>Assign. Avg</th>
                 <th>Risk</th>
+                <th>Engagement</th>
+                <th>Logins</th>
+                <th>Participation</th>
+                <th>Last Login</th>
+                <th>Recent Activity</th>
                 <th>Recommendation</th>
               </tr>
             </thead>
             <tbody>
-              ${bodyRows || '<tr><td colspan="8">No enrolled students.</td></tr>'}
+              ${bodyRows || '<tr><td colspan="13">No enrolled students.</td></tr>'}
             </tbody>
           </table>
         </body>
@@ -409,6 +494,9 @@ export default function Reports() {
                         <TableHead>Quiz Avg</TableHead>
                         <TableHead>Assign. Avg</TableHead>
                         <TableHead>Risk</TableHead>
+                        <TableHead>Engagement</TableHead>
+                        <TableHead>Logins</TableHead>
+                        <TableHead>Last Login</TableHead>
                         <TableHead>Recommendation</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -425,6 +513,17 @@ export default function Reports() {
                           <TableCell>{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</TableCell>
                           <TableCell>
                             <RiskBadge level={r.risk_level} />
+                          </TableCell>
+                          <TableCell>
+                            {r.engagement_level ? (
+                              <EngagementBadge level={r.engagement_level} />
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <TableCell>{r.total_logins ?? '—'}</TableCell>
+                          <TableCell className="text-sm">
+                            {r.last_login_at ? new Date(r.last_login_at).toLocaleDateString() : '—'}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                         </TableRow>
@@ -494,6 +593,8 @@ export default function Reports() {
                             <TableHead>Quiz Avg</TableHead>
                             <TableHead>Assign. Avg</TableHead>
                             <TableHead>Risk</TableHead>
+                            <TableHead>Engagement</TableHead>
+                            <TableHead>Logins</TableHead>
                             <TableHead>Recommendation</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -508,6 +609,14 @@ export default function Reports() {
                               <TableCell>
                                 <RiskBadge level={r.risk_level} />
                               </TableCell>
+                              <TableCell>
+                                {r.engagement_level ? (
+                                  <EngagementBadge level={r.engagement_level} />
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                              <TableCell>{r.total_logins ?? '—'}</TableCell>
                               <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{r.recommendation}</TableCell>
                             </TableRow>
                           ))}
@@ -620,6 +729,11 @@ export default function Reports() {
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Quiz Avg</th>
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Assign. Avg</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Risk</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Engagement</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Logins</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Participation</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Last Login</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Recent Activity</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Recommendation</th>
                     </tr>
                   </thead>
@@ -640,6 +754,15 @@ export default function Reports() {
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top">{riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">
+                          {r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '—'}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.total_logins ?? '—'}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.participation_count ?? '—'}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">
+                          {r.last_login_at ? new Date(r.last_login_at).toLocaleString() : '—'}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{r.recent_activity_summary ?? '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top whitespace-normal">{r.recommendation}</td>
                       </tr>
                     ))}

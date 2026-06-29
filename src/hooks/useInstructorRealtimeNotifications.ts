@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
-import { instructorAtRiskNotification } from "@/lib/notification-events";
+import { instructorAtRiskNotification, instructorEngagementAlertNotification } from "@/lib/notification-events";
 
 type SubjectRef = { id: string; code: string };
 
@@ -71,6 +71,68 @@ export function useInstructorRealtimeNotifications(
             void handlePrediction(payload.new as Record<string, unknown> | undefined);
           },
         );
+      }
+
+      const handleEngagement = async (row: Record<string, unknown> | undefined) => {
+        if (!row) return;
+        const studentId = typeof row.student_id === "string" ? row.student_id : null;
+        if (!studentId) return;
+
+        const { data: enrollment } = await supabase
+          .from("enrollments")
+          .select("subject_id, subjects(code)")
+          .eq("student_id", studentId)
+          .in(
+            "subject_id",
+            subjectList.map((s) => s.id),
+          )
+          .eq("status", "active")
+          .limit(1)
+          .maybeSingle();
+
+        if (!enrollment) return;
+
+        let studentName: string | null = null;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", studentId)
+          .maybeSingle();
+        studentName = profile?.full_name ?? null;
+
+        const subjectCode =
+          (enrollment.subjects as { code?: string } | null)?.code ?? null;
+
+        const n = instructorEngagementAlertNotification(row, {
+          studentName,
+          subjectCode,
+        });
+        if (n) addRef.current(n);
+      };
+
+      for (const subject of subjectList) {
+        const { data: enrollments } = await supabase
+          .from("enrollments")
+          .select("student_id")
+          .eq("subject_id", subject.id)
+          .eq("status", "active");
+
+        for (const enroll of enrollments ?? []) {
+          const sid = (enroll as { student_id?: string }).student_id;
+          if (!sid) continue;
+          channel = channel.on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "student_engagement_summary",
+              filter: `student_id=eq.${sid}`,
+            },
+            (payload) => {
+              void handleEngagement(payload.new as Record<string, unknown> | undefined);
+            },
+          );
+        }
       }
 
       channel.subscribe();

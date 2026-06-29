@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
 
 function formatDue(due: string | null): string {
   if (!due) return '—';
@@ -17,6 +18,8 @@ function formatDue(due: string | null): string {
 
 export default function MyScores() {
   const { user } = useAuth();
+
+  useTrackPageView('view_grades', null, 'My Scores page');
 
   const { data: enrollments = [] } = useQuery({
     queryKey: ['my-enrollments', user?.id],

@@ -16,6 +16,8 @@ import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
 import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
 import { RiskBadge } from '@/components/RiskBadge';
+import { EngagementBadge } from '@/components/EngagementBadge';
+import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 
 const getYearFromSubject = (subject: any) => {
@@ -443,6 +445,25 @@ export default function InstructorDashboard() {
     enabled: !!user?.id && !!subjectsWithPrograms,
   });
 
+  const monitoringStudentIds = useMemo(
+    () => [...new Set(monitoringRows.map((r: { studentId?: string }) => r.studentId).filter(Boolean))] as string[],
+    [monitoringRows],
+  );
+
+  const { data: engagementByStudent = new Map() } = useQuery({
+    queryKey: ['instructor-monitoring-engagement', monitoringStudentIds.join(',')],
+    queryFn: async () => {
+      if (monitoringStudentIds.length === 0) return new Map();
+      const { data, error } = await supabase
+        .from('student_engagement_summary')
+        .select('student_id, engagement_level, engagement_score')
+        .in('student_id', monitoringStudentIds);
+      if (error) throw error;
+      return new Map((data ?? []).map((r) => [r.student_id, r]));
+    },
+    enabled: monitoringStudentIds.length > 0,
+  });
+
   const trendSummary = useMemo(() => {
     const improved = monitoringRows.filter((r: any) => r.trend === 'improved').length;
     const declined = monitoringRows.filter((r: any) => r.trend === 'declined').length;
@@ -840,6 +861,9 @@ export default function InstructorDashboard() {
                         </p>
                         <div className="flex gap-2">
                           <RiskBadge level={row.latestRisk} />
+                          {engagementByStudent.get(row.studentId) ? (
+                            <EngagementBadge level={engagementByStudent.get(row.studentId).engagement_level} />
+                          ) : null}
                           <Badge variant={row.trend === 'declined' ? 'destructive' : row.trend === 'improved' ? 'default' : 'secondary'}>
                             Trend: {row.trend}
                           </Badge>
@@ -1101,6 +1125,7 @@ export default function InstructorDashboard() {
 
         <TabsContent value="analytics" className="mt-6">
           <div className="grid gap-6">
+            {user?.id ? <EngagementAnalytics instructorId={user.id} /> : null}
             <Card className="bg-card/90 interactive-lift">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">

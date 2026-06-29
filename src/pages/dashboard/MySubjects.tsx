@@ -22,12 +22,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
 
 export default function MySubjects() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [enrollCode, setEnrollCode] = useState('');
+
+  useTrackPageView('view_subject_page', null, 'My Subjects page');
 
   const programCode = (user?.user_metadata as any)?.course as string | undefined;
 

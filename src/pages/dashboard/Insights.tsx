@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -55,6 +56,7 @@ import { invokeAiCoach } from '@/lib/invoke-ai-coach';
 import { formatCoachingMetricsBlock, mapPredictionToCoachingMetrics } from '@/lib/coaching-context';
 import { FormattedAssistantContent } from '@/components/FormattedAssistantContent';
 import { InsightsChartFrame } from '@/components/insights/InsightsChartFrame';
+import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import {
   InsightsDesktopTabsList,
   InsightsTabMobileSelect,
@@ -214,6 +216,8 @@ export default function Insights() {
 }
 
 function StudentInsights({ userId }: { userId: string }) {
+  useTrackPageView('view_material', null, 'Performance Insights');
+
   const { data: predictions = [], isLoading: predictionsLoading, isError: predictionsIsError } = useQuery({
     queryKey: ['my-predictions', userId],
     queryFn: async () => {
@@ -1294,6 +1298,8 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
               )}
             </CardContent>
           </Card>
+
+          <EngagementAnalytics instructorId={instructorId} />
         </TabsContent>
 
         <TabsContent value="predictions" className={`${INSIGHTS_TAB_PANEL_CLASS} space-y-6`}>

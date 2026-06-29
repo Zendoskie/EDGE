@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
-import { instructorAtRiskNotification } from "@/lib/notification-events";
+import { instructorAtRiskNotification, instructorEngagementAlertNotification } from "@/lib/notification-events";
 
 const POLL_INTERVAL_MS = 90_000;
 const POLL_KEY_PREFIX = "edge_instructor_inbox_poll_";
@@ -83,6 +83,50 @@ export function useInstructorInboxPoll(userId: string | undefined, role: string 
             subjectCode,
           });
           if (n) addRef.current(n);
+        }
+
+        const { data: enrollments } = await supabase
+          .from("enrollments")
+          .select("student_id, subject_id")
+          .in("subject_id", subjectIds)
+          .eq("status", "active");
+
+        const enrolledStudentIds = [
+          ...new Set(
+            (enrollments ?? [])
+              .map((e) => (e as { student_id?: string | null }).student_id)
+              .filter(Boolean) as string[],
+          ),
+        ];
+
+        if (enrolledStudentIds.length > 0) {
+          const { data: engagementRows } = await supabase
+            .from("student_engagement_summary")
+            .select(
+              "student_id, engagement_level, previous_engagement_level, last_login_at, participation_count, updated_at",
+            )
+            .in("student_id", enrolledStudentIds)
+            .gt("updated_at", lastPoll);
+
+          const studentSubject = new Map<string, string>();
+          for (const e of enrollments ?? []) {
+            const sid = (e as { student_id?: string }).student_id;
+            const subId = (e as { subject_id?: string }).subject_id;
+            if (sid && subId && !studentSubject.has(sid)) {
+              studentSubject.set(sid, subId);
+            }
+          }
+
+          for (const row of engagementRows ?? []) {
+            const studentId = (row as { student_id?: string }).student_id;
+            const subjectId = studentId ? studentSubject.get(studentId) : undefined;
+            const subjectCode = subjectId ? codeById.get(subjectId) ?? null : null;
+            const n = instructorEngagementAlertNotification(row, {
+              studentName: studentId ? nameById.get(studentId) ?? null : null,
+              subjectCode,
+            });
+            if (n) addRef.current(n);
+          }
         }
       } catch (e) {
         console.warn("useInstructorInboxPoll:", e);

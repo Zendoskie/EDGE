@@ -69,8 +69,8 @@ type SubjectCoachingMetrics = {
 
 const COACHING_ROLE_PROMPT = [
   "You are an academic coaching assistant for university students.",
-  "CRITICAL: You do NOT determine, change, or override student risk classification.",
-  "Risk classification and all performance metrics are computed by the EDGE risk analysis system. Treat them as fixed facts.",
+  "CRITICAL: You do NOT determine, change, or override student risk classification or engagement level.",
+  "Risk classification, engagement level, and all performance metrics are computed by the EDGE system. Treat them as fixed facts.",
   "",
   "Your responsibilities ONLY:",
   "1. Generate personalized coaching recommendations based on the provided metrics.",
@@ -78,7 +78,7 @@ const COACHING_ROLE_PROMPT = [
   "3. Identify weak areas evidenced by the metrics.",
   "4. Recommend concrete improvement actions for the next 7 days.",
   "",
-  "Never reassess risk level. Never invent metrics. Never claim to be a counselor or therapist.",
+  "Never reassess risk level or engagement level. Never invent metrics. Never claim to be a counselor or therapist.",
   "If the user mentions self-harm, urge them to contact emergency services or a trusted person.",
   "Formatting: plain text only—no markdown, no asterisks, no bold. Use short paragraphs; use 1. 2. numbering for steps.",
   "Ask at most one question per reply.",
@@ -223,6 +223,94 @@ function formatMetricsBlock(metrics: SubjectCoachingMetrics): string {
     metrics.comprehensionRating != null ? `Comprehension rating: ${metrics.comprehensionRating}/5` : null,
   ].filter(Boolean);
   return lines.join("\n");
+}
+
+type StudentEngagementContext = {
+  engagementLevel: string;
+  engagementScore: number | null;
+  totalLoginCount: number;
+  recentActivitySummary: string;
+  participationHistory: string;
+};
+
+function engagementLevelLabel(level: string): string {
+  const normalized = level.trim().toLowerCase().replace(/\s+/g, "_");
+  if (normalized === "very_high") return "Very High";
+  if (normalized === "high") return "High";
+  if (normalized === "low") return "Low";
+  return "Moderate";
+}
+
+function activityTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    view_material: "Viewed learning material",
+    open_module: "Opened course module",
+    read_announcement: "Read announcement",
+    view_file: "Viewed uploaded file",
+    view_subject_page: "Accessed subject page",
+    view_coaching: "Viewed AI coaching",
+    view_grades: "Viewed grades",
+    view_attendance: "Viewed attendance",
+    quiz_complete: "Completed quiz",
+    assignment_submit: "Submitted assignment",
+  };
+  return labels[type] ?? type.replace(/_/g, " ");
+}
+
+async function fetchStudentEngagementContext(
+  supabase: ReturnType<typeof createClient>,
+  studentId: string,
+): Promise<StudentEngagementContext | null> {
+  const { data: summary } = await supabase
+    .from("student_engagement_summary")
+    .select("engagement_level, engagement_score, total_login_count, participation_count")
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  const { data: recentActivities } = await supabase
+    .from("student_activity")
+    .select("activity_type, activity_description, created_at")
+    .eq("student_id", studentId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  if (!summary && (!recentActivities || recentActivities.length === 0)) return null;
+
+  const recentLines = (recentActivities ?? []).slice(0, 5).map((row) => {
+    const label =
+      typeof row.activity_description === "string" && row.activity_description.trim()
+        ? row.activity_description.trim()
+        : activityTypeLabel(String(row.activity_type ?? "activity"));
+    const when = typeof row.created_at === "string"
+      ? new Date(row.created_at).toLocaleString()
+      : "";
+    return when ? `- ${label} (${when})` : `- ${label}`;
+  });
+
+  return {
+    engagementLevel: engagementLevelLabel(String(summary?.engagement_level ?? "moderate")),
+    engagementScore:
+      summary?.engagement_score != null && Number.isFinite(summary.engagement_score)
+        ? Math.round(Number(summary.engagement_score) * 10) / 10
+        : null,
+    totalLoginCount: Number(summary?.total_login_count ?? 0),
+    recentActivitySummary: recentLines.length > 0 ? recentLines.join("\n") : "No recent activity recorded.",
+    participationHistory: `Total participation events (30-day window): ${Number(summary?.participation_count ?? 0)}`,
+  };
+}
+
+function formatEngagementBlock(ctx: StudentEngagementContext): string {
+  return [
+    "Student engagement (system-computed):",
+    `Engagement level: ${ctx.engagementLevel}`,
+    ctx.engagementScore != null ? `Engagement score: ${ctx.engagementScore}` : null,
+    `Total login count: ${ctx.totalLoginCount}`,
+    ctx.participationHistory,
+    "Recent activity summary:",
+    ctx.recentActivitySummary,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function fetchStudentCoachingSubjects(
@@ -719,13 +807,18 @@ serve(async (req) => {
     const coachingFocusSubjects = prioritySubjects.length > 0 ? prioritySubjects : coachingSubjects.slice(0, 3);
 
     const allSubjectContext = coachingFocusSubjects.map((m) => formatMetricsBlock(m)).join("\n\n");
+    const engagementContext = await fetchStudentEngagementContext(supabase, user.id);
+    const engagementBlock = engagementContext ? formatEngagementBlock(engagementContext) : null;
 
     const system = [
       COACHING_ROLE_PROMPT,
-      "Scope limitation: only respond to academic coaching (study strategies, weak areas, improvement actions).",
+      "Scope limitation: only respond to academic coaching (study strategies, weak areas, improvement actions, engagement tips).",
       `If the user asks something outside this scope, reply exactly with: "${OUT_OF_SCOPE_COACHING_REPLY}"`,
       "Build on the system-computed metrics below. Do not ask the student to re-explain metrics you already have.",
+      "Use engagement data only to suggest ways to improve participation and study habits—not to recalculate engagement.",
       "When multiple subjects appear, prioritize critical and vulnerable subjects first.",
+      "",
+      engagementBlock,
       "",
       "System-computed student metrics:",
       allSubjectContext,

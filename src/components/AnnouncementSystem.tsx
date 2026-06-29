@@ -22,6 +22,7 @@ import {
   Users,
   Clock
 } from 'lucide-react';
+import { trackStudentActivity } from '@/lib/track-activity';
 
 interface Announcement {
   id: string;
@@ -197,13 +198,19 @@ export default function AnnouncementSystem() {
   });
 
   // Mark announcement as viewed
-  const markAsViewed = async (announcementId: string) => {
+  const markAsViewed = async (announcementId: string, subjectId?: string) => {
     await supabase
       .from('announcement_views')
       .upsert({
         announcement_id: announcementId,
         user_id: user!.id,
       });
+    void trackStudentActivity({
+      activityType: 'read_announcement',
+      subjectId,
+      description: 'Read announcement',
+      sourceId: announcementId,
+    });
   };
 
   const resetForm = () => {
@@ -440,7 +447,7 @@ export default function AnnouncementSystem() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => markAsViewed(announcement.id)}
+                      onClick={() => markAsViewed(announcement.id, announcement.subject_id)}
                     >
                       Mark as Read
                     </Button>

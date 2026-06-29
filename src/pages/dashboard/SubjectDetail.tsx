@@ -19,9 +19,13 @@ import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ASSESSMENT_TYPES, formatAssessmentTypeLabel, type AssessmentType } from '@/lib/assessment-types';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { RiskBadge } from '@/components/RiskBadge';
+import { EngagementBadge } from '@/components/EngagementBadge';
+import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { riskLabel } from '@/lib/risk-utils';
 import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
+import { trackStudentActivity } from '@/lib/track-activity';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
@@ -170,6 +174,8 @@ export default function SubjectDetail() {
 
 /* ───── Student read-only view ───── */
 function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: string; subjectCode: string; userId?: string }) {
+  useTrackPageView('view_subject_page', subjectId, `${subjectCode} subject page`);
+
   const { data: myPrediction } = useQuery({
     queryKey: ['my-prediction', subjectId, userId],
     queryFn: async () => {
@@ -917,6 +923,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                   <ActivityScoring
                     activityId={a.id}
                     activityTitle={a.title}
+                    activityType={a.type}
                     gradesPublishedAt={a.grades_published_at ?? null}
                     subjectId={subjectId}
                     maxScore={a.max_score}
@@ -936,6 +943,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
 function ActivityScoring({
   activityId,
   activityTitle,
+  activityType,
   gradesPublishedAt,
   subjectId,
   maxScore,
@@ -943,6 +951,7 @@ function ActivityScoring({
 }: {
   activityId: string;
   activityTitle: string;
+  activityType: string;
   gradesPublishedAt: string | null;
   subjectId: string;
   maxScore: number;
@@ -1029,12 +1038,19 @@ function ActivityScoring({
           const { error } = await supabase.from('submissions').update(gradePayload).eq('id', existing.id);
           if (error) throw error;
         } else {
-          const { error } = await supabase.from('submissions').insert({
+          const { data: inserted, error } = await supabase.from('submissions').insert({
             activity_id: activityId,
             student_id: studentId,
             ...gradePayload,
-          });
+          }).select('id').single();
           if (error) throw error;
+          const trackType = activityType === 'quiz' ? 'quiz_complete' : 'assignment_submit';
+          void trackStudentActivity({
+            activityType: trackType,
+            subjectId,
+            description: activityTitle,
+            sourceId: inserted?.id,
+          });
         }
       });
       await Promise.all(ops);
@@ -1268,6 +1284,10 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
   const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
   const [bulkNotifyPreparing, setBulkNotifyPreparing] = useState(false);
+  const [engagementStudent, setEngagementStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
 
   const { data: predictions = [], isLoading } = useQuery<PredictionRow[]>({
     queryKey: ['predictions', subjectId],
@@ -1283,6 +1303,25 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
       return data.map(p => ({ ...p, profile: profiles?.find(pr => pr.user_id === p.student_id) })) as PredictionRow[];
     },
+  });
+
+  const studentIdsForEngagement = useMemo(
+    () => predictions.map((p) => p.student_id).filter(Boolean) as string[],
+    [predictions],
+  );
+
+  const { data: engagementByStudent = new Map() } = useQuery({
+    queryKey: ['predictions-engagement', subjectId, studentIdsForEngagement.join(',')],
+    queryFn: async () => {
+      if (studentIdsForEngagement.length === 0) return new Map();
+      const { data, error } = await supabase
+        .from('student_engagement_summary')
+        .select('student_id, engagement_level, engagement_score')
+        .in('student_id', studentIdsForEngagement);
+      if (error) throw error;
+      return new Map((data ?? []).map((r) => [r.student_id, r]));
+    },
+    enabled: studentIdsForEngagement.length > 0,
   });
 
   const { data: counselingReferrals = [] } = useQuery({
@@ -1557,6 +1596,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                     <TableHead>Student</TableHead>
                     <TableHead>Risk Score</TableHead>
                     <TableHead>Classification</TableHead>
+                    <TableHead>Engagement</TableHead>
                     <TableHead>Referral</TableHead>
                     <TableHead>Attendance</TableHead>
                     <TableHead>Quiz Avg</TableHead>
@@ -1568,6 +1608,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <TableBody>
                   {sorted.map((p: PredictionRow) => {
                     const referral = p.student_id ? referralByStudent.get(p.student_id) : undefined;
+                    const engagement = p.student_id ? engagementByStudent.get(p.student_id) : undefined;
                     return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
@@ -1575,6 +1616,13 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                         {p.risk_score != null ? `${Number(p.risk_score).toFixed(1)}` : '—'}
                       </TableCell>
                       <TableCell><RiskBadge level={p.risk_level} /></TableCell>
+                      <TableCell>
+                        {engagement ? (
+                          <EngagementBadge level={engagement.engagement_level} />
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {referral ? (
                           <ReferralStatusBadge status={referral.status} />
@@ -1586,7 +1634,21 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                       <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
                       <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{p.recommendation || '—'}</TableCell>
-                      <TableCell>
+                      <TableCell className="space-x-1">
+                        {p.student_id ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setEngagementStudent({
+                                studentId: p.student_id!,
+                                studentName: p.profile?.full_name || 'Student',
+                              })
+                            }
+                          >
+                            Engagement
+                          </Button>
+                        ) : null}
                         <Button size="sm" variant="outline" onClick={() => setInterventionPrediction(p)}>Log intervention</Button>
                       </TableCell>
                     </TableRow>
@@ -1599,6 +1661,21 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!engagementStudent} onOpenChange={(open) => !open && setEngagementStudent(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Student Engagement</DialogTitle>
+          </DialogHeader>
+          {engagementStudent ? (
+            <StudentEngagementPanel
+              studentId={engagementStudent.studentId}
+              subjectId={subjectId}
+              studentName={engagementStudent.studentName}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
         <DialogContent>

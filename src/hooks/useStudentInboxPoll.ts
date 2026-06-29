@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import {
   studentCoachingRecommendationNotification,
+  studentEngagementDropNotification,
+  studentInactivityNotification,
+  studentNoParticipationNotification,
   studentPredictionNotifications,
 } from "@/lib/notification-events";
 
@@ -249,6 +252,23 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
             body: `${code}: ${msg}`,
             dedupeKey: `early-warning:${row.id}:${row.sent_at ?? ""}`,
           });
+        }
+
+        const { data: engagementRow } = await supabase
+          .from("student_engagement_summary")
+          .select(
+            "student_id, engagement_level, previous_engagement_level, last_login_at, participation_count, updated_at",
+          )
+          .eq("student_id", userId)
+          .maybeSingle();
+
+        if (engagementRow) {
+          const drop = studentEngagementDropNotification(engagementRow);
+          if (drop) addRef.current(drop);
+          const inactive = studentInactivityNotification(engagementRow);
+          if (inactive) addRef.current(inactive);
+          const noPart = studentNoParticipationNotification(engagementRow);
+          if (noPart) addRef.current(noPart);
         }
       } catch (e) {
         console.warn("useStudentInboxPoll:", e);

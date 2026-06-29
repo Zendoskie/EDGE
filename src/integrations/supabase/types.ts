@@ -488,6 +488,128 @@ export type Database = {
           },
         ]
       }
+      student_activity: {
+        Row: {
+          id: string
+          student_id: string
+          subject_id: string | null
+          activity_type: string
+          activity_description: string | null
+          login_timestamp: string | null
+          source_id: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          student_id: string
+          subject_id?: string | null
+          activity_type: string
+          activity_description?: string | null
+          login_timestamp?: string | null
+          source_id?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          student_id?: string
+          subject_id?: string | null
+          activity_type?: string
+          activity_description?: string | null
+          login_timestamp?: string | null
+          source_id?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_activity_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_engagement_summary: {
+        Row: {
+          student_id: string
+          engagement_level: string
+          engagement_score: number
+          total_login_count: number
+          last_login_at: string | null
+          participation_count: number
+          modules_viewed: number
+          announcements_read: number
+          assignments_submitted: number
+          quiz_attempts: number
+          previous_engagement_level: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          student_id: string
+          engagement_level?: string
+          engagement_score?: number
+          total_login_count?: number
+          last_login_at?: string | null
+          participation_count?: number
+          modules_viewed?: number
+          announcements_read?: number
+          assignments_submitted?: number
+          quiz_attempts?: number
+          previous_engagement_level?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          student_id?: string
+          engagement_level?: string
+          engagement_score?: number
+          total_login_count?: number
+          last_login_at?: string | null
+          participation_count?: number
+          modules_viewed?: number
+          announcements_read?: number
+          assignments_submitted?: number
+          quiz_attempts?: number
+          previous_engagement_level?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      student_login_history: {
+        Row: {
+          id: string
+          student_id: string
+          login_time: string
+          logout_time: string | null
+          session_duration: number | null
+          device: string | null
+          browser: string | null
+          ip_address: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          student_id: string
+          login_time?: string
+          logout_time?: string | null
+          session_duration?: number | null
+          device?: string | null
+          browser?: string | null
+          ip_address?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          student_id?: string
+          login_time?: string
+          logout_time?: string | null
+          session_duration?: number | null
+          device?: string | null
+          browser?: string | null
+          ip_address?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
       student_feedback: {
         Row: {
           created_at: string

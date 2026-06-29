@@ -15,10 +15,19 @@ export type SubjectCoachingMetrics = {
   createdAt: string | null;
 };
 
+export type StudentEngagementContext = {
+  engagementLevel: string;
+  engagementScore: number | null;
+  totalLoginCount: number;
+  recentActivitySummary: string;
+  participationHistory: string;
+};
+
 export type StudentCoachingContext = {
   focusSubject: SubjectCoachingMetrics | null;
   subjects: SubjectCoachingMetrics[];
   atRiskSubjects: SubjectCoachingMetrics[];
+  engagement?: StudentEngagementContext | null;
 };
 
 const RISK_PRIORITY: Record<CanonicalRiskLevel, number> = {
@@ -124,6 +133,18 @@ export function buildStudentCoachingContext(rows: PredictionRow[]): StudentCoach
     subjects: ranked,
     atRiskSubjects,
   };
+}
+
+export function formatEngagementContextBlock(ctx: StudentEngagementContext): string {
+  return [
+    `Engagement level (system): ${ctx.engagementLevel}`,
+    ctx.engagementScore != null ? `Engagement score: ${ctx.engagementScore}` : null,
+    `Total logins: ${ctx.totalLoginCount}`,
+    ctx.participationHistory,
+    `Recent activity: ${ctx.recentActivitySummary}`,
+  ]
+    .filter(Boolean)
+    .join('; ');
 }
 
 export function formatCoachingMetricsBlock(metrics: SubjectCoachingMetrics): string {

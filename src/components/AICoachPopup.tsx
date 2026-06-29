@@ -18,6 +18,7 @@ import {
   formatCoachingMetricsBlock,
   type SubjectCoachingMetrics,
 } from "@/lib/coaching-context";
+import { trackStudentActivity } from "@/lib/track-activity";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; ts?: number };
 type AICoachResponse = {
@@ -186,6 +187,10 @@ export function AICoachPopup(props: {
 
   useEffect(() => {
     if (!open) return;
+    void trackStudentActivity({
+      activityType: 'view_coaching',
+      description: 'Opened AI coaching',
+    });
     const t = window.setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
     return () => window.clearTimeout(t);
   }, [open, messages.length]);
@@ -286,7 +291,7 @@ export function AICoachPopup(props: {
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
                 AI Coach
-                {shouldAutoOpen ? <RiskBadge level={canonical} score={focusSubject?.riskScore} /> : null}
+                {shouldAutoOpen ? <RiskBadge level={canonical} score={props.metrics?.riskScore} /> : null}
               </DialogTitle>
               <DialogDescription className="space-y-1">
                 <span className="block">

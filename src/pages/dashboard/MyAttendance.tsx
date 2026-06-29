@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { CalendarCheck } from 'lucide-react';
+import { useTrackPageView } from '@/hooks/useActivityTracker';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   present: 'default',
@@ -30,6 +31,8 @@ function formatSessionDate(iso: string) {
 
 export default function MyAttendance() {
   const { user } = useAuth();
+
+  useTrackPageView('view_attendance', null, 'My Attendance page');
 
   const { data: enrollmentsWithSubjects = [], isLoading } = useQuery({
     queryKey: ['my-enrollments', user?.id],

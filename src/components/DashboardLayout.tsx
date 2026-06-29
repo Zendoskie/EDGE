@@ -16,6 +16,7 @@ import type { AppRole } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICoachPopup } from "@/components/AICoachPopup";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import {
   buildStudentCoachingContext,
   formatAtRiskSubjectLabels,
@@ -157,7 +158,9 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
           />
           <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6">
             <div className="content-grid animate-fade-in">
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
             </div>
           </main>
         </div>

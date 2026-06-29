@@ -1,3 +1,9 @@
+import { ENGAGEMENT_CONFIG } from "@/lib/engagement-config";
+import {
+  canonicalEngagementLevel,
+  engagementLabel,
+  type CanonicalEngagementLevel,
+} from "@/lib/engagement-utils";
 import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from "@/lib/risk-utils";
 
 /** Matches risk-analysis attendance concern threshold (70%). Stored as 0–1 rate in predictions. */
@@ -116,5 +122,110 @@ export function instructorAtRiskNotification(
     title: `Student now ${riskLabel(riskLevel)}`,
     body: `${studentName} in ${code} is now classified as ${riskLabel(riskLevel)}. Review Risk Analysis.`,
     dedupeKey: `instructor-at-risk:${studentId}:${subjectId}:${riskLevel}`,
+  };
+}
+
+type EngagementSummaryLike = {
+  student_id?: unknown;
+  engagement_level?: unknown;
+  previous_engagement_level?: unknown;
+  last_login_at?: unknown;
+  participation_count?: unknown;
+  updated_at?: unknown;
+};
+
+const ENGAGEMENT_ORDER: CanonicalEngagementLevel[] = ["low", "moderate", "high", "very_high"];
+
+function engagementRank(level: CanonicalEngagementLevel): number {
+  return ENGAGEMENT_ORDER.indexOf(level);
+}
+
+function isSignificantEngagementDrop(
+  previous: CanonicalEngagementLevel,
+  current: CanonicalEngagementLevel,
+): boolean {
+  if (previous === "high" && current === "moderate") return true;
+  if (current === "low" && previous !== "low") return true;
+  return engagementRank(current) < engagementRank(previous) - 1;
+}
+
+/** Student inbox when engagement level drops. */
+export function studentEngagementDropNotification(
+  row: EngagementSummaryLike,
+): NotificationPayload | null {
+  const current = canonicalEngagementLevel(row.engagement_level);
+  const previous =
+    row.previous_engagement_level != null
+      ? canonicalEngagementLevel(row.previous_engagement_level)
+      : null;
+  if (!previous || previous === current) return null;
+  if (!isSignificantEngagementDrop(previous, current)) return null;
+
+  const studentId = String(row.student_id ?? "");
+  return {
+    title: "Engagement level changed",
+    body: `Your engagement dropped from ${engagementLabel(previous)} to ${engagementLabel(current)}. Visit your dashboard to stay on track.`,
+    dedupeKey: `engagement-drop:${studentId}:${previous}->${current}`,
+  };
+}
+
+/** Student inbox when inactive for configured days. */
+export function studentInactivityNotification(row: EngagementSummaryLike): NotificationPayload | null {
+  const lastLogin = typeof row.last_login_at === "string" ? row.last_login_at : null;
+  if (!lastLogin) return null;
+
+  const daysSince = Math.floor((Date.now() - Date.parse(lastLogin)) / (24 * 60 * 60 * 1000));
+  if (daysSince < ENGAGEMENT_CONFIG.inactivityDays) return null;
+
+  const studentId = String(row.student_id ?? "");
+  return {
+    title: "We miss you!",
+    body: `You have not logged in for ${daysSince} days. Log in to keep your engagement on track.`,
+    dedupeKey: `inactivity:${studentId}:${daysSince}`,
+  };
+}
+
+/** Student inbox when no participation in configured period. */
+export function studentNoParticipationNotification(
+  row: EngagementSummaryLike,
+): NotificationPayload | null {
+  const participation = typeof row.participation_count === "number" ? row.participation_count : 0;
+  if (participation > 0) return null;
+
+  const lastLogin = typeof row.last_login_at === "string" ? row.last_login_at : null;
+  if (!lastLogin) return null;
+
+  const daysSinceLogin = Math.floor((Date.now() - Date.parse(lastLogin)) / (24 * 60 * 60 * 1000));
+  if (daysSinceLogin < ENGAGEMENT_CONFIG.noParticipationDays) return null;
+
+  const studentId = String(row.student_id ?? "");
+  return {
+    title: "Low course participation",
+    body: `No recorded participation in the last ${ENGAGEMENT_CONFIG.noParticipationDays} days. Explore your subjects and learning materials.`,
+    dedupeKey: `no-participation:${studentId}`,
+  };
+}
+
+/** Instructor inbox when a student's engagement drops. */
+export function instructorEngagementAlertNotification(
+  row: EngagementSummaryLike,
+  opts: { studentName?: string | null; subjectCode?: string | null },
+): NotificationPayload | null {
+  const current = canonicalEngagementLevel(row.engagement_level);
+  const previous =
+    row.previous_engagement_level != null
+      ? canonicalEngagementLevel(row.previous_engagement_level)
+      : null;
+  if (!previous || previous === current) return null;
+  if (!isSignificantEngagementDrop(previous, current)) return null;
+
+  const studentId = String(row.student_id ?? "");
+  const studentName = opts.studentName?.trim() || "A student";
+  const code = subjectLabel(opts.subjectCode);
+
+  return {
+    title: `Student engagement dropped to ${engagementLabel(current)}`,
+    body: `${studentName} (${code}) engagement changed from ${engagementLabel(previous)} to ${engagementLabel(current)}.`,
+    dedupeKey: `instructor-engagement:${studentId}:${previous}->${current}`,
   };
 }

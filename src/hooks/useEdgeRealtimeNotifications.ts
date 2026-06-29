@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import {
   studentCoachingRecommendationNotification,
+  studentEngagementDropNotification,
+  studentInactivityNotification,
+  studentNoParticipationNotification,
   studentPredictionNotifications,
 } from "@/lib/notification-events";
 
@@ -168,6 +171,25 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
             pushAttendance(row);
           }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "student_engagement_summary",
+          filter: `student_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | undefined;
+          if (!row) return;
+          const drop = studentEngagementDropNotification(row);
+          if (drop) addRef.current(drop);
+          const inactive = studentInactivityNotification(row);
+          if (inactive) addRef.current(inactive);
+          const noPart = studentNoParticipationNotification(row);
+          if (noPart) addRef.current(noPart);
         },
       )
       .subscribe();

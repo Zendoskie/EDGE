@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { trackStudentLogin, trackStudentLogout } from '@/lib/track-activity';
 
 export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
@@ -171,6 +172,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
       throw new Error('Invalid credentials');
     }
+
+    const r = await loadRole(uid);
+    setSession(data.session);
+    setUser(data.user);
+    setRole(r);
+    setLoading(false);
+
+    if (r === 'student') {
+      void trackStudentLogin();
+    }
   };
 
   const signUp = async (
@@ -227,6 +238,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (role === 'student') {
+      await trackStudentLogout();
+    }
     await supabase.auth.signOut();
   };
 
