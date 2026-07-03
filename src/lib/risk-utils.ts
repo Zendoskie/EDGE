@@ -46,7 +46,8 @@ export function riskChartColor(level: CanonicalRiskLevel): string {
   return "hsl(221 76% 48%)";
 }
 
-export const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ["critical", "at_risk", "stable", "excelling"];
+/** Ordered from lowest academic risk to highest academic risk. */
+export const RISK_LEVEL_ORDER: CanonicalRiskLevel[] = ["excelling", "stable", "at_risk", "critical"];
 
 export function safeString(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;

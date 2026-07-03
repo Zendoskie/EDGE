@@ -44,7 +44,8 @@ export function computeExamAverage(
 /**
  * Rule-based risk score (0–100, higher = better performance):
  * (50% Academic Performance) + (20% Attendance) + (30% Exams)
- * Missing components are excluded and weights renormalized.
+ * Missing assessment types are excluded from their averages. If an entire
+ * component is not graded yet, it is also excluded instead of counted as zero.
  */
 export function computeRiskScore(inputs: RiskScoreInputs): number | null {
   const academic = computeAcademicPerformance(inputs);

@@ -17,10 +17,18 @@ export type EnrollmentListRow = {
 export type PredictionRow = {
   id: string;
   risk_level: string;
+  risk_score?: number | null;
   student_id?: string | null;
   attendance_rate?: number | null;
   quiz_average?: number | null;
   assignment_average?: number | null;
+  project_score?: number | null;
+  activity_average?: number | null;
+  laboratory_exam_average?: number | null;
+  midterm_exam_average?: number | null;
+  final_exam_average?: number | null;
+  exam_average?: number | null;
+  academic_performance?: number | null;
   recommendation?: string | null;
   profile?: EmbeddedProfile | null;
 };

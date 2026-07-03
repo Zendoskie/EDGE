@@ -34,13 +34,45 @@ describe('risk-scoring', () => {
     expect(score).toBe(79);
   });
 
+  it('uses the requested sample calculation and returns Excelling', () => {
+    const result = computeRiskClassification({
+      activityAverage: 95,
+      quizAverage: 90,
+      projectScore: 94,
+      attendancePercent: 98,
+      laboratoryExamAverage: 91,
+      midtermExamAverage: 89,
+      finalExamAverage: 93,
+    });
+
+    expect(result.academic_performance).toBe(93);
+    expect(result.exam_average).toBe(91);
+    expect(result.risk_score).toBe(93.4);
+    expect(result.risk_level).toBe('excelling');
+  });
+
+  it('excludes missing assessment types from academic and exam averages', () => {
+    expect(
+      computeAcademicPerformance({ activityAverage: 95, quizAverage: 90, projectScore: null }),
+    ).toBe(92.5);
+    expect(
+      computeExamAverage({ laboratoryExamAverage: 91, midtermExamAverage: null, finalExamAverage: 93 }),
+    ).toBe(92);
+  });
+
   it('classifies scores into four levels', () => {
     expect(classifyRiskScore(95)).toBe('excelling');
+    expect(classifyRiskScore(82)).toBe('stable');
+    expect(classifyRiskScore(68)).toBe('at_risk');
+    expect(classifyRiskScore(55)).toBe('critical');
     expect(classifyRiskScore(90)).toBe('excelling');
+    expect(classifyRiskScore(89.99)).toBe('stable');
     expect(classifyRiskScore(80)).toBe('stable');
     expect(classifyRiskScore(75)).toBe('stable');
+    expect(classifyRiskScore(74.99)).toBe('at_risk');
     expect(classifyRiskScore(65)).toBe('at_risk');
     expect(classifyRiskScore(60)).toBe('at_risk');
+    expect(classifyRiskScore(59.99)).toBe('critical');
     expect(classifyRiskScore(59)).toBe('critical');
   });
 

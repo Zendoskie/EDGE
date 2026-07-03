@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History } from 'lucide-react';
+import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ASSESSMENT_TYPES, formatAssessmentTypeLabel, type AssessmentType } from '@/lib/assessment-types';
@@ -21,8 +21,6 @@ import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
-import { riskLabel } from '@/lib/risk-utils';
-import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { trackStudentActivity } from '@/lib/track-activity';
@@ -725,9 +723,13 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       const { error } = await supabase.from('activities').delete().eq('id', actId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
       toast.success('Activity deleted');
+      const result = await recalculateSubjectRisk(subjectId);
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1270,6 +1272,75 @@ function ActivityScoring({
   );
 }
 
+type RiskBreakdownItem = { label: string; percent: number | null; weight: number };
+
+function RiskScoreBreakdown({ items }: { items: RiskBreakdownItem[] }) {
+  return (
+    <div className="space-y-2 min-w-[200px]">
+      {items.map((item) => {
+        const contrib =
+          item.percent != null && Number.isFinite(item.percent)
+            ? (item.percent * item.weight).toFixed(1)
+            : null;
+        const barWidth = item.percent != null && Number.isFinite(item.percent) ? Math.min(100, item.percent) : 0;
+        return (
+          <div key={item.label}>
+            <div className="flex items-center justify-between gap-2 text-xs mb-0.5">
+              <span className="text-muted-foreground">{item.label}</span>
+              <span className="tabular-nums text-foreground/90">
+                {item.percent != null ? `${item.percent.toFixed(0)}%` : '—'}
+                {contrib != null ? (
+                  <span className="text-muted-foreground"> · {contrib} pts</span>
+                ) : null}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary/60 transition-all"
+                style={{ width: `${barWidth}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function recommendationForPrediction(p: PredictionRow): string {
+  const attendancePercent = p.attendance_rate != null ? p.attendance_rate * 100 : null;
+  const fmt = (value: number | null) =>
+    value != null && Number.isFinite(value) ? `${Math.round(value)}%` : 'no data yet';
+  const lowest = [
+    { label: 'academic activities', value: p.academic_performance },
+    { label: 'attendance', value: attendancePercent },
+    { label: 'exams', value: p.exam_average },
+    { label: 'quizzes', value: p.quiz_average },
+    { label: 'assignments', value: p.assignment_average },
+  ]
+    .filter((item): item is { label: string; value: number } => item.value != null && Number.isFinite(item.value))
+    .sort((a, b) => a.value - b.value)[0];
+  const scoreText =
+    p.risk_score != null && Number.isFinite(p.risk_score) ? `${Number(p.risk_score).toFixed(1)}/100` : 'current level';
+
+  if (p.risk_level === 'excelling') {
+    return `Maintain excellent performance. Risk score is ${scoreText}; encourage the student to keep consistent study habits and attendance.`;
+  }
+  if (p.risk_level === 'stable') {
+    return lowest
+      ? `Student is stable. Monitor ${lowest.label} (${fmt(lowest.value)}) and provide light support to stay on track.`
+      : 'Student is stable. Continue regular monitoring as more grades and attendance records are added.';
+  }
+  if (p.risk_level === 'at_risk') {
+    return lowest
+      ? `Student is vulnerable. Prioritize intervention for ${lowest.label} (${fmt(lowest.value)}) and schedule a follow-up after the next assessment.`
+      : 'Student is vulnerable. Review available grades and attendance, then schedule a support check-in.';
+  }
+  return lowest
+    ? `Student is crucial. Immediate intervention recommended, starting with ${lowest.label} (${fmt(lowest.value)}).`
+    : 'Student is crucial. Immediate intervention recommended; verify grades and attendance records for next steps.';
+}
+
 /* ───── Predictions Tab ───── */
 function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId: string; subjectCode: string; subjectName: string }) {
   const queryClient = useQueryClient();
@@ -1484,20 +1555,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const riskOrder = { critical: 0, at_risk: 1, stable: 2, excelling: 3 };
+  const riskOrder = { excelling: 0, stable: 1, at_risk: 2, critical: 3 };
   const sorted = [...predictions].sort(
     (a: PredictionRow, b: PredictionRow) =>
       (riskOrder[a.risk_level as keyof typeof riskOrder] ?? 1) - (riskOrder[b.risk_level as keyof typeof riskOrder] ?? 1),
   );
-
-  const referralByStudent = useMemo(() => {
-    const map = new Map<string, { status: string }>();
-    for (const r of counselingReferrals) {
-      const sid = (r as { student_id?: string }).student_id;
-      if (sid && !map.has(sid)) map.set(sid, r as { status: string });
-    }
-    return map;
-  }, [counselingReferrals]);
 
   const summary = {
     critical: predictions.filter((p: PredictionRow) => p.risk_level === 'critical').length,
@@ -1509,6 +1571,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const atRiskPredictions = predictions.filter(
     (p: PredictionRow) => p.risk_level === 'critical' || p.risk_level === 'at_risk',
   );
+
   const sendBulkNotifications = async () => {
     const withEmail = atRiskPredictions.filter((p: PredictionRow) => p.profile?.email);
     if (withEmail.length === 0) {
@@ -1583,39 +1646,72 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
               <div className="px-4 sm:px-6 pt-4 pb-1">
                 <AcademicDisclaimer variant="reminder" />
               </div>
-              <div className="px-6 py-2 flex gap-4 text-sm border-b bg-muted/30 flex-wrap">
-                <span><strong>{summary.critical}</strong> crucial</span>
-                <span><strong>{summary.at_risk}</strong> vulnerable</span>
-                <span><strong>{summary.stable}</strong> stable</span>
-                <span><strong>{summary.excelling}</strong> excelling</span>
+              <div className="px-6 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm border-b bg-muted/30">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-blue-600" />
+                  <strong>{summary.excelling}</strong> excelling
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-600" />
+                  <strong>{summary.stable}</strong> stable
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                  <strong>{summary.at_risk}</strong> vulnerable
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
+                  <strong>{summary.critical}</strong> crucial
+                </span>
               </div>
               <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[1100px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Risk Score</TableHead>
-                    <TableHead>Classification</TableHead>
-                    <TableHead>Engagement</TableHead>
-                    <TableHead>Referral</TableHead>
-                    <TableHead>Attendance</TableHead>
-                    <TableHead>Quiz Avg</TableHead>
-                    <TableHead>Assignment Avg</TableHead>
-                    <TableHead className="min-w-[200px]">Recommendation</TableHead>
-                    <TableHead className="w-28">Actions</TableHead>
+                    <TableHead className="w-[150px]">Student</TableHead>
+                    <TableHead className="w-[90px]">Risk Score</TableHead>
+                    <TableHead className="min-w-[220px]">Breakdown</TableHead>
+                    <TableHead className="w-[120px]">Classification</TableHead>
+                    <TableHead className="w-[110px]">Engagement</TableHead>
+                    <TableHead className="w-[90px]">Attendance</TableHead>
+                    <TableHead className="w-[80px]">Quiz Avg</TableHead>
+                    <TableHead className="w-[100px]">Assignment Avg</TableHead>
+                    <TableHead className="min-w-[240px]">Recommendation</TableHead>
+                    <TableHead className="w-[200px] sticky right-0 z-10 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sorted.map((p: PredictionRow) => {
-                    const referral = p.student_id ? referralByStudent.get(p.student_id) : undefined;
                     const engagement = p.student_id ? engagementByStudent.get(p.student_id) : undefined;
+                    const recommendation = p.recommendation?.trim() || recommendationForPrediction(p);
+                    const breakdownItems: RiskBreakdownItem[] = [
+                      { label: 'Academic', percent: p.academic_performance, weight: 0.5 },
+                      {
+                        label: 'Attendance',
+                        percent: p.attendance_rate != null ? p.attendance_rate * 100 : null,
+                        weight: 0.2,
+                      },
+                      { label: 'Exam', percent: p.exam_average, weight: 0.3 },
+                    ];
                     return (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className="align-middle">
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
-                      <TableCell className="font-mono tabular-nums">
-                        {p.risk_score != null ? `${Number(p.risk_score).toFixed(1)}` : '—'}
+                      <TableCell>
+                        {p.risk_score != null ? (
+                          <div className="flex items-baseline gap-0.5">
+                            <span className="text-xl font-semibold tabular-nums">{Number(p.risk_score).toFixed(1)}</span>
+                            <span className="text-xs text-muted-foreground">/100</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
-                      <TableCell><RiskBadge level={p.risk_level} /></TableCell>
+                      <TableCell>
+                        <RiskScoreBreakdown items={breakdownItems} />
+                      </TableCell>
+                      <TableCell>
+                        <RiskBadge level={p.risk_level} />
+                      </TableCell>
                       <TableCell>
                         {engagement ? (
                           <EngagementBadge level={engagement.engagement_level} />
@@ -1623,33 +1719,48 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                           <span className="text-muted-foreground text-sm">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        {referral ? (
-                          <ReferralStatusBadge status={referral.status} />
-                        ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
-                        )}
+                      <TableCell className="tabular-nums">
+                        {p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}
                       </TableCell>
-                      <TableCell>{p.attendance_rate != null ? `${(p.attendance_rate * 100).toFixed(0)}%` : '—'}</TableCell>
-                      <TableCell>{p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}</TableCell>
-                      <TableCell>{p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{p.recommendation || '—'}</TableCell>
-                      <TableCell className="space-x-1">
-                        {p.student_id ? (
+                      <TableCell className="tabular-nums">
+                        {p.quiz_average != null ? `${p.quiz_average.toFixed(1)}%` : '—'}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2 items-start max-w-sm">
+                          <Lightbulb className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+                          <p className="text-sm leading-relaxed text-foreground">{recommendation}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">
+                        <div className="flex flex-wrap gap-2">
+                          {p.student_id ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 shrink-0"
+                              onClick={() =>
+                                setEngagementStudent({
+                                  studentId: p.student_id!,
+                                  studentName: p.profile?.full_name || 'Student',
+                                })
+                              }
+                            >
+                              <Activity className="mr-1.5 h-3.5 w-3.5" />
+                              Engagement
+                            </Button>
+                          ) : null}
                           <Button
                             size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              setEngagementStudent({
-                                studentId: p.student_id!,
-                                studentName: p.profile?.full_name || 'Student',
-                              })
-                            }
+                            variant="default"
+                            className="h-8 shrink-0"
+                            onClick={() => setInterventionPrediction(p)}
                           >
-                            Engagement
+                            Log intervention
                           </Button>
-                        ) : null}
-                        <Button size="sm" variant="outline" onClick={() => setInterventionPrediction(p)}>Log intervention</Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                     );

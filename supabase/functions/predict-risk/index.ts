@@ -45,6 +45,37 @@ interface StudentMetrics {
   comprehension_rating: number | null;
 }
 
+type AssessmentType =
+  | "activity"
+  | "quiz"
+  | "project"
+  | "laboratory_exam"
+  | "midterm_exam"
+  | "final_exam";
+
+const ASSESSMENT_TYPE_ALIASES: Record<string, AssessmentType> = {
+  activity: "activity",
+  quiz: "quiz",
+  project: "project",
+  laboratory_exam: "laboratory_exam",
+  laboratoryexam: "laboratory_exam",
+  laboratory: "laboratory_exam",
+  lab_exam: "laboratory_exam",
+  labexam: "laboratory_exam",
+  midterm_exam: "midterm_exam",
+  midtermexam: "midterm_exam",
+  midterm: "midterm_exam",
+  final_exam: "final_exam",
+  finalexam: "final_exam",
+  final: "final_exam",
+};
+
+function normalizeAssessmentType(value: unknown): AssessmentType | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ASSESSMENT_TYPE_ALIASES[key] ?? null;
+}
+
 function classifyStudent(metrics: StudentMetrics): {
   risk_level: "critical" | "at_risk" | "stable" | "excelling";
   confidence: number;
@@ -72,6 +103,44 @@ function classifyStudent(metrics: StudentMetrics): {
     academic_performance: result.academic_performance,
     exam_average: result.exam_average,
   };
+}
+
+function pct(value: number | null): string {
+  return value != null && Number.isFinite(value) ? `${Math.round(value)}%` : "no data yet";
+}
+
+function buildRecommendation(opts: {
+  risk_level: RiskLevel;
+  risk_score: number | null;
+  academic_performance: number | null;
+  exam_average: number | null;
+  metrics: StudentMetrics;
+}): string {
+  const attendancePercent = opts.metrics.attendance_rate != null ? opts.metrics.attendance_rate * 100 : null;
+  const lowest = [
+    { label: "academic activities", value: opts.academic_performance },
+    { label: "attendance", value: attendancePercent },
+    { label: "exams", value: opts.exam_average },
+  ]
+    .filter((item): item is { label: string; value: number } => item.value != null && Number.isFinite(item.value))
+    .sort((a, b) => a.value - b.value)[0];
+
+  if (opts.risk_level === "excelling") {
+    return `Maintain excellent performance. Current score is ${pct(opts.risk_score)}; keep the same study habits and attendance pattern.`;
+  }
+  if (opts.risk_level === "stable") {
+    return lowest
+      ? `Student is stable. Monitor ${lowest.label} (${pct(lowest.value)}) and provide light support to keep performance on track.`
+      : "Student is stable. Continue regular monitoring as more grades and attendance records are added.";
+  }
+  if (opts.risk_level === "at_risk") {
+    return lowest
+      ? `Student is vulnerable. Prioritize intervention for ${lowest.label} (${pct(lowest.value)}) and schedule a follow-up after the next assessment.`
+      : "Student is vulnerable. Review available grades and attendance, then schedule a support check-in.";
+  }
+  return lowest
+    ? `Student is crucial. Immediate intervention is recommended, starting with ${lowest.label} (${pct(lowest.value)}).`
+    : "Student is crucial. Immediate intervention is recommended; verify grades and attendance records for next steps.";
 }
 
 function deriveComprehensionRating(opts: {
@@ -215,25 +284,34 @@ serve(async (req) => {
       const attendanceRate = totalClasses > 0 ? presentCount / totalClasses : null;
 
       const studentSubs = submissions.filter((s) => s.student_id === sid);
-      const activityMap: Record<string, { score: number; max: number; type: string }[]> = {};
+      const activityMap: Record<AssessmentType, { score: number; max: number }[]> = {
+        activity: [],
+        quiz: [],
+        project: [],
+        laboratory_exam: [],
+        midterm_exam: [],
+        final_exam: [],
+      };
       for (const sub of studentSubs) {
         const act = (activities || []).find((a) => a.id === sub.activity_id);
         if (!act || sub.score == null) continue;
-        const assessmentType = sub.assessment_type || act.type;
-        if (!activityMap[assessmentType]) activityMap[assessmentType] = [];
-        activityMap[assessmentType].push({ score: sub.score, max: act.max_score, type: assessmentType });
+        const assessmentType = normalizeAssessmentType(sub.assessment_type) ?? normalizeAssessmentType(act.type);
+        const score = Number(sub.score);
+        const max = Number(act.max_score);
+        if (!assessmentType || !Number.isFinite(score) || !Number.isFinite(max) || max <= 0) continue;
+        activityMap[assessmentType].push({ score, max });
       }
 
       const avg = (items: { score: number; max: number }[]) =>
         items.length > 0 ? items.reduce((s, i) => s + (i.score / i.max) * 100, 0) / items.length : null;
 
-      const quizAvg = avg(activityMap["quiz"] || []);
-      const assignmentAvg = avg(activityMap["assignment"] || []);
-      const projectScore = avg(activityMap["project"] || []);
-      const activityAvg = avg(activityMap["activity"] || []);
-      const labExamAvg = avg(activityMap["laboratory_exam"] || []);
-      const midtermExamAvg = avg(activityMap["midterm_exam"] || []);
-      const finalExamAvg = avg(activityMap["final_exam"] || []);
+      const quizAvg = avg(activityMap.quiz);
+      const assignmentAvg = null;
+      const projectScore = avg(activityMap.project);
+      const activityAvg = avg(activityMap.activity);
+      const labExamAvg = avg(activityMap.laboratory_exam);
+      const midtermExamAvg = avg(activityMap.midterm_exam);
+      const finalExamAvg = avg(activityMap.final_exam);
       const totalActivities = (activities || []).length;
       const completedActivities = studentSubs.filter((s) => s.score != null).length;
       const completionRate = totalActivities > 0 ? completedActivities / totalActivities : null;
@@ -284,6 +362,18 @@ serve(async (req) => {
       const { risk_level, confidence, risk_score, academic_performance, exam_average } =
         classifyStudent(metrics);
       const previous = previousByStudent.get(metrics.student_id);
+      console.log("risk-score breakdown", {
+        student_id: metrics.student_id,
+        subject_id,
+        academic_average: academic_performance,
+        academic_contribution: academic_performance != null ? Math.round(academic_performance * 0.5 * 100) / 100 : null,
+        attendance_percent: metrics.attendance_rate != null ? Math.round(metrics.attendance_rate * 10000) / 100 : null,
+        attendance_contribution: metrics.attendance_rate != null ? Math.round(metrics.attendance_rate * 100 * 0.2 * 100) / 100 : null,
+        exam_average,
+        exam_contribution: exam_average != null ? Math.round(exam_average * 0.3 * 100) / 100 : null,
+        risk_score,
+        risk_level,
+      });
       return {
         student_id: metrics.student_id,
         subject_id,
@@ -291,7 +381,13 @@ serve(async (req) => {
         risk_level,
         confidence,
         risk_score,
-        recommendation: null,
+        recommendation: buildRecommendation({
+          risk_level,
+          risk_score,
+          academic_performance,
+          exam_average,
+          metrics,
+        }),
         previous_risk_level: previous?.risk_level ?? null,
         previous_attendance_rate: previous?.attendance_rate ?? null,
         attendance_rate: metrics.attendance_rate,
