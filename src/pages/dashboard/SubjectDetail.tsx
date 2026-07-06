@@ -1341,6 +1341,48 @@ function recommendationForPrediction(p: PredictionRow): string {
     : 'Student is crucial. Immediate intervention recommended; verify grades and attendance records for next steps.';
 }
 
+const PREDICTIONS_STICKY_COL =
+  'sticky right-0 z-10 w-[300px] min-w-[280px] bg-card border-l border-border/60 shadow-[-6px_0_12px_-8px_rgba(0,0,0,0.25)]';
+
+function PredictionRecommendationCell({
+  recommendation,
+  studentId,
+  studentName,
+  onViewEngagement,
+  onLogIntervention,
+}: {
+  recommendation: string;
+  studentId?: string | null;
+  studentName?: string | null;
+  onViewEngagement: (studentId: string, studentName: string) => void;
+  onLogIntervention: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex max-h-28 gap-2 overflow-y-auto overscroll-y-contain pr-1">
+        <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <p className="text-sm leading-relaxed text-foreground">{recommendation}</p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2 border-t border-border/50 bg-card pt-2">
+        {studentId ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0"
+            onClick={() => onViewEngagement(studentId, studentName || 'Student')}
+          >
+            <Activity className="mr-1.5 h-3.5 w-3.5" />
+            Engagement
+          </Button>
+        ) : null}
+        <Button size="sm" variant="default" className="h-8 shrink-0" onClick={onLogIntervention}>
+          Log intervention
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ───── Predictions Tab ───── */
 function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId: string; subjectCode: string; subjectName: string }) {
   const queryClient = useQueryClient();
@@ -1665,19 +1707,18 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 </span>
               </div>
               <div className="overflow-x-auto">
-              <Table className="min-w-[1100px]">
+              <Table className="w-full">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[150px]">Student</TableHead>
                     <TableHead className="w-[90px]">Risk Score</TableHead>
-                    <TableHead className="min-w-[220px]">Breakdown</TableHead>
+                    <TableHead className="min-w-[200px]">Breakdown</TableHead>
                     <TableHead className="w-[120px]">Classification</TableHead>
                     <TableHead className="w-[110px]">Engagement</TableHead>
                     <TableHead className="w-[90px]">Attendance</TableHead>
                     <TableHead className="w-[80px]">Quiz Avg</TableHead>
                     <TableHead className="w-[100px]">Assignment Avg</TableHead>
-                    <TableHead className="min-w-[240px]">Recommendation</TableHead>
-                    <TableHead className="w-[200px] sticky right-0 z-10 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">Actions</TableHead>
+                    <TableHead className={PREDICTIONS_STICKY_COL}>Recommendation</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1728,39 +1769,16 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                       <TableCell className="tabular-nums">
                         {p.assignment_average != null ? `${p.assignment_average.toFixed(1)}%` : '—'}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2 items-start max-w-sm">
-                          <Lightbulb className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
-                          <p className="text-sm leading-relaxed text-foreground">{recommendation}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="sticky right-0 z-10 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.15)]">
-                        <div className="flex flex-wrap gap-2">
-                          {p.student_id ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 shrink-0"
-                              onClick={() =>
-                                setEngagementStudent({
-                                  studentId: p.student_id!,
-                                  studentName: p.profile?.full_name || 'Student',
-                                })
-                              }
-                            >
-                              <Activity className="mr-1.5 h-3.5 w-3.5" />
-                              Engagement
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="h-8 shrink-0"
-                            onClick={() => setInterventionPrediction(p)}
-                          >
-                            Log intervention
-                          </Button>
-                        </div>
+                      <TableCell className={`${PREDICTIONS_STICKY_COL} align-top`}>
+                        <PredictionRecommendationCell
+                          recommendation={recommendation}
+                          studentId={p.student_id}
+                          studentName={p.profile?.full_name}
+                          onViewEngagement={(studentId, studentName) =>
+                            setEngagementStudent({ studentId, studentName })
+                          }
+                          onLogIntervention={() => setInterventionPrediction(p)}
+                        />
                       </TableCell>
                     </TableRow>
                     );
