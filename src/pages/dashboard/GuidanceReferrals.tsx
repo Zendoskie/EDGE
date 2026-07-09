@@ -10,11 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { RiskBadge } from '@/components/RiskBadge';
+import { normalizeReferralStatus } from '@/lib/referral-utils';
 
 export default function GuidanceReferrals() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
-  const { data: referrals = [], isLoading } = useCounselingReferrals();
+  const {
+    data: referrals = [],
+    isLoading,
+    error: referralsError,
+  } = useCounselingReferrals();
 
   const reviewMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: 'approved' | 'rejected' }) => {
@@ -43,7 +48,11 @@ export default function GuidanceReferrals() {
     [referrals],
   );
 
-  const { data: feedback = [] } = useQuery({
+  const {
+    data: feedback = [],
+    isLoading: isFeedbackLoading,
+    error: feedbackError,
+  } = useQuery({
     queryKey: ['guidance-student-feedback', user?.id, referrals.length],
     enabled: role === 'guidance_counselor' && !!user?.id && referrals.length > 0,
     queryFn: async () => {
@@ -112,6 +121,10 @@ export default function GuidanceReferrals() {
         <CardContent className="min-w-0">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading referrals…</p>
+          ) : referralsError ? (
+            <p className="text-sm text-destructive">
+              Could not load referrals. {referralsError instanceof Error ? referralsError.message : 'Please try again.'}
+            </p>
           ) : referrals.length === 0 ? (
             <p className="text-sm text-muted-foreground">No referrals yet.</p>
           ) : (
@@ -170,7 +183,13 @@ export default function GuidanceReferrals() {
           <CardTitle className="text-lg">Student feedback</CardTitle>
         </CardHeader>
         <CardContent className="min-w-0">
-          {feedback.length === 0 ? (
+          {isFeedbackLoading ? (
+            <p className="text-sm text-muted-foreground">Loading student feedback…</p>
+          ) : feedbackError ? (
+            <p className="text-sm text-destructive">
+              Could not load student feedback. {feedbackError instanceof Error ? feedbackError.message : 'Please try again.'}
+            </p>
+          ) : feedback.length === 0 ? (
             <p className="text-sm text-muted-foreground">No feedback submitted for referred students yet.</p>
           ) : (
             <div className="space-y-3">
