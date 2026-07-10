@@ -1,5 +1,6 @@
 export const ASSESSMENT_TYPES = [
   { value: 'activity', label: 'Activity' },
+  { value: 'assignment', label: 'Assignment' },
   { value: 'quiz', label: 'Quiz' },
   { value: 'laboratory_exam', label: 'Laboratory Exam' },
   { value: 'midterm_exam', label: 'Midterm Exam' },

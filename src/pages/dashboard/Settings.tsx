@@ -128,6 +128,9 @@ export default function Settings() {
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-latest-link'] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-approved-link'] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-my-links'] });
       toast.success(vars.status === 'approved' ? 'Parent request approved' : 'Parent request rejected');
     },
     onError: (e: Error) => toast.error(e.message),

@@ -1,9 +1,13 @@
-import { useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
 import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
@@ -54,18 +58,59 @@ const attendanceBadgeVariant: Record<string, 'default' | 'secondary' | 'destruct
   excused: 'outline',
 };
 
+function RequestStudentAccessForm({
+  initialStudentId = '',
+  submitLabel = 'Request Student Access',
+  onSubmit,
+  isPending,
+}: {
+  initialStudentId?: string;
+  submitLabel?: string;
+  onSubmit: (studentIdNo: string) => void;
+  isPending: boolean;
+}) {
+  const [studentIdNo, setStudentIdNo] = useState(initialStudentId);
+
+  return (
+    <form
+      className="space-y-4 max-w-md"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(studentIdNo.trim());
+      }}
+    >
+      <div className="space-y-2">
+        <Label htmlFor="parent-request-student-id">Student ID</Label>
+        <Input
+          id="parent-request-student-id"
+          value={studentIdNo}
+          onChange={(e) => setStudentIdNo(e.target.value)}
+          placeholder="23-1-70001"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Enter the student&apos;s ID number. The student must approve your request in Settings.
+        </p>
+      </div>
+      <Button type="submit" disabled={isPending || !studentIdNo.trim()}>
+        {isPending ? 'Submitting...' : submitLabel}
+      </Button>
+    </form>
+  );
+}
+
 export default function ParentPerformance() {
   const { user, role } = useAuth();
+  const queryClient = useQueryClient();
 
-  const { data: approvedLink, isLoading: linkLoading } = useQuery({
-    queryKey: ['parent-approved-link', user?.id],
+  const { data: latestLink, isLoading: linkLoading } = useQuery({
+    queryKey: ['parent-latest-link', user?.id],
     enabled: role === 'parent' && !!user?.id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('parent_student_links')
-        .select('student_user_id, student_id_no')
+        .select('id, student_user_id, student_id_no, status, requested_at')
         .eq('parent_user_id', user!.id)
-        .eq('status', 'approved')
         .order('requested_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -74,7 +119,43 @@ export default function ParentPerformance() {
     },
   });
 
+  const approvedLink = latestLink?.status === 'approved' ? latestLink : null;
   const studentId = approvedLink?.student_user_id ?? null;
+
+  const requestAccess = useMutation({
+    mutationFn: async (studentIdNo: string) => {
+      if (!user?.id) throw new Error('You must be signed in to request access.');
+      const trimmed = studentIdNo.trim();
+      if (!trimmed) throw new Error('Student ID is required.');
+
+      const { error } = await supabase.rpc('parent_request_student_link', {
+        p_student_id_no: trimmed,
+      });
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('student_not_found_for_guardian_link')) {
+          throw new Error('No student account matches that Student ID/No. Please check and try again.');
+        }
+        if (msg.includes('pending_request_exists')) {
+          throw new Error('You already have a pending request for this student.');
+        }
+        if (msg.includes('already_approved')) {
+          throw new Error('You already have approved access to this student.');
+        }
+        if (msg.includes('student_id_required')) {
+          throw new Error('Student ID is required.');
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-approved-link', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-my-links', user?.id] });
+      toast.success('Access request submitted. Waiting for student approval.');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const { data: studentProfile } = useQuery({
     queryKey: ['parent-student-profile', studentId],
@@ -448,6 +529,102 @@ export default function ParentPerformance() {
 
   if (linkLoading) {
     return <p className="text-sm text-muted-foreground">Loading linked student…</p>;
+  }
+
+  if (!latestLink) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <div>
+              <h1 className="text-2xl font-display font-bold">Student Performance</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Request access to view your student&apos;s academic information.
+              </p>
+            </div>
+          </div>
+        </section>
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="text-lg">Request Student Access</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RequestStudentAccessForm
+              onSubmit={(studentIdNo) => requestAccess.mutate(studentIdNo)}
+              isPending={requestAccess.isPending}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (latestLink.status === 'pending') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <div>
+              <h1 className="text-2xl font-display font-bold">Student Performance</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Waiting for the student to approve your access request.
+              </p>
+            </div>
+          </div>
+        </section>
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="text-lg">Waiting for Approval</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Badge variant="secondary" className="capitalize">pending</Badge>
+            <p className="text-sm text-muted-foreground">
+              Student ID/No.: {latestLink.student_id_no}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Ask the student to open Settings and approve your parent/guardian request.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (latestLink.status === 'rejected') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <div>
+              <h1 className="text-2xl font-display font-bold">Student Performance</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your previous access request was rejected.
+              </p>
+            </div>
+          </div>
+        </section>
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="text-lg">Access Request Rejected</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Badge variant="destructive" className="capitalize">rejected</Badge>
+            <p className="text-sm text-muted-foreground">
+              Student ID/No.: {latestLink.student_id_no}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              You can submit a new request if you would like the student to review it again.
+            </p>
+            <RequestStudentAccessForm
+              initialStudentId={latestLink.student_id_no}
+              submitLabel="Request Again"
+              onSubmit={(studentIdNo) => requestAccess.mutate(studentIdNo)}
+              isPending={requestAccess.isPending}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   if (!approvedLink || !studentId) {

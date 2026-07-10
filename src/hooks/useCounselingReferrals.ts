@@ -87,6 +87,7 @@ export function useCounselingReferrals(options?: { subjectId?: string; enabled?:
       (role === "student" ||
         role === "instructor" ||
         role === "guidance_counselor"),
+    refetchOnWindowFocus: role === "guidance_counselor",
     queryFn: async (): Promise<CounselingReferralRow[]> => {
       if (!user?.id) return [];
 

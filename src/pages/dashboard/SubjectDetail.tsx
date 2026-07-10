@@ -1589,6 +1589,9 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         });
       }
       void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
+      if (result?.mode === 'referral_created') {
+        void queryClient.invalidateQueries({ queryKey: ['guidance-referrals'] });
+      }
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');

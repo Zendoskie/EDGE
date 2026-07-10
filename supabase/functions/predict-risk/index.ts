@@ -47,6 +47,7 @@ interface StudentMetrics {
 
 type AssessmentType =
   | "activity"
+  | "assignment"
   | "quiz"
   | "project"
   | "laboratory_exam"
@@ -55,6 +56,7 @@ type AssessmentType =
 
 const ASSESSMENT_TYPE_ALIASES: Record<string, AssessmentType> = {
   activity: "activity",
+  assignment: "assignment",
   quiz: "quiz",
   project: "project",
   laboratory_exam: "laboratory_exam",
@@ -286,6 +288,7 @@ serve(async (req) => {
       const studentSubs = submissions.filter((s) => s.student_id === sid);
       const activityMap: Record<AssessmentType, { score: number; max: number }[]> = {
         activity: [],
+        assignment: [],
         quiz: [],
         project: [],
         laboratory_exam: [],
@@ -305,10 +308,16 @@ serve(async (req) => {
       const avg = (items: { score: number; max: number }[]) =>
         items.length > 0 ? items.reduce((s, i) => s + (i.score / i.max) * 100, 0) / items.length : null;
 
+      const mergeAvg = (...values: Array<number | null>) => {
+        const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
+        return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+      };
+
       const quizAvg = avg(activityMap.quiz);
-      const assignmentAvg = null;
+      const assignmentAvg = avg(activityMap.assignment);
       const projectScore = avg(activityMap.project);
-      const activityAvg = avg(activityMap.activity);
+      const rawActivityAvg = avg(activityMap.activity);
+      const activityAvg = mergeAvg(rawActivityAvg, assignmentAvg);
       const labExamAvg = avg(activityMap.laboratory_exam);
       const midtermExamAvg = avg(activityMap.midterm_exam);
       const finalExamAvg = avg(activityMap.final_exam);
