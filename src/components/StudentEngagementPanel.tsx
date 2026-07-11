@@ -50,6 +50,7 @@ export function StudentEngagementPanel({ studentId, subjectId, studentName }: Pr
       return data;
     },
     enabled: !!studentId,
+    refetchOnWindowFocus: true,
   });
 
   const { data: activities = [], isLoading: activitiesLoading } = useQuery({

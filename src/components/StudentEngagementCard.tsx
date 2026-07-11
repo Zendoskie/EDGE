@@ -34,6 +34,7 @@ export function StudentEngagementCard() {
       return data as EngagementSummary | null;
     },
     enabled: !!user?.id,
+    refetchOnWindowFocus: true,
   });
 
   const score = summary?.engagement_score ?? 0;

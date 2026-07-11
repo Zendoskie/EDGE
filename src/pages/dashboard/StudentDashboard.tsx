@@ -67,23 +67,34 @@ export default function StudentDashboard() {
 
   const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals();
 
-  const programCode = (user?.user_metadata as any)?.course as string | undefined;
-  const yearLevel = (user?.user_metadata as any)?.year_level as string | undefined;
-
-  const { data: program } = useQuery({
-    queryKey: ['student-program', programCode],
+  const { data: studentProgram } = useQuery({
+    queryKey: ['student-program', user?.id],
     queryFn: async () => {
-      if (!programCode) return null;
+      if (!user?.id) return null;
       const { data, error } = await supabase
-        .from('programs')
-        .select('code, name')
-        .eq('code', programCode)
+        .from('student_programs')
+        .select('program_id, year_level, is_irregular, programs(code, name)')
+        .eq('student_id', user.id)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return data as {
+        program_id: string | null;
+        year_level: number | null;
+        is_irregular: boolean | null;
+        programs?: { code?: string | null; name?: string | null } | null;
+      } | null;
     },
-    enabled: !!programCode,
+    enabled: !!user?.id,
   });
+
+  const programCode = studentProgram?.programs?.code ?? undefined;
+  const yearSectionLabel = studentProgram?.is_irregular
+    ? 'Irregular Student'
+    : studentProgram?.year_level != null && programCode
+      ? `${programCode}${studentProgram.year_level}`
+      : studentProgram?.year_level != null
+        ? `Year ${studentProgram.year_level}`
+        : undefined;
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['student-dashboard-stats', user?.id],
@@ -348,18 +359,21 @@ export default function StudentDashboard() {
             <h1 className="text-2xl font-display font-bold">Student Dashboard</h1>
             <p className="text-muted-foreground text-sm mt-1">Your academic performance at a glance</p>
           </div>
-          {(programCode || yearLevel) && (
+          {(programCode || yearSectionLabel) && (
             <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-              {programCode && (
+              {programCode && !studentProgram?.is_irregular && (
                 <div>
                   <span className="font-medium text-foreground">Program:</span>{' '}
-                  {program?.code ?? programCode}
-                  {program?.name ? ` — ${program.name}` : ''}
+                  {programCode}
+                  {studentProgram?.programs?.name ? ` — ${studentProgram.programs.name}` : ''}
                 </div>
               )}
-              {yearLevel && (
+              {yearSectionLabel && (
                 <div>
-                  <span className="font-medium text-foreground">Year level:</span> {yearLevel}
+                  <span className="font-medium text-foreground">
+                    {studentProgram?.is_irregular ? 'Status:' : 'Year / section:'}
+                  </span>{' '}
+                  {yearSectionLabel}
                 </div>
               )}
             </div>

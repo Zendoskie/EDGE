@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,10 +11,24 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { RiskBadge } from '@/components/RiskBadge';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
+import { sendReferralNotification } from '@/lib/referral-notifications';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function GuidanceReferrals() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
+  const [reviewTarget, setReviewTarget] = useState<{ id: string; status: 'approved' | 'rejected' } | null>(null);
+  const [counselorRemarks, setCounselorRemarks] = useState('');
+
   const {
     data: referrals = [],
     isLoading,
@@ -22,16 +36,31 @@ export default function GuidanceReferrals() {
   } = useCounselingReferrals();
 
   const reviewMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: 'approved' | 'rejected' }) => {
+    mutationFn: async ({
+      id,
+      status,
+      remarks,
+    }: {
+      id: string;
+      status: 'approved' | 'rejected';
+      remarks: string | null;
+    }) => {
       const { error } = await supabase
         .from('counseling_referrals')
         .update({
           status,
           reviewed_at: new Date().toISOString(),
           reviewed_by: user!.id,
+          counselor_remarks: remarks,
         })
         .eq('id', id);
       if (error) throw error;
+
+      await sendReferralNotification({
+        event: 'referral_decided',
+        referralId: id,
+        counselorRemarks: remarks,
+      });
     },
     onSuccess: (_, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['guidance-referrals', user?.id] });
@@ -39,6 +68,8 @@ export default function GuidanceReferrals() {
       void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
       void queryClient.invalidateQueries({ queryKey: ['counseling-referrals'] });
       toast.success(vars.status === 'approved' ? 'Referral approved' : 'Referral rejected');
+      setReviewTarget(null);
+      setCounselorRemarks('');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -48,52 +79,19 @@ export default function GuidanceReferrals() {
     [referrals],
   );
 
-  const {
-    data: feedback = [],
-    isLoading: isFeedbackLoading,
-    error: feedbackError,
-  } = useQuery({
-    queryKey: ['guidance-student-feedback', user?.id, referrals.length],
-    enabled: role === 'guidance_counselor' && !!user?.id && referrals.length > 0,
-    queryFn: async () => {
-      const studentIds = Array.from(new Set(referrals.map((r) => r.student_id).filter(Boolean)));
-      const subjectIds = Array.from(new Set(referrals.map((r) => r.subject_id).filter(Boolean)));
-      if (studentIds.length === 0 || subjectIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('student_feedback')
-        .select('id, created_at, student_id, subject_id, risk_level, reasons, details')
-        .in('student_id', studentIds)
-        .in('subject_id', subjectIds)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      const feedbackRows = data ?? [];
-      if (feedbackRows.length === 0) return [];
+  const openReview = (id: string, status: 'approved' | 'rejected') => {
+    setReviewTarget({ id, status });
+    setCounselorRemarks('');
+  };
 
-      const uniqStudentIds = Array.from(new Set(feedbackRows.map((f: { student_id: string }) => f.student_id).filter(Boolean)));
-      const uniqSubjectIds = Array.from(new Set(feedbackRows.map((f: { subject_id: string }) => f.subject_id).filter(Boolean)));
-
-      const [studentsRes, subjectsRes] = await Promise.all([
-        uniqStudentIds.length > 0
-          ? supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', uniqStudentIds)
-          : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
-        uniqSubjectIds.length > 0
-          ? supabase.from('subjects').select('id, code, name').in('id', uniqSubjectIds)
-          : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
-      ]);
-      if (studentsRes.error) throw studentsRes.error;
-      if (subjectsRes.error) throw subjectsRes.error;
-
-      const studentMap = new Map((studentsRes.data ?? []).map((p) => [(p as { user_id: string }).user_id, p]));
-      const subjectMap = new Map((subjectsRes.data ?? []).map((s) => [(s as { id: string }).id, s]));
-
-      return feedbackRows.map((f: Record<string, unknown>) => ({
-        ...f,
-        student: studentMap.get(f.student_id as string) ?? null,
-        subject: subjectMap.get(f.subject_id as string) ?? null,
-      }));
-    },
-  });
+  const confirmReview = () => {
+    if (!reviewTarget) return;
+    reviewMutation.mutate({
+      id: reviewTarget.id,
+      status: reviewTarget.status,
+      remarks: counselorRemarks.trim() || null,
+    });
+  };
 
   if (role !== 'guidance_counselor') {
     return <Navigate to="/dashboard" replace />;
@@ -143,20 +141,59 @@ export default function GuidanceReferrals() {
                         Referred by: {r.instructor?.full_name ?? r.instructor?.email ?? '—'}
                       </p>
                     </div>
-                    <ReferralStatusBadge status={r.status} className="shrink-0 self-start" />
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+                      {r.prediction?.risk_level ? <RiskBadge level={r.prediction.risk_level} /> : null}
+                      <ReferralStatusBadge status={r.status} />
+                    </div>
                   </div>
-                  {r.recommendation_message ? (
-                    <p className="text-sm text-muted-foreground">{r.recommendation_message}</p>
+
+                  {r.prediction?.risk_score != null ? (
+                    <p className="text-sm text-muted-foreground">
+                      Risk score: <span className="font-medium text-foreground">{Number(r.prediction.risk_score).toFixed(1)}/100</span>
+                    </p>
                   ) : null}
+
+                  {r.recommendation_message ? (
+                    <div>
+                      <p className="text-xs font-medium text-foreground">Instructor remarks</p>
+                      <p className="text-sm text-muted-foreground">{r.recommendation_message}</p>
+                    </div>
+                  ) : null}
+
+                  {r.latest_feedback ? (
+                    <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-medium text-foreground">Student feedback</p>
+                        {r.latest_feedback.risk_level ? <RiskBadge level={r.latest_feedback.risk_level} /> : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(r.latest_feedback.reasons ?? []).slice(0, 8).map((reason) => (
+                          <Badge key={reason} variant="outline" className="text-xs">{reason}</Badge>
+                        ))}
+                      </div>
+                      {r.latest_feedback.details ? (
+                        <p className="text-sm text-muted-foreground">{r.latest_feedback.details}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {r.counselor_remarks ? (
+                    <div>
+                      <p className="text-xs font-medium text-foreground">Counselor remarks</p>
+                      <p className="text-sm text-muted-foreground">{r.counselor_remarks}</p>
+                    </div>
+                  ) : null}
+
                   <p className="text-xs text-muted-foreground">
                     Requested: {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
                     {r.reviewed_at ? ` · Reviewed ${new Date(r.reviewed_at).toLocaleString()}` : ''}
                   </p>
+
                   {normalizeReferralStatus(r.status) === 'pending' ? (
                     <div className="flex flex-wrap gap-2 pt-1">
                       <Button
                         size="sm"
-                        onClick={() => reviewMutation.mutate({ id: r.id, status: 'approved' })}
+                        onClick={() => openReview(r.id, 'approved')}
                         disabled={reviewMutation.isPending}
                       >
                         Approve
@@ -164,7 +201,7 @@ export default function GuidanceReferrals() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => reviewMutation.mutate({ id: r.id, status: 'rejected' })}
+                        onClick={() => openReview(r.id, 'rejected')}
                         disabled={reviewMutation.isPending}
                       >
                         Reject
@@ -178,57 +215,36 @@ export default function GuidanceReferrals() {
         </CardContent>
       </Card>
 
-      <Card className="bg-card/90 w-full min-w-0">
-        <CardHeader>
-          <CardTitle className="text-lg">Student feedback</CardTitle>
-        </CardHeader>
-        <CardContent className="min-w-0">
-          {isFeedbackLoading ? (
-            <p className="text-sm text-muted-foreground">Loading student feedback…</p>
-          ) : feedbackError ? (
-            <p className="text-sm text-destructive">
-              Could not load student feedback. {feedbackError instanceof Error ? feedbackError.message : 'Please try again.'}
-            </p>
-          ) : feedback.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No feedback submitted for referred students yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {feedback.map((f: {
-                id: string;
-                subject?: { code?: string; name?: string } | null;
-                subject_id?: string;
-                student?: { full_name?: string; email?: string; student_id?: string } | null;
-                student_id?: string;
-                risk_level?: string;
-                reasons?: string[];
-                details?: string;
-                created_at?: string;
-              }) => (
-                <div key={f.id} className="rounded-xl border border-border/60 p-3 sm:p-4 space-y-2 min-w-0">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium">
-                        {(f.subject?.code ?? f.subject_id)} — {(f.subject?.name ?? 'Subject')}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        Student: {(f.student?.full_name ?? f.student?.email ?? f.student_id)} ({f.student?.student_id ?? '—'})
-                      </p>
-                    </div>
-                    <RiskBadge level={f.risk_level} />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(f.reasons ?? []).slice(0, 8).map((reason: string) => (
-                      <Badge key={reason} variant="outline" className="text-xs">{reason}</Badge>
-                    ))}
-                  </div>
-                  {f.details ? <p className="text-sm text-muted-foreground">{f.details}</p> : null}
-                  <p className="text-xs text-muted-foreground">{f.created_at ? new Date(f.created_at).toLocaleString() : ''}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Dialog open={!!reviewTarget} onOpenChange={(open) => !open && setReviewTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {reviewTarget?.status === 'approved' ? 'Approve referral' : 'Reject referral'}
+            </DialogTitle>
+            <DialogDescription>
+              Add optional remarks for the student and instructor. They will be notified automatically by email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="counselor-remarks">Counselor remarks (optional)</Label>
+            <Textarea
+              id="counselor-remarks"
+              value={counselorRemarks}
+              onChange={(e) => setCounselorRemarks(e.target.value)}
+              placeholder="Notes or next steps for the student and instructor"
+              className="min-h-[100px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewTarget(null)} disabled={reviewMutation.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={confirmReview} disabled={reviewMutation.isPending}>
+              {reviewMutation.isPending ? 'Saving…' : reviewTarget?.status === 'approved' ? 'Approve' : 'Reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

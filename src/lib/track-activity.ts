@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { EngagementActivityType } from '@/lib/engagement-config';
+import { invalidateEngagementQueries } from '@/lib/engagement-cache';
 
 const LOGIN_SESSION_KEY = 'edge_login_session_id';
 const DEDUP_PREFIX = 'edge_activity_dedup_';
@@ -128,6 +129,7 @@ export async function trackStudentLogin(): Promise<void> {
     }
 
     if (loginId) storeLoginSessionId(loginId);
+    invalidateEngagementQueries(user.id);
   } catch (err) {
     console.warn('trackStudentLogin failed:', err);
   }
@@ -192,6 +194,8 @@ export async function trackStudentActivity(params: TrackActivityParams): Promise
     const { error } = await supabase.from('student_activity').insert(row);
     if (error && error.code !== '23505') {
       console.warn('trackStudentActivity failed:', error.message);
+    } else {
+      invalidateEngagementQueries(user.id);
     }
   } catch (err) {
     console.warn('trackStudentActivity failed:', err);

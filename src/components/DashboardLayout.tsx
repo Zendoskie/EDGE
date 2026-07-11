@@ -10,6 +10,7 @@ import { useReferralRealtime } from "@/hooks/useReferralRealtime";
 import { useReferralInboxPoll } from "@/hooks/useReferralInboxPoll";
 import { useParentLinkRealtime } from "@/hooks/useParentLinkRealtime";
 import { useParentLinkInboxPoll } from "@/hooks/useParentLinkInboxPoll";
+import { useEngagementSummaryRealtime } from "@/hooks/useEngagementSummaryRealtime";
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,6 +90,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   useReferralInboxPoll(userId, role ?? undefined);
   useParentLinkRealtime(userId, role ?? undefined);
   useParentLinkInboxPoll(userId, role ?? undefined);
+  useEngagementSummaryRealtime();
 
   const { data: coachContext } = useQuery<StudentPredictionContext>({
     queryKey: ["ai-coach-student-context", userId, role],

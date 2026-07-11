@@ -24,6 +24,8 @@ import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { trackStudentActivity } from '@/lib/track-activity';
+import { sendReferralNotification } from '@/lib/referral-notifications';
+import { normalizeReferralStatus } from '@/lib/referral-utils';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
@@ -1046,7 +1048,12 @@ function ActivityScoring({
             ...gradePayload,
           }).select('id').single();
           if (error) throw error;
-          const trackType = activityType === 'quiz' ? 'quiz_complete' : 'assignment_submit';
+          const trackType =
+            activityType === 'quiz'
+              ? 'quiz_complete'
+              : activityType === 'project' || activityType === 'assignment'
+                ? 'assignment_submit'
+                : 'assignment_submit';
           void trackStudentActivity({
             activityType: trackType,
             subjectId,
@@ -1348,15 +1355,23 @@ function PredictionRecommendationCell({
   recommendation,
   studentId,
   studentName,
+  riskLevel,
   onViewEngagement,
   onLogIntervention,
+  onSubmitCounselingReferral,
+  isSubmittingReferral,
 }: {
   recommendation: string;
   studentId?: string | null;
   studentName?: string | null;
+  riskLevel?: string | null;
   onViewEngagement: (studentId: string, studentName: string) => void;
   onLogIntervention: () => void;
+  onSubmitCounselingReferral?: () => void;
+  isSubmittingReferral?: boolean;
 }) {
+  const showReferralCta = riskLevel === 'critical' || riskLevel === 'at_risk';
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex max-h-28 gap-2 overflow-y-auto overscroll-y-contain pr-1">
@@ -1373,6 +1388,17 @@ function PredictionRecommendationCell({
           >
             <Activity className="mr-1.5 h-3.5 w-3.5" />
             Engagement
+          </Button>
+        ) : null}
+        {showReferralCta && onSubmitCounselingReferral ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-8 shrink-0"
+            onClick={onSubmitCounselingReferral}
+            disabled={isSubmittingReferral}
+          >
+            {isSubmittingReferral ? 'Submitting…' : 'Submit Counseling Referral'}
           </Button>
         ) : null}
         <Button size="sm" variant="default" className="h-8 shrink-0" onClick={onLogIntervention}>
@@ -1442,12 +1468,81 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     queryFn: async () => {
       const { data, error } = await supabase
         .from('counseling_referrals')
-        .select('id, student_id, status, created_at, reviewed_at')
+        .select('id, student_id, subject_id, status, created_at, reviewed_at')
         .eq('subject_id', subjectId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  const invalidateReferralCaches = (studentId?: string | null) => {
+    void queryClient.invalidateQueries({ queryKey: ['counseling-referrals', subjectId] });
+    if (studentId) {
+      void queryClient.invalidateQueries({ queryKey: ['student-counseling-referrals', studentId] });
+    }
+    void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
+    void queryClient.invalidateQueries({ queryKey: ['guidance-referrals'] });
+  };
+
+  const submitCounselingReferral = useMutation({
+    mutationFn: async (prediction: PredictionRow) => {
+      if (!user?.id || !prediction.student_id || !prediction.id) {
+        throw new Error('Missing prediction or instructor session');
+      }
+
+      const pendingReferral = counselingReferrals.find(
+        (r) =>
+          r.student_id === prediction.student_id &&
+          r.subject_id === subjectId &&
+          normalizeReferralStatus(r.status) === 'pending',
+      );
+      if (pendingReferral) {
+        throw new Error('A pending counseling referral already exists for this student in this subject.');
+      }
+
+      const approvedReferral = counselingReferrals.find(
+        (r) =>
+          r.student_id === prediction.student_id &&
+          r.subject_id === subjectId &&
+          normalizeReferralStatus(r.status) === 'approved',
+      );
+      if (approvedReferral) {
+        throw new Error('A counseling referral has already been approved for this student in this subject.');
+      }
+
+      const message =
+        prediction.recommendation?.trim() ||
+        recommendationForPrediction(prediction) ||
+        `Guidance support is recommended for ${subjectCode}.`;
+
+      const { data: inserted, error: referralError } = await supabase
+        .from('counseling_referrals')
+        .insert({
+          student_id: prediction.student_id,
+          subject_id: subjectId,
+          instructor_id: user.id,
+          prediction_id: prediction.id,
+          recommendation_message: message,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (referralError) throw referralError;
+
+      await sendReferralNotification({
+        event: 'referral_created',
+        referralId: inserted.id,
+      });
+
+      return { referralId: inserted.id, studentId: prediction.student_id };
+    },
+    onSuccess: (result) => {
+      toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+      invalidateReferralCaches(result.studentId);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const generatePredictions = async () => {
@@ -1508,42 +1603,47 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       if (dbInterventionType === 'counseling') {
         if (!user?.id) throw new Error('Missing instructor session');
-        const latestReferral = counselingReferrals.find(
-          (r: any) => r.student_id === interventionPrediction.student_id,
+
+        const pendingReferral = counselingReferrals.find(
+          (r) =>
+            r.student_id === interventionPrediction.student_id &&
+            r.subject_id === subjectId &&
+            normalizeReferralStatus(r.status) === 'pending',
+        );
+        if (pendingReferral) {
+          throw new Error('A pending counseling referral already exists for this student in this subject.');
+        }
+
+        const approvedReferral = counselingReferrals.find(
+          (r) =>
+            r.student_id === interventionPrediction.student_id &&
+            normalizeReferralStatus(r.status) === 'approved',
         );
 
-        if (latestReferral?.status !== 'approved') {
-          const { error: referralError } = await supabase.from('counseling_referrals').insert({
-            student_id: interventionPrediction.student_id,
-            subject_id: subjectId,
-            instructor_id: user.id,
-            prediction_id: interventionPrediction.id,
-            recommendation_message:
-              interventionMessage ||
-              interventionPrediction.recommendation ||
-              `Guidance support is recommended for ${subjectCode}.`,
-            status: 'pending',
-          });
+        if (!approvedReferral) {
+          const { data: inserted, error: referralError } = await supabase
+            .from('counseling_referrals')
+            .insert({
+              student_id: interventionPrediction.student_id,
+              subject_id: subjectId,
+              instructor_id: user.id,
+              prediction_id: interventionPrediction.id,
+              recommendation_message:
+                interventionMessage ||
+                interventionPrediction.recommendation ||
+                `Guidance support is recommended for ${subjectCode}.`,
+              status: 'pending',
+            })
+            .select('id')
+            .single();
           if (referralError) throw referralError;
 
-          if (sendEmailNotification && studentEmail) {
-            const { error: invokeError } = await supabase.functions.invoke('send-notification', {
-              body: {
-                to: studentEmail,
-                student_id: interventionPrediction.student_id,
-                subject_id: subjectId,
-                risk_level: interventionPrediction.risk_level,
-                subject_code: subjectCode,
-                subject_name: subjectName,
-                body:
-                  interventionMessage ||
-                  `Your instructor recommends guidance counseling support for ${subjectCode}. Please check EDGE for details.`,
-              },
-            });
-            if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
-          }
+          await sendReferralNotification({
+            event: 'referral_created',
+            referralId: inserted.id,
+          });
 
-          return { mode: 'referral_created' as const };
+          return { mode: 'referral_created' as const, studentId: interventionPrediction.student_id };
         }
       }
 
@@ -1574,23 +1674,10 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     },
     onSuccess: (result) => {
       if (result?.mode === 'referral_created') {
-        toast.success(
-          sendEmailNotification
-            ? 'Counseling referral submitted to guidance counselor and student notified'
-            : 'Counseling referral submitted to guidance counselor for approval',
-        );
+        toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+        invalidateReferralCaches(result.studentId);
       } else {
         toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
-      }
-      queryClient.invalidateQueries({ queryKey: ['counseling-referrals', subjectId] });
-      if (interventionPrediction?.student_id) {
-        void queryClient.invalidateQueries({
-          queryKey: ['student-counseling-referrals', interventionPrediction.student_id],
-        });
-      }
-      void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
-      if (result?.mode === 'referral_created') {
-        void queryClient.invalidateQueries({ queryKey: ['guidance-referrals'] });
       }
       setInterventionPrediction(null);
       setInterventionMessage('');
@@ -1777,10 +1864,13 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                           recommendation={recommendation}
                           studentId={p.student_id}
                           studentName={p.profile?.full_name}
+                          riskLevel={p.risk_level}
                           onViewEngagement={(studentId, studentName) =>
                             setEngagementStudent({ studentId, studentName })
                           }
                           onLogIntervention={() => setInterventionPrediction(p)}
+                          onSubmitCounselingReferral={() => submitCounselingReferral.mutate(p)}
+                          isSubmittingReferral={submitCounselingReferral.isPending}
                         />
                       </TableCell>
                     </TableRow>
@@ -1853,7 +1943,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
               </div>
               {interventionType === 'counseling' && (
                 <p className="text-xs text-muted-foreground">
-                  Counseling interventions require guidance counselor approval first. Saving now will create a counseling referral when not yet approved.
+                  Counseling interventions require guidance counselor approval first. Saving will create a counseling referral and automatically notify the student and guidance counselors.
                 </p>
               )}
               <div className="flex items-center space-x-2">

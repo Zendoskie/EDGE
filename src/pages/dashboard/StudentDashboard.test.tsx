@@ -6,13 +6,17 @@ import StudentDashboard from '@/pages/dashboard/StudentDashboard';
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
-    user: { id: 'test-student-id', user_metadata: { course: 'BSIT', year_level: '1st Year' } },
+    user: { id: 'test-student-id' },
     role: 'student',
   }),
 }));
 
 vi.mock('@/hooks/useCounselingReferrals', () => ({
   useCounselingReferrals: () => ({ data: [], isLoading: false }),
+}));
+
+vi.mock('@/hooks/useActivityTracker', () => ({
+  useTrackPageView: () => {},
 }));
 
 const chain = () => ({
@@ -25,19 +29,23 @@ const chain = () => ({
   maybeSingle: async () => ({ data: null, error: null }),
   then: undefined,
 });
-const asyncChain = {
-  ...chain(),
-  then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null }),
-};
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (table: string) => {
-      if (table === 'programs') {
+      if (table === 'student_programs') {
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: { code: 'BSIT', name: 'BSIT' }, error: null }),
+              maybeSingle: async () => ({
+                data: {
+                  program_id: 'prog-1',
+                  year_level: 4,
+                  is_irregular: false,
+                  programs: { code: 'BSCS', name: 'BS Computer Science' },
+                },
+                error: null,
+              }),
             }),
           }),
         };
@@ -93,5 +101,18 @@ describe('StudentDashboard', () => {
     );
     expect(await screen.findByText(/Student Dashboard/i)).toBeTruthy();
     expect(await screen.findByText(/My Engagement/i)).toBeTruthy();
+  });
+
+  it('shows academic info from student_programs', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudentDashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/BS Computer Science/)).toBeTruthy();
+    expect(await screen.findByText('BSCS4')).toBeTruthy();
   });
 });
