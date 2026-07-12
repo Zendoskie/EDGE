@@ -536,6 +536,7 @@ export type Database = {
           engagement_score: number
           total_login_count: number
           last_login_at: string | null
+          total_time_spent_seconds: number
           participation_count: number
           modules_viewed: number
           announcements_read: number
@@ -550,6 +551,7 @@ export type Database = {
           engagement_score?: number
           total_login_count?: number
           last_login_at?: string | null
+          total_time_spent_seconds?: number
           participation_count?: number
           modules_viewed?: number
           announcements_read?: number
@@ -564,6 +566,7 @@ export type Database = {
           engagement_score?: number
           total_login_count?: number
           last_login_at?: string | null
+          total_time_spent_seconds?: number
           participation_count?: number
           modules_viewed?: number
           announcements_read?: number
@@ -584,6 +587,7 @@ export type Database = {
           device: string | null
           browser: string | null
           ip_address: string | null
+          counts_as_login: boolean
           created_at: string | null
         }
         Insert: {
@@ -595,6 +599,7 @@ export type Database = {
           device?: string | null
           browser?: string | null
           ip_address?: string | null
+          counts_as_login?: boolean
           created_at?: string | null
         }
         Update: {
@@ -606,6 +611,7 @@ export type Database = {
           device?: string | null
           browser?: string | null
           ip_address?: string | null
+          counts_as_login?: boolean
           created_at?: string | null
         }
         Relationships: []
@@ -735,6 +741,12 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      recompute_student_engagement: {
+        Args: {
+          p_student_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

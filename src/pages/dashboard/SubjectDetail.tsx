@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -93,13 +93,15 @@ export default function SubjectDetail() {
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
                 {firstProgram(subject.programs)?.name && (
-                  <Badge variant="secondary" className="mr-2">{firstProgram(subject.programs)?.code}</Badge>
+                  <Badge variant="secondary">{firstProgram(subject.programs)?.code}</Badge>
                 )}
-                {subject.semester && `${subject.semester} Semester`}
-                {subject.academic_year && ` • ${subject.academic_year}`}
-              </p>
+                <span>
+                  {subject.semester && `${subject.semester} Semester`}
+                  {subject.academic_year && ` • ${subject.academic_year}`}
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Instructor: {(subject.instructor_profile?.full_name ?? '').trim() || subject.instructor_profile?.email || '—'}
               </p>
@@ -127,13 +129,15 @@ export default function SubjectDetail() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
               {firstProgram(subject.programs)?.name && (
-                <Badge variant="secondary" className="mr-2">{firstProgram(subject.programs)?.code}</Badge>
+                <Badge variant="secondary">{firstProgram(subject.programs)?.code}</Badge>
               )}
-              {subject.semester && `${subject.semester} Semester`}
-              {subject.academic_year && ` • ${subject.academic_year}`}
-            </p>
+              <span>
+                {subject.semester && `${subject.semester} Semester`}
+                {subject.academic_year && ` • ${subject.academic_year}`}
+              </span>
+            </div>
           </div>
         </div>
         </div>
@@ -788,7 +792,10 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
             <Button size="sm"><Plus className="mr-2 h-4 w-4" /> Add Activity</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>New Activity</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>New Activity</DialogTitle>
+              <DialogDescription>Create a quiz, assignment, project, or exam for this subject.</DialogDescription>
+            </DialogHeader>
             <form className="space-y-4" onSubmit={e => { e.preventDefault(); create.mutate(); }}>
               <div className="space-y-2">
                 <Label>Title</Label>
@@ -1888,11 +1895,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Student Engagement</DialogTitle>
+            <DialogDescription>Login activity and feedback for this student.</DialogDescription>
           </DialogHeader>
           {engagementStudent ? (
             <StudentEngagementPanel
               studentId={engagementStudent.studentId}
-              subjectId={subjectId}
               studentName={engagementStudent.studentName}
             />
           ) : null}
@@ -1901,8 +1908,12 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       <Dialog open={bulkNotifyOpen} onOpenChange={setBulkNotifyOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Notify vulnerable students</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Send an email notification to {atRiskPredictions.filter((p: PredictionRow) => p.profile?.email).length} vulnerable/crucial students for {subjectCode}.</p>
+          <DialogHeader>
+            <DialogTitle>Notify vulnerable students</DialogTitle>
+            <DialogDescription>
+              Send an email notification to {atRiskPredictions.filter((p: PredictionRow) => p.profile?.email).length} vulnerable/crucial students for {subjectCode}.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-2">
             <Label>Message (optional)</Label>
             <Input
@@ -1919,7 +1930,10 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       </Dialog>
       <Dialog open={!!interventionPrediction} onOpenChange={(open) => !open && setInterventionPrediction(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Log intervention</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Log intervention</DialogTitle>
+            <DialogDescription>Record an intervention for this student and optionally notify them by email.</DialogDescription>
+          </DialogHeader>
           {interventionPrediction && (
             <form className="space-y-4" onSubmit={e => { e.preventDefault(); logIntervention.mutate(); }}>
               <p className="text-sm text-muted-foreground">Student: {interventionPrediction.profile?.full_name || '—'}</p>

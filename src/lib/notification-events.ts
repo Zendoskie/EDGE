@@ -229,3 +229,33 @@ export function instructorEngagementAlertNotification(
     dedupeKey: `instructor-engagement:${studentId}:${previous}->${current}`,
   };
 }
+
+/** Instructor inbox when a student submits general engagement feedback. */
+export function instructorEngagementFeedbackNotification(opts: {
+  feedbackId: string;
+  studentName?: string | null;
+  subject?: string | null;
+}): NotificationPayload {
+  const studentName = opts.studentName?.trim() || "A student";
+  const topic = opts.subject?.trim() || "general feedback";
+  return {
+    title: "New student feedback",
+    body: `${studentName} submitted new feedback: ${topic}.`,
+    dedupeKey: `engagement-feedback:${opts.feedbackId}`,
+  };
+}
+
+/** Guidance counselor inbox when a referred student submits feedback. */
+export function guidanceEngagementFeedbackNotification(opts: {
+  feedbackId: string;
+  studentName?: string | null;
+  subject?: string | null;
+}): NotificationPayload {
+  const studentName = opts.studentName?.trim() || "A referred student";
+  const topic = opts.subject?.trim() || "general feedback";
+  return {
+    title: "Referred student submitted feedback",
+    body: `${studentName} submitted feedback (${topic}) while a counseling referral is active.`,
+    dedupeKey: `guidance-engagement-feedback:${opts.feedbackId}`,
+  };
+}

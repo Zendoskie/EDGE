@@ -7,6 +7,13 @@ export function invalidateEngagementQueries(studentId: string): void {
   );
 }
 
+export function invalidateEngagementFeedbackQueries(studentId: string): void {
+  if (typeof window === 'undefined' || !studentId) return;
+  window.dispatchEvent(
+    new CustomEvent('edge-engagement-feedback-invalidate', { detail: { studentId } }),
+  );
+}
+
 export function subscribeEngagementInvalidation(
   callback: (studentId: string) => void,
 ): () => void {

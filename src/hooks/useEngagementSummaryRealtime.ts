@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
 
 function invalidateEngagementKeys(queryClient: ReturnType<typeof useQueryClient>, studentId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['student-engagement-metrics', studentId] });
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-summary', studentId] });
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-panel-summary', studentId] });
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-panel-activities', studentId] });

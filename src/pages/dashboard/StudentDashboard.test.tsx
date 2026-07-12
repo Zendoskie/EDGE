@@ -100,7 +100,7 @@ describe('StudentDashboard', () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText(/Student Dashboard/i)).toBeTruthy();
-    expect(await screen.findByText(/My Engagement/i)).toBeTruthy();
+    expect(await screen.findByText(/Student Engagement/i)).toBeTruthy();
   });
 
   it('shows academic info from student_programs', async () => {

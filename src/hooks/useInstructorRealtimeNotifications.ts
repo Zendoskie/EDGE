@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
-import { instructorAtRiskNotification, instructorEngagementAlertNotification } from "@/lib/notification-events";
+import { instructorAtRiskNotification, instructorEngagementAlertNotification, instructorEngagementFeedbackNotification } from "@/lib/notification-events";
 
 type SubjectRef = { id: string; code: string };
 
@@ -130,6 +130,38 @@ export function useInstructorRealtimeNotifications(
             },
             (payload) => {
               void handleEngagement(payload.new as Record<string, unknown> | undefined);
+            },
+          );
+
+          channel = channel.on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "student_engagement_feedback",
+              filter: `student_id=eq.${sid}`,
+            },
+            async (payload) => {
+              const row = payload.new as {
+                id?: string;
+                student_id?: string;
+                subject?: string | null;
+              } | null;
+              if (!row?.id || !row.student_id) return;
+
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("full_name")
+                .eq("user_id", row.student_id)
+                .maybeSingle();
+
+              addRef.current(
+                instructorEngagementFeedbackNotification({
+                  feedbackId: row.id,
+                  studentName: profile?.full_name ?? null,
+                  subject: row.subject ?? null,
+                }),
+              );
             },
           );
         }

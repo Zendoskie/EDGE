@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { RiskBadge } from '@/components/RiskBadge';
+import { formatFeedbackStatus, formatLastLogin } from '@/lib/engagement-format';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
 import { sendReferralNotification } from '@/lib/referral-notifications';
 import {
@@ -160,10 +161,24 @@ export default function GuidanceReferrals() {
                     </div>
                   ) : null}
 
+                  {r.latest_engagement_feedback ? (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+                      <p className="text-xs font-medium text-foreground">Student feedback</p>
+                      <p className="text-sm font-medium">
+                        {r.latest_engagement_feedback.subject?.trim() || 'General Feedback'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{r.latest_engagement_feedback.message}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="outline">{formatFeedbackStatus(r.latest_engagement_feedback.status)}</Badge>
+                        <span>{formatLastLogin(r.latest_engagement_feedback.created_at)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {r.latest_feedback ? (
                     <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-medium text-foreground">Student feedback</p>
+                        <p className="text-xs font-medium text-foreground">Risk-related feedback</p>
                         {r.latest_feedback.risk_level ? <RiskBadge level={r.latest_feedback.risk_level} /> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">

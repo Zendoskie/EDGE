@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true };
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider } from "@/contexts/AuthContext";
 import PWABanner from "@/components/PWABanner";
 import Landing from "./pages/Landing";
 import Index from "./pages/Index";
@@ -31,6 +31,7 @@ import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
 import AdminApprovals from "./pages/dashboard/AdminApprovals";
 import ParentPerformance from "./pages/dashboard/ParentPerformance";
 import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
+import StudentFeedback from "./pages/dashboard/StudentFeedback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,6 +68,7 @@ const App = () => (
                 <Route path="admin/approvals" element={<AdminApprovals />} />
                 <Route path="parent-performance" element={<ParentPerformance />} />
                 <Route path="guidance-referrals" element={<GuidanceReferrals />} />
+                <Route path="feedback" element={<StudentFeedback />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

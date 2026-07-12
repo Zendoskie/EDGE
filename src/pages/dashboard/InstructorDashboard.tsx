@@ -559,6 +559,43 @@ export default function InstructorDashboard() {
     enabled: !!user?.id && !!subjectsWithPrograms,
   });
 
+  const { data: recentEngagementFeedback = [] } = useQuery({
+    queryKey: ['instructor-engagement-feedback', user?.id],
+    queryFn: async () => {
+      const { data: enrollments, error: enrollError } = await supabase
+        .from('enrollments')
+        .select('student_id, subjects!inner(instructor_id)')
+        .eq('subjects.instructor_id', user!.id)
+        .eq('status', 'active');
+      if (enrollError) throw enrollError;
+
+      const studentIds = Array.from(
+        new Set((enrollments ?? []).map((e: { student_id?: string }) => e.student_id).filter(Boolean)),
+      ) as string[];
+      if (studentIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('student_engagement_feedback')
+        .select('id, created_at, student_id, subject, message, status')
+        .in('student_id', studentIds)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+
+      const profileIds = Array.from(new Set((data ?? []).map((r) => r.student_id).filter(Boolean)));
+      const { data: profiles } = profileIds.length
+        ? await supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', profileIds)
+        : { data: [] as Array<Record<string, unknown>> };
+
+      const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+      return (data ?? []).map((r) => ({
+        ...r,
+        student: profileMap.get(r.student_id) ?? null,
+      }));
+    },
+    enabled: !!user?.id,
+  });
+
   const notifyStudent = useMutation({
     mutationFn: async (row: any) => {
       const message = `Early warning alert for ${row.subjectCode}: ${row.reasons.join('; ')}. Please review your progress and contact your instructor for support.`;
@@ -913,6 +950,47 @@ export default function InstructorDashboard() {
                         ))}
                       </div>
                       {f.details ? <p className="text-sm text-muted-foreground">{f.details}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6 bg-card/90 interactive-lift">
+            <CardHeader>
+              <CardTitle className="text-lg">Student engagement feedback</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                General feedback submitted by students about their learning experience and concerns.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {recentEngagementFeedback.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No engagement feedback submitted yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-72 overflow-y-auto">
+                  {recentEngagementFeedback.map((f: {
+                    id: string;
+                    subject?: string | null;
+                    message?: string;
+                    status?: string;
+                    created_at?: string;
+                    student?: { full_name?: string; email?: string; student_id?: string } | null;
+                    student_id?: string;
+                  }) => (
+                    <div key={f.id} className="rounded-xl border border-border/60 p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">
+                            {f.student?.full_name ?? f.student?.email ?? f.student_id} — {f.subject?.trim() || 'General Feedback'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {f.student?.student_id ?? '—'} • {f.created_at ? new Date(f.created_at).toLocaleString() : ''}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">{f.status ?? 'submitted'}</Badge>
+                      </div>
+                      {f.message ? <p className="text-sm text-muted-foreground">{f.message}</p> : null}
                     </div>
                   ))}
                 </div>

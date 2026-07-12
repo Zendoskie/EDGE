@@ -63,6 +63,7 @@ serve(async (req) => {
         device: body.device ?? null,
         browser: body.browser ?? null,
         ip_address: ipAddress,
+        counts_as_login: true,
       })
       .select("id")
       .single();
@@ -74,9 +75,20 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, loginId: inserted.id }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const { error: recomputeError } = await supabase.rpc("recompute_student_engagement", {
+      p_student_id: user.id,
     });
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        loginId: inserted.id,
+        recomputeError: recomputeError?.message ?? null,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {

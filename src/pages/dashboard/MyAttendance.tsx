@@ -58,7 +58,7 @@ export default function MyAttendance() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('attendance')
-        .select('subject_id, date, status')
+        .select('id, subject_id, date, status')
         .eq('student_id', user.id)
         .order('date', { ascending: false });
       if (error) {
@@ -92,7 +92,7 @@ export default function MyAttendance() {
     subjectId: string;
     code: string;
     name: string;
-    records: { subject_id: string; date: string; status: string }[];
+    records: { id: string; subject_id: string; date: string; status: string }[];
     total: number;
     present: number;
     rate: number | null;
@@ -163,7 +163,7 @@ export default function MyAttendance() {
                   {records.length > 0 ? (
                     <ul className="rounded-xl border border-border/60 bg-card/50 divide-y divide-border/60 overflow-hidden">
                       {records.map((r) => (
-                        <li key={`${r.date}-${r.status}`} className="px-4 py-3.5 flex flex-col gap-2">
+                        <li key={`${subjectId}-${r.id}`} className="px-4 py-3.5 flex flex-col gap-2">
                           <span className="text-sm font-medium text-foreground leading-snug">
                             {formatSessionDate(r.date)}
                           </span>

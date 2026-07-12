@@ -23,6 +23,7 @@ const instructorItems = [
 const studentItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'My Subjects', url: '/dashboard/my-subjects', icon: BookOpen },
+  { title: 'Feedback', url: '/dashboard/feedback', icon: FileText },
   { title: 'Attendance', url: '/dashboard/my-attendance', icon: CalendarCheck },
   { title: 'Scores', url: '/dashboard/my-scores', icon: FileText },
   { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },

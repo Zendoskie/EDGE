@@ -26,6 +26,13 @@ export type CounselingReferralRow = {
     details: string | null;
     created_at: string | null;
   } | null;
+  latest_engagement_feedback?: {
+    id: string;
+    subject: string | null;
+    message: string;
+    status: string;
+    created_at: string | null;
+  } | null;
   student?: {
     user_id: string;
     full_name: string | null;
@@ -76,6 +83,7 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
   const predictionMap = new Map((predictionsRes.data ?? []).map((p) => [p.id, p]));
 
   let feedbackMap = new Map<string, CounselingReferralRow["latest_feedback"]>();
+  let engagementFeedbackMap = new Map<string, CounselingReferralRow["latest_engagement_feedback"]>();
   if (studentIds.length > 0 && subjectIds.length > 0) {
     const { data: feedbackRows, error: feedbackError } = await supabase
       .from("student_feedback")
@@ -100,6 +108,29 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
     }
   }
 
+  if (studentIds.length > 0) {
+    const { data: engagementFeedbackRows, error: engagementFeedbackError } = await supabase
+      .from("student_engagement_feedback")
+      .select("id, student_id, subject, message, status, created_at")
+      .in("student_id", studentIds)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (engagementFeedbackError) throw engagementFeedbackError;
+
+    for (const row of engagementFeedbackRows ?? []) {
+      const key = row.student_id as string;
+      if (!engagementFeedbackMap.has(key)) {
+        engagementFeedbackMap.set(key, {
+          id: row.id,
+          subject: row.subject,
+          message: row.message,
+          status: row.status,
+          created_at: row.created_at,
+        });
+      }
+    }
+  }
+
   return rows.map((r) => ({
     ...(r as CounselingReferralRow),
     student: studentMap.get(r.student_id as string) ?? null,
@@ -107,6 +138,7 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
     subject: subjectMap.get(r.subject_id as string) ?? null,
     prediction: r.prediction_id ? (predictionMap.get(r.prediction_id as string) as CounselingReferralRow["prediction"]) ?? null : null,
     latest_feedback: feedbackMap.get(`${r.student_id}:${r.subject_id}`) ?? null,
+    latest_engagement_feedback: engagementFeedbackMap.get(r.student_id as string) ?? null,
   }));
 }
 

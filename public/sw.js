@@ -1,4 +1,4 @@
-const CACHE_NAME = 'academic-guardian-v1';
+const CACHE_NAME = 'academic-guardian-v2';
 const urlsToCache = [
   '/',
   '/dashboard',
@@ -19,8 +19,18 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event - serve cached content when offline
+// Fetch event — never cache Supabase / edge-function traffic; cache static assets only.
 self.addEventListener('fetch', (event) => {
+  const url = event.request.url;
+  if (
+    url.includes('supabase.co') ||
+    url.includes('/functions/v1/') ||
+    url.includes('/auth/v1/')
+  ) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
