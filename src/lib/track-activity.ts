@@ -1,6 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Session } from '@supabase/supabase-js';
 import type { EngagementActivityType } from '@/lib/engagement-config';
 import { invalidateEngagementQueries } from '@/lib/engagement-cache';
+
+export type StudentAuthContext = {
+  accessToken: string;
+  userId: string;
+};
 
 const LOGIN_SESSION_KEY = 'edge_login_session_id';
 const LOGIN_IN_PROGRESS_KEY = 'edge_login_in_progress';
@@ -111,15 +117,31 @@ export function clearStoredLoginSessionId(): void {
   }
 }
 
-async function getAuthContext(): Promise<{
-  accessToken: string;
-  userId: string;
-} | null> {
+export function authContextFromSession(session: Session | null | undefined): StudentAuthContext | null {
+  if (!session?.access_token || !session.user?.id) return null;
+  return { accessToken: session.access_token, userId: session.user.id };
+}
+
+async function getAuthContext(): Promise<StudentAuthContext | null> {
   const {
     data: { session, user },
   } = await supabase.auth.getSession();
   if (!session?.access_token || !user) return null;
   return { accessToken: session.access_token, userId: user.id };
+}
+
+async function resolveAuthContext(
+  explicit?: StudentAuthContext | null,
+): Promise<StudentAuthContext | null> {
+  if (explicit?.accessToken && explicit.userId) return explicit;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const ctx = await getAuthContext();
+    if (ctx) return ctx;
+    await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+  }
+
+  return null;
 }
 
 function getSupabaseFunctionBase(): string | null {
@@ -133,12 +155,12 @@ function getAnonKey(): string | null {
 
 async function callSyncStudentSession(
   action: SessionAction,
+  auth: StudentAuthContext,
   sessionId?: string,
 ): Promise<SyncSessionResponse | null> {
-  const auth = await getAuthContext();
   const base = getSupabaseFunctionBase();
   const anonKey = getAnonKey();
-  if (!auth || !base || !anonKey) return null;
+  if (!base || !anonKey) return null;
 
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const body: Record<string, string> = { action };
@@ -285,15 +307,12 @@ async function refreshEngagementSummary(studentId: string): Promise<void> {
   invalidateEngagementQueries(studentId);
 }
 
-async function insertLoginSession(countsAsLogin: boolean): Promise<string | undefined> {
+async function insertLoginSession(
+  countsAsLogin: boolean,
+  auth: StudentAuthContext,
+): Promise<string | undefined> {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const { device, browser } = parseUserAgent(ua);
-
-  const auth = await getAuthContext();
-  if (!auth) {
-    console.warn('insertLoginSession skipped: no auth session');
-    return undefined;
-  }
 
   let loginId: string | undefined;
 
@@ -305,7 +324,7 @@ async function insertLoginSession(countsAsLogin: boolean): Promise<string | unde
   } else {
     loginId = await insertLoginSessionDirect(auth.userId, false, device, browser);
     if (!loginId) {
-      const edgeResult = await callSyncStudentSession('resume');
+      const edgeResult = await callSyncStudentSession('resume', auth);
       loginId = edgeResult?.sessionId;
     }
   }
@@ -317,28 +336,28 @@ async function insertLoginSession(countsAsLogin: boolean): Promise<string | unde
 }
 
 /** Called only after a successful sign-in — increments Total Logins. */
-export async function trackStudentLogin(): Promise<void> {
+export async function trackStudentLogin(auth?: StudentAuthContext | null): Promise<void> {
   if (isLoginInProgress()) return;
 
-  const auth = await getAuthContext();
-  if (!auth) {
+  const resolved = await resolveAuthContext(auth);
+  if (!resolved) {
     console.warn('[engagement] trackStudentLogin skipped: no auth session');
     return;
   }
 
-  if (wasLoginTrackedRecently(auth.accessToken)) return;
+  if (wasLoginTrackedRecently(resolved.accessToken)) return;
 
   setLoginInProgress(true);
   try {
-    const loginId = await insertLoginSession(true);
+    const loginId = await insertLoginSession(true, resolved);
     if (!loginId) {
       console.warn('[engagement] trackStudentLogin failed: could not create login session');
       return;
     }
 
-    markLoginTracked(auth.accessToken);
+    markLoginTracked(resolved.accessToken);
     storeLoginSessionId(loginId);
-    await refreshEngagementSummary(auth.userId);
+    await refreshEngagementSummary(resolved.userId);
     console.info('[engagement] login recorded:', loginId);
   } catch (err) {
     console.warn('[engagement] trackStudentLogin failed:', err);
@@ -351,14 +370,14 @@ export async function trackStudentLogin(): Promise<void> {
  * If the student has an auth session but no counted logins yet, record one.
  * Covers restored sessions where signIn() was not called.
  */
-export async function ensureLoginRecorded(): Promise<void> {
-  const auth = await getAuthContext();
-  if (!auth) return;
+export async function ensureLoginRecorded(auth?: StudentAuthContext | null): Promise<void> {
+  const resolved = await resolveAuthContext(auth);
+  if (!resolved) return;
 
   const { count, error } = await supabase
     .from('student_login_history')
     .select('id', { count: 'exact', head: true })
-    .eq('student_id', auth.userId)
+    .eq('student_id', resolved.userId)
     .or('counts_as_login.is.null,counts_as_login.eq.true');
 
   if (error) {
@@ -369,19 +388,19 @@ export async function ensureLoginRecorded(): Promise<void> {
   if ((count ?? 0) > 0) return;
 
   console.info('[engagement] no login history found — recording first login');
-  await trackStudentLogin();
+  await trackStudentLogin(resolved);
 }
 
 /**
  * Resume time tracking when a student returns with an existing auth session
  * (page reload / revisit) without counting as a new login.
  */
-export async function resumeStudentSession(): Promise<void> {
+export async function resumeStudentSession(auth?: StudentAuthContext | null): Promise<void> {
   if (isLoginInProgress()) return;
 
   try {
-    const auth = await getAuthContext();
-    if (!auth) return;
+    const resolved = await resolveAuthContext(auth);
+    if (!resolved) return;
 
     const storedId = getStoredLoginSessionId();
     if (storedId) {
@@ -389,31 +408,31 @@ export async function resumeStudentSession(): Promise<void> {
         .from('student_login_history')
         .select('logout_time')
         .eq('id', storedId)
-        .eq('student_id', auth.userId)
+        .eq('student_id', resolved.userId)
         .maybeSingle();
       if (row && !row.logout_time) return;
       if (row?.logout_time) clearStoredLoginSessionId();
     }
 
-    const openSessionId = await findOpenSessionId(auth.userId);
+    const openSessionId = await findOpenSessionId(resolved.userId);
     if (openSessionId) {
       storeLoginSessionId(openSessionId);
-      await refreshEngagementSummary(auth.userId);
+      await refreshEngagementSummary(resolved.userId);
       return;
     }
 
-    const edgeResult = await callSyncStudentSession('resume');
+    const edgeResult = await callSyncStudentSession('resume', resolved);
     if (edgeResult?.sessionId) {
       storeLoginSessionId(edgeResult.sessionId);
-      await refreshEngagementSummary(auth.userId);
+      await refreshEngagementSummary(resolved.userId);
       return;
     }
 
-    const loginId = await insertLoginSession(false);
+    const loginId = await insertLoginSession(false, resolved);
     if (!loginId) return;
 
     storeLoginSessionId(loginId);
-    await refreshEngagementSummary(auth.userId);
+    await refreshEngagementSummary(resolved.userId);
   } catch (err) {
     console.warn('resumeStudentSession failed:', err);
   }
@@ -467,14 +486,14 @@ export async function updateSessionHeartbeat(): Promise<void> {
     }
 
     if (!loginId) return;
-    const edgeResult = await callSyncStudentSession('heartbeat', loginId);
+
+    const edgeResult = await callSyncStudentSession('heartbeat', auth, loginId);
     if (edgeResult?.closed) {
       clearStoredLoginSessionId();
       return;
     }
     if (edgeResult?.ok) {
-      const auth = await getAuthContext();
-      if (auth?.userId) invalidateEngagementQueries(auth.userId);
+      invalidateEngagementQueries(auth.userId);
       return;
     }
 
@@ -531,11 +550,13 @@ export async function finalizeStudentSession(): Promise<void> {
   if (!loginId) return;
 
   try {
-    const edgeResult = await callSyncStudentSession('finalize', loginId);
+    const auth = await resolveAuthContext();
+    if (!auth) return;
+
+    const edgeResult = await callSyncStudentSession('finalize', auth, loginId);
     if (edgeResult?.ok || edgeResult?.closed) {
       clearStoredLoginSessionId();
-      const auth = await getAuthContext();
-      if (auth?.userId) invalidateEngagementQueries(auth.userId);
+      invalidateEngagementQueries(auth.userId);
       return;
     }
 

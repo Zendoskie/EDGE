@@ -90,11 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const r = await loadRole(next.user.id);
       if (!cancelled) setRole(r);
 
-      if (!cancelled && r === 'student') {
+      if (!cancelled && r === 'student' && next) {
         if (authEvent === 'SIGNED_IN') {
-          await trackStudentLoginOnSignIn();
+          await trackStudentLoginOnSignIn(next);
         } else if (authEvent === 'INITIAL_SESSION') {
-          await bootstrapStudentSession();
+          await bootstrapStudentSession(next);
         }
       }
     }
@@ -197,8 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(r);
     setLoading(false);
 
-    if (r === 'student') {
-      await trackStudentLoginOnSignIn();
+    if (r === 'student' && data.session) {
+      await trackStudentLoginOnSignIn(data.session);
     }
   };
 
