@@ -236,6 +236,53 @@ export type Database = {
           },
         ]
       }
+      parent_link_request_history: {
+        Row: {
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          link_id: string
+          note: string | null
+          parent_user_id: string
+          requested_at: string
+          status: string
+          student_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          link_id: string
+          note?: string | null
+          parent_user_id: string
+          requested_at?: string
+          status: string
+          student_user_id: string
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          link_id?: string
+          note?: string | null
+          parent_user_id?: string
+          requested_at?: string
+          status?: string
+          student_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_link_request_history_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "parent_student_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_student_links: {
         Row: {
           decided_at: string | null
@@ -350,6 +397,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          parent_email: string | null
           student_id: string | null
           updated_at: string | null
           user_id: string
@@ -360,6 +408,7 @@ export type Database = {
           email: string
           full_name: string
           id?: string
+          parent_email?: string | null
           student_id?: string | null
           updated_at?: string | null
           user_id: string
@@ -370,6 +419,7 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          parent_email?: string | null
           student_id?: string | null
           updated_at?: string | null
           user_id?: string
@@ -745,6 +795,20 @@ export type Database = {
       recompute_student_engagement: {
         Args: {
           p_student_id: string
+        }
+        Returns: undefined
+      }
+      validate_parent_signup: {
+        Args: {
+          p_parent_email: string
+          p_student_id_no: string
+        }
+        Returns: undefined
+      }
+      validate_student_signup: {
+        Args: {
+          p_parent_email: string
+          p_student_id_no: string
         }
         Returns: undefined
       }

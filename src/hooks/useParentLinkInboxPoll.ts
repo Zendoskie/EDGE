@@ -169,6 +169,7 @@ export function useParentLinkInboxPoll(userId: string | undefined, role: string 
           saveSeen(userId, seen);
           if (role === "student") {
             void queryClient.invalidateQueries({ queryKey: ["student-parent-requests", userId] });
+            void queryClient.invalidateQueries({ queryKey: ["student-parent-request-history", userId] });
           } else {
             void queryClient.invalidateQueries({ queryKey: ["parent-latest-link", userId] });
             void queryClient.invalidateQueries({ queryKey: ["parent-approved-link", userId] });

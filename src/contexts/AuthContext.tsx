@@ -7,6 +7,7 @@ import {
   trackStudentLoginOnSignIn,
   trackStudentLogoutOnSignOut,
 } from '@/lib/auth-tracking';
+import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
 
 export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
@@ -27,6 +28,7 @@ interface AuthContextType {
       studentNumber?: string;
       isIrregular?: boolean;
       guardianStudentId?: string;
+      parentEmail?: string;
     }
   ) => Promise<{ user: User | null; session: Session | null }>;
   signOut: () => Promise<void>;
@@ -213,9 +215,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       studentNumber?: string;
       isIrregular?: boolean;
       guardianStudentId?: string;
+      parentEmail?: string;
     }
   ) => {
-    const { course, yearLevel, studentNumber, isIrregular, guardianStudentId } = extras || {};
+    const { course, yearLevel, studentNumber, isIrregular, guardianStudentId, parentEmail } = extras || {};
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -229,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           student_number: studentNumber,
           is_irregular: isIrregular ?? false,
           guardian_student_id: guardianStudentId,
+          parent_email: parentEmail,
         },
         emailRedirectTo: window.location.origin,
       },
@@ -244,10 +248,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (msg.includes('guardian_student_id_required')) {
         throw new Error('Student ID/No. is required for parent/guardian registration.');
       }
+      if (msg.includes('parent_email_not_set')) {
+        throw new Error('The student has not registered a parent email yet. Ask the student to add one in Settings first.');
+      }
+      if (msg.includes('parent_email_mismatch')) {
+        throw new Error('Your email does not match the parent email registered on the student\'s account. Please use the email the student provided.');
+      }
       throw error;
     }
 
     if (data.session) {
+      if (signupRole === 'student' && parentEmail?.trim()) {
+        sendParentLinkEmailBestEffort({
+          type: 'invitation',
+          to: parentEmail.trim(),
+          student_id_no: studentNumber?.trim() || undefined,
+        });
+      }
       await supabase.auth.signOut();
       return { user: data.user, session: null };
     }

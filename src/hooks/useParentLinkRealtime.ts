@@ -15,6 +15,7 @@ function invalidateParentLinkQueries(
 ) {
   if (role === "student") {
     void queryClient.invalidateQueries({ queryKey: ["student-parent-requests", userId] });
+    void queryClient.invalidateQueries({ queryKey: ["student-parent-request-history", userId] });
   } else if (role === "parent") {
     void queryClient.invalidateQueries({ queryKey: ["parent-latest-link", userId] });
     void queryClient.invalidateQueries({ queryKey: ["parent-approved-link", userId] });

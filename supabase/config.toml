@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.send-notification]
 verify_jwt = false
 
+[functions.send-parent-email]
+verify_jwt = false
+
 [functions.ai-coach]
 verify_jwt = false
 

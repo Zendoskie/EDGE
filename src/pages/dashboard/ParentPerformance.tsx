@@ -16,6 +16,7 @@ import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
+import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -128,7 +129,7 @@ export default function ParentPerformance() {
       const trimmed = studentIdNo.trim();
       if (!trimmed) throw new Error('Student ID is required.');
 
-      const { error } = await supabase.rpc('parent_request_student_link', {
+      const { data: linkId, error } = await supabase.rpc('parent_request_student_link', {
         p_student_id_no: trimmed,
       });
       if (error) {
@@ -145,8 +146,23 @@ export default function ParentPerformance() {
         if (msg.includes('student_id_required')) {
           throw new Error('Student ID is required.');
         }
+        if (msg.includes('parent_email_not_set')) {
+          throw new Error('This student has not registered a parent email yet. Ask the student to add one in Settings first.');
+        }
+        if (msg.includes('parent_email_mismatch')) {
+          throw new Error('Your email does not match the parent email registered on the student\'s account.');
+        }
         throw error;
       }
+
+      if (typeof linkId === 'string' && linkId) {
+        sendParentLinkEmailBestEffort({
+          type: 'request_received',
+          link_id: linkId,
+          student_id_no: trimmed,
+        });
+      }
+      return linkId;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });

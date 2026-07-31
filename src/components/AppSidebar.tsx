@@ -27,6 +27,7 @@ const studentItems = [
   { title: 'Attendance', url: '/dashboard/my-attendance', icon: CalendarCheck },
   { title: 'Scores', url: '/dashboard/my-scores', icon: FileText },
   { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },
+  { title: 'Parent Access', url: '/dashboard/parent-access', icon: UserCheck },
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 

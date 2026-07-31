@@ -30,6 +30,7 @@ import AdministrativeFeatures from "./pages/dashboard/AdministrativeFeatures";
 import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
 import AdminApprovals from "./pages/dashboard/AdminApprovals";
 import ParentPerformance from "./pages/dashboard/ParentPerformance";
+import ParentAccessRequests from "./pages/dashboard/ParentAccessRequests";
 import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
 import StudentFeedback from "./pages/dashboard/StudentFeedback";
 import NotFound from "./pages/NotFound";
@@ -67,6 +68,7 @@ const App = () => (
                 <Route path="reports" element={<Reports />} />
                 <Route path="admin/approvals" element={<AdminApprovals />} />
                 <Route path="parent-performance" element={<ParentPerformance />} />
+                <Route path="parent-access" element={<ParentAccessRequests />} />
                 <Route path="guidance-referrals" element={<GuidanceReferrals />} />
                 <Route path="feedback" element={<StudentFeedback />} />
               </Route>

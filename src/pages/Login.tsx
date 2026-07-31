@@ -51,6 +51,7 @@ export default function Login() {
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
+  const [signupParentEmail, setSignupParentEmail] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
@@ -117,25 +118,65 @@ export default function Login() {
           return;
         }
 
-        // Prevent duplicate Student ID before creating auth user.
-        // This avoids creating an account that later fails profile update.
-        const { data: existingStudentId, error: studentIdCheckError } = await supabase
-          .from('profiles')
-          .select('user_id')
-          .eq('student_id', studentNo)
-          .maybeSingle();
-        if (studentIdCheckError) {
-          toast.error('Unable to validate Student No. right now. Please try again.');
+        const parentEmail = signupParentEmail.trim();
+        const parentEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!parentEmailRegex.test(parentEmail)) {
+          toast.error('Please enter a valid Parent Gmail address.');
           return;
         }
-        if (existingStudentId) {
-          toast.error('This Student No. is already registered. Use a unique Student No.');
-          return;
+
+        // Prevent duplicate Student ID before creating auth user.
+        // Runs via an SECURITY DEFINER RPC because anon cannot SELECT profiles (RLS),
+        // and GoTrue hides the DB trigger's duplicate error behind a generic message.
+        const { error: studentIdCheckError } = await supabase.rpc('validate_student_signup', {
+          p_student_id_no: studentNo,
+          p_parent_email: parentEmail,
+        });
+        if (studentIdCheckError) {
+          const checkMsg = (studentIdCheckError.message || '').toLowerCase();
+          if (checkMsg.includes('student_id_in_use')) {
+            toast.error('This Student No. is already registered. Use a unique Student No.');
+            return;
+          }
+          if (checkMsg.includes('parent_email_required')) {
+            toast.error('Please enter a valid Parent Gmail address.');
+            return;
+          }
+          // Unexpected error: let the signup attempt proceed; the DB trigger still enforces the check.
         }
       }
       if (signupRole === 'parent' && !signupGuardianStudentId.trim()) {
         toast.error('Please enter the Student ID/No. of your child.');
         return;
+      }
+      if (signupRole === 'parent') {
+        // Pre-validate the parent email against the student's stored parent email.
+        // The DB trigger enforces this anyway, but GoTrue hides its message behind
+        // a generic "Database error saving new user", so we surface it here.
+        const { error: parentCheckError } = await supabase.rpc('validate_parent_signup', {
+          p_student_id_no: signupGuardianStudentId.trim(),
+          p_parent_email: signupEmail.trim(),
+        });
+        if (parentCheckError) {
+          const parentMsg = (parentCheckError.message || '').toLowerCase();
+          if (parentMsg.includes('student_not_found_for_guardian_link')) {
+            toast.error('No student account matches that Student ID/No. Please check and try again.');
+            return;
+          }
+          if (parentMsg.includes('parent_email_not_set')) {
+            toast.error('The student has not registered a parent email yet. Ask the student to add one in Settings first.');
+            return;
+          }
+          if (parentMsg.includes('parent_email_mismatch')) {
+            toast.error('This email does not match the parent email registered on the student\'s account. Use the email the student provided.');
+            return;
+          }
+          if (parentMsg.includes('parent_email_required')) {
+            toast.error('Please enter a valid email address.');
+            return;
+          }
+          // Unexpected error: let the signup attempt proceed; the trigger still enforces the check.
+        }
       }
 
       // Check if student is irregular based on year selection
@@ -151,6 +192,7 @@ export default function Login() {
               yearLevel: yearLevelForDb || undefined,
               studentNumber: signupStudentNumber.trim() || undefined,
               isIrregular: isIrregular,
+              parentEmail: signupParentEmail.trim() || undefined,
             }
           : signupRole === 'parent'
             ? {
@@ -325,6 +367,20 @@ export default function Login() {
                               title="Use format: 22-1-7-0008"
                             />
                           </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-parent-email">Parent Gmail</Label>
+                          <Input
+                            id="signup-parent-email"
+                            type="email"
+                            value={signupParentEmail}
+                            onChange={e => setSignupParentEmail(e.target.value)}
+                            required
+                            placeholder="parent@gmail.com"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Your parent/guardian will use this Gmail to create a linked parent account.
+                          </p>
                         </div>
                       </>
                     )}
