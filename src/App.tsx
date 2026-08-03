@@ -29,11 +29,15 @@ import EnhancedUX from "./pages/dashboard/EnhancedUX";
 import AdministrativeFeatures from "./pages/dashboard/AdministrativeFeatures";
 import EnhancedSecurity from "./pages/dashboard/EnhancedSecurity";
 import AdminApprovals from "./pages/dashboard/AdminApprovals";
+import AdminStaffRequests from "./pages/dashboard/AdminStaffRequests";
+import AdminStaffInvitations from "./pages/dashboard/AdminStaffInvitations";
+import AdminUserManagement from "./pages/dashboard/AdminUserManagement";
 import ParentPerformance from "./pages/dashboard/ParentPerformance";
 import ParentAccessRequests from "./pages/dashboard/ParentAccessRequests";
 import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
 import StudentFeedback from "./pages/dashboard/StudentFeedback";
 import NotFound from "./pages/NotFound";
+import RequestStaffAccount from "./pages/RequestStaffAccount";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +53,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/request-staff-account" element={<RequestStaffAccount />} />
               <Route path="/dashboard" element={<DashboardLayout />}>
                 <Route index element={<DashboardHome />} />
                 <Route path="subjects" element={<Subjects />} />
@@ -66,7 +71,10 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
                 <Route path="programs" element={<Programs />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="admin/user-management" element={<AdminUserManagement />} />
                 <Route path="admin/approvals" element={<AdminApprovals />} />
+                <Route path="admin/staff-requests" element={<AdminStaffRequests />} />
+                <Route path="admin/staff-invitations" element={<AdminStaffInvitations />} />
                 <Route path="parent-performance" element={<ParentPerformance />} />
                 <Route path="parent-access" element={<ParentAccessRequests />} />
                 <Route path="guidance-referrals" element={<GuidanceReferrals />} />

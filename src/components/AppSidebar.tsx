@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck,
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { NavLink } from '@/components/NavLink';
@@ -42,8 +42,11 @@ const guidanceItems = [
 ];
 
 const adminItems = [
-  { title: 'User approvals', url: '/dashboard/admin/approvals', icon: UserCheck },
-  { title: 'Settings', url: '/dashboard/settings', icon: Settings },
+  { title: 'User Management',   url: '/dashboard/admin/user-management',    icon: Users },
+  { title: 'User Approvals',    url: '/dashboard/admin/approvals',          icon: UserCheck },
+  { title: 'Staff Requests',    url: '/dashboard/admin/staff-requests',     icon: ClipboardList },
+  { title: 'Staff Invitations', url: '/dashboard/admin/staff-invitations',  icon: Mail },
+  { title: 'Settings',          url: '/dashboard/settings',                 icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -101,7 +104,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
-                      end={item.url === '/dashboard' || item.url === '/dashboard/admin/approvals'}
+                      end={item.url === '/dashboard' || item.url.startsWith('/dashboard/admin/')}
                       className="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/55 transition-all duration-200 ease-in-out interactive-lift group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-sm border border-sidebar-border/60"
                     >

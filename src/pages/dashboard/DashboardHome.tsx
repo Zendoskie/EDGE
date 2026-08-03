@@ -3,6 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Skeleton } from '@/components/ui/skeleton';
 import InstructorDashboard from './InstructorDashboard';
 import StudentDashboard from './StudentDashboard';
+import AdminDashboard from './AdminDashboard';
 
 export default function DashboardHome() {
   const { user, role, loading } = useAuth();
@@ -20,7 +21,7 @@ export default function DashboardHome() {
     );
   }
 
-  if (role === 'admin') return <Navigate to="/dashboard/admin/approvals" replace />;
+  if (role === 'admin') return <AdminDashboard />;
   if (role === 'guidance_counselor') return <Navigate to="/dashboard/guidance-referrals" replace />;
   if (role === 'parent') return <Navigate to="/dashboard/parent-performance" replace />;
   if (role === 'instructor') return <InstructorDashboard />;

@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Shield, BookOpen } from 'lucide-react';
+import { Shield, BookOpen, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
@@ -47,7 +48,7 @@ export default function Login() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
-  const [signupRole, setSignupRole] = useState<'student' | 'instructor' | 'parent' | 'guidance_counselor'>('student');
+  const [signupRole, setSignupRole] = useState<'student' | 'parent'>('student');
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
@@ -262,6 +263,28 @@ export default function Login() {
                       {loading ? 'Signing in...' : 'Sign In'}
                     </Button>
                   </form>
+
+                  <div className="mt-6">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-border/60" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">Staff Access</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4 text-center space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Are you an Instructor or Guidance Counselor?
+                      </p>
+                      <Button variant="outline" className="w-full" asChild>
+                        <Link to="/request-staff-account">
+                          <Users className="w-4 h-4 mr-2" />
+                          Request Staff Account
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="signup" className="mt-0">
@@ -288,7 +311,7 @@ export default function Login() {
                     </div>
                     <div className="space-y-2">
                       <Label>Role</Label>
-                      <Select value={signupRole} onValueChange={(v: 'student' | 'instructor' | 'parent' | 'guidance_counselor') => setSignupRole(v)}>
+                      <Select value={signupRole} onValueChange={(v: 'student' | 'parent') => setSignupRole(v)}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -296,14 +319,8 @@ export default function Login() {
                           <SelectItem value="student">
                             <span className="flex items-center gap-2"><BookOpen className="w-4 h-4" /> Student</span>
                           </SelectItem>
-                          <SelectItem value="instructor">
-                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Instructor</span>
-                          </SelectItem>
                           <SelectItem value="parent">
-                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Parent / Guardian</span>
-                          </SelectItem>
-                          <SelectItem value="guidance_counselor">
-                            <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> Guidance Counselor</span>
+                            <span className="flex items-center gap-2"><Users className="w-4 h-4" /> Parent / Guardian</span>
                           </SelectItem>
                         </SelectContent>
                       </Select>

@@ -14,6 +14,7 @@ import { useEngagementSummaryRealtime } from "@/hooks/useEngagementSummaryRealti
 import { useStudentSessionTracking } from "@/hooks/useStudentSessionTracking";
 import { useEngagementFeedbackRealtime } from "@/hooks/useEngagementFeedbackRealtime";
 import { useAdminPendingUsersPoll } from "@/hooks/useAdminPendingUsersPoll";
+import { useAdminStaffRequestsPoll } from "@/hooks/useAdminStaffRequestsPoll";
 import { useAccountApprovalNotification } from "@/hooks/useAccountApprovalNotification";
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
@@ -98,6 +99,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   useStudentSessionTracking();
   useEngagementFeedbackRealtime(userId, role ?? undefined);
   useAdminPendingUsersPoll(userId, role ?? undefined);
+  useAdminStaffRequestsPoll(userId, role ?? undefined);
   useAccountApprovalNotification(userId, role ?? undefined);
 
   const { data: coachContext } = useQuery<StudentPredictionContext>({
