@@ -7,7 +7,10 @@ import {
   trackStudentLoginOnSignIn,
   trackStudentLogoutOnSignOut,
 } from '@/lib/auth-tracking';
-import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import {
+  notifyParentOnRegistrationBestEffort,
+  notifyStudentOnParentRegistrationBestEffort,
+} from '@/lib/invoke-parent-email';
 
 export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
@@ -242,29 +245,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
         throw new Error('This Student ID/No. is already in use. Please use your own unique Student ID.');
       }
-      if (msg.includes('student_not_found_for_guardian_link')) {
-        throw new Error('No student account matches that Student ID/No. Please check and try again.');
-      }
-      if (msg.includes('guardian_student_id_required')) {
-        throw new Error('Student ID/No. is required for parent/guardian registration.');
-      }
-      if (msg.includes('parent_email_not_set')) {
-        throw new Error('The student has not registered a parent email yet. Ask the student to add one in Settings first.');
-      }
-      if (msg.includes('parent_email_mismatch')) {
-        throw new Error('Your email does not match the parent email registered on the student\'s account. Please use the email the student provided.');
+      // For parent registration, surface one generic message for all credential-mismatch errors.
+      if (signupRole === 'parent' && (
+        msg.includes('student_not_found_for_guardian_link') ||
+        msg.includes('guardian_student_id_required') ||
+        msg.includes('parent_email_not_set') ||
+        msg.includes('parent_email_mismatch')
+      )) {
+        throw new Error('Student ID or Parent Gmail does not match our records.');
       }
       throw error;
     }
 
+    // Send parent invitation email to parent immediately after successful student registration.
+    if (signupRole === 'student' && parentEmail?.trim()) {
+      notifyParentOnRegistrationBestEffort({
+        student_email: email,
+        parent_email: parentEmail.trim(),
+        student_name: fullName || undefined,
+        student_id_no: studentNumber?.trim() || undefined,
+      });
+    }
+
+    // Notify the student by email when a parent registers against their account.
+    // The in-app notification is handled automatically by Supabase Realtime (useParentLinkRealtime).
+    if (signupRole === 'parent' && email?.trim()) {
+      notifyStudentOnParentRegistrationBestEffort({ parent_email: email.trim() });
+    }
+
     if (data.session) {
-      if (signupRole === 'student' && parentEmail?.trim()) {
-        sendParentLinkEmailBestEffort({
-          type: 'invitation',
-          to: parentEmail.trim(),
-          student_id_no: studentNumber?.trim() || undefined,
-        });
-      }
       await supabase.auth.signOut();
       return { user: data.user, session: null };
     }

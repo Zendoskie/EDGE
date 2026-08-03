@@ -52,6 +52,7 @@ export default function Login() {
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
   const [signupParentEmail, setSignupParentEmail] = useState('');
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
@@ -145,12 +146,16 @@ export default function Login() {
           // Unexpected error: let the signup attempt proceed; the DB trigger still enforces the check.
         }
       }
-      if (signupRole === 'parent' && !signupGuardianStudentId.trim()) {
-        toast.error('Please enter the Student ID/No. of your child.');
-        return;
-      }
       if (signupRole === 'parent') {
-        // Pre-validate the parent email against the student's stored parent email.
+        if (!signupGuardianStudentId.trim()) {
+          toast.error('Student ID or Parent Gmail does not match our records.');
+          return;
+        }
+        if (signupPassword !== signupConfirmPassword) {
+          toast.error('Passwords do not match.');
+          return;
+        }
+        // Pre-validate the parent Gmail against the student's stored parent email.
         // The DB trigger enforces this anyway, but GoTrue hides its message behind
         // a generic "Database error saving new user", so we surface it here.
         const { error: parentCheckError } = await supabase.rpc('validate_parent_signup', {
@@ -158,24 +163,8 @@ export default function Login() {
           p_parent_email: signupEmail.trim(),
         });
         if (parentCheckError) {
-          const parentMsg = (parentCheckError.message || '').toLowerCase();
-          if (parentMsg.includes('student_not_found_for_guardian_link')) {
-            toast.error('No student account matches that Student ID/No. Please check and try again.');
-            return;
-          }
-          if (parentMsg.includes('parent_email_not_set')) {
-            toast.error('The student has not registered a parent email yet. Ask the student to add one in Settings first.');
-            return;
-          }
-          if (parentMsg.includes('parent_email_mismatch')) {
-            toast.error('This email does not match the parent email registered on the student\'s account. Use the email the student provided.');
-            return;
-          }
-          if (parentMsg.includes('parent_email_required')) {
-            toast.error('Please enter a valid email address.');
-            return;
-          }
-          // Unexpected error: let the signup attempt proceed; the trigger still enforces the check.
+          toast.error('Student ID or Parent Gmail does not match our records.');
+          return;
         }
       }
 
@@ -385,19 +374,33 @@ export default function Login() {
                       </>
                     )}
                     {signupRole === 'parent' && (
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-guardian-student-id">Student ID/No.</Label>
-                        <Input
-                          id="signup-guardian-student-id"
-                          value={signupGuardianStudentId}
-                          onChange={e => setSignupGuardianStudentId(e.target.value)}
-                          required
-                          placeholder="Enter the student's ID number"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Use your student&apos;s ID number. The student must approve your request in their Settings.
-                        </p>
-                      </div>
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-confirm-password">Confirm Password</Label>
+                          <PasswordInput
+                            id="signup-confirm-password"
+                            autoComplete="new-password"
+                            value={signupConfirmPassword}
+                            onChange={e => setSignupConfirmPassword(e.target.value)}
+                            required
+                            minLength={6}
+                            placeholder="••••••••"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-guardian-student-id">Student ID</Label>
+                          <Input
+                            id="signup-guardian-student-id"
+                            value={signupGuardianStudentId}
+                            onChange={e => setSignupGuardianStudentId(e.target.value)}
+                            required
+                            placeholder="e.g. 22-1-7-0008"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Enter your child&apos;s Student ID. Your Gmail must match the email the student registered as their Parent Gmail.
+                          </p>
+                        </div>
+                      </>
                     )}
                     <Button type="submit" className="w-full" disabled={loading}>
                       {loading ? 'Creating account...' : 'Create Account'}

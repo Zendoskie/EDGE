@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { UserCheck, UserX, RefreshCw, Shield } from 'lucide-react';
 import type { AppRole } from '@/hooks/useAuth';
+import { sendAccountStatusEmailBestEffort } from '@/lib/invoke-account-status-email';
 
 type PendingRow = {
   user_id: string;
@@ -95,6 +96,8 @@ export default function AdminApprovals() {
       });
       if (error) throw error;
       toast.success(status === 'approved' ? 'User approved' : 'User rejected');
+      // Notify instructor / guidance counselor by email (best-effort — never blocks the action).
+      sendAccountStatusEmailBestEffort({ user_id: userId, status });
       await load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Update failed');

@@ -61,38 +61,70 @@ function buildEmail(
   const studentIdNo = opts.studentIdNo?.trim();
 
   switch (type) {
-    case "invitation":
+    case "invitation": {
+      const nameDisplay = studentName?.trim() || "Your child";
+      const idLine = studentIdNo ? `<p><strong>Student ID/No.:</strong> ${studentIdNo}</p>` : "";
+      const idInstruction = studentIdNo
+        ? ` Enter your child's Student ID/No. when prompted: <strong>${studentIdNo}</strong>.`
+        : "";
       return {
         subject: "EDGE: Create your parent/guardian account",
         html: `<p>Hello,</p>
-<p>Your child registered on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong> and listed you as a parent/guardian.</p>
-${studentIdNo ? `<p>When creating your parent account, use your child's Student ID/No.: <strong>${studentIdNo}</strong>.</p>` : ""}
-<p>After registering, the student will be asked to approve your access request before you can view their academic information.</p>
-<p>Sign up at the EDGE platform: <a href="${appUrl}">Create parent account</a></p>
+<p><strong>${nameDisplay}</strong> has registered on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong> and listed you as their parent/guardian.</p>
+${idLine}
+<p>To view your child's academic information, please create a Parent account on the EDGE platform.</p>
+<p><strong>How to create a Parent account:</strong></p>
+<ol>
+  <li>Go to: <a href="${appUrl}">${appUrl}</a></li>
+  <li>Click <strong>Sign Up</strong> and select <strong>Parent / Guardian</strong> as your role.</li>
+  <li>Register using this email address.${idInstruction}</li>
+  <li>Once registered, ${nameDisplay} will be asked to approve your access request before you can view their academic information.</li>
+</ol>
 <p>– The EDGE Team</p>`,
       };
+    }
     case "request_received":
       return {
-        subject: "EDGE: New parent/guardian access request",
+        subject: "EDGE: Parent/guardian access request",
         html: `<p>Hi ${studentName},</p>
-<p><strong>${parentName}</strong> has requested permission to view your academic information on the EDGE platform.</p>
-<p>Open <strong>Parent Access Requests</strong> in your dashboard to approve or reject this request.</p>
+<p>Your registered parent/guardian <strong>${parentName}</strong> is requesting access to your academic records on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong>.</p>
+<p><strong>To approve or reject this request:</strong></p>
+<ol>
+  <li>Log in to EDGE: <a href="${appUrl}">${appUrl}</a></li>
+  <li>Go to <strong>Parent Access Requests</strong> in the sidebar.</li>
+  <li>Review and approve or reject the request.</li>
+</ol>
+<p>No academic information will be shared until you approve.</p>
 <p>– The EDGE Team</p>`,
       };
     case "approved":
       return {
         subject: "EDGE: Access request approved",
         html: `<p>Hi ${parentName},</p>
-<p>Your request to access <strong>${studentName}</strong>'s academic information has been <strong>approved</strong>.</p>
-<p>You can now view their performance from the <strong>Student Performance</strong> page.</p>
+<p>Your request to access <strong>${studentName}</strong>'s academic records has been <strong>approved</strong>.</p>
+<p>You can now view the following from the <strong>Student Performance</strong> page:</p>
+<ul>
+  <li>Student Profile</li>
+  <li>Grades and Activity Scores</li>
+  <li>Attendance Records</li>
+  <li>Risk Analysis</li>
+  <li>AI Coaching Recommendations</li>
+</ul>
+<p>Log in and go to <strong>Student Performance</strong> to view academic information: <a href="${appUrl}">${appUrl}</a></p>
 <p>– The EDGE Team</p>`,
       };
     case "rejected":
       return {
         subject: "EDGE: Access request rejected",
         html: `<p>Hi ${parentName},</p>
-<p>Your request to access <strong>${studentName}</strong>'s academic information was <strong>not approved</strong> by the student.</p>
-<p>You may submit a new request at a later time.</p>
+<p>Your request to access <strong>${studentName}</strong>'s academic records was <strong>rejected</strong> by the student.</p>
+<p>If you believe this was a mistake, you can submit a new request:</p>
+<ol>
+  <li>Log in to EDGE: <a href="${appUrl}">${appUrl}</a></li>
+  <li>Go to <strong>Student Performance</strong> in the sidebar.</li>
+  <li>Click <strong>Request Again</strong> to re-submit your access request.</li>
+</ol>
+<p>The student will be notified and can approve or reject the new request.</p>
 <p>– The EDGE Team</p>`,
       };
   }

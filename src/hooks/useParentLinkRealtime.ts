@@ -65,8 +65,9 @@ export function useParentLinkRealtime(userId: string | undefined, role: string |
 
       const linkId = String(row.id ?? "");
       const studentUserId = String(row.student_user_id ?? "");
+      const requestedAt = typeof row.requested_at === "string" ? row.requested_at : undefined;
       const studentName = studentUserId ? await fetchProfileName(studentUserId) : "the student";
-      const msg = parentLinkDecisionNotification({ linkId, status, studentName });
+      const msg = parentLinkDecisionNotification({ linkId, status, studentName, requestedAt });
       if (msg) addRef.current(msg);
       invalidateParentLinkQueries(queryClient, userId, role);
     };
@@ -97,10 +98,11 @@ export function useParentLinkRealtime(userId: string | undefined, role: string |
         },
         (payload) => {
           const row = payload.new as Record<string, unknown> | undefined;
-          const oldRow = payload.old as Record<string, unknown> | undefined;
-          const prevStatus = normalizeParentLinkStatus(oldRow?.status);
-          const nextStatus = normalizeParentLinkStatus(row?.status);
-          if (prevStatus !== "pending" && nextStatus === "pending") {
+          // Supabase default REPLICA IDENTITY only sends PK in the old payload,
+          // so prevStatus is unreliable. Fire whenever the new status is 'pending' —
+          // initial creation is an INSERT (handled above), so any UPDATE to 'pending'
+          // must be a re-request after rejection.
+          if (normalizeParentLinkStatus(row?.status) === "pending") {
             void handleInsertForStudent(row);
           }
         },

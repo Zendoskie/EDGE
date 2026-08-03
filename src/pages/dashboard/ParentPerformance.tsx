@@ -583,22 +583,22 @@ export default function ParentPerformance() {
             <div>
               <h1 className="text-2xl font-display font-bold">Student Performance</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Waiting for the student to approve your access request.
+                Your account is pending student approval.
               </p>
             </div>
           </div>
         </section>
         <Card className="bg-card/90">
           <CardHeader>
-            <CardTitle className="text-lg">Waiting for Approval</CardTitle>
+            <CardTitle className="text-lg">Pending Student Approval</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Badge variant="secondary" className="capitalize">pending</Badge>
+            <Badge variant="secondary">Pending Approval</Badge>
             <p className="text-sm text-muted-foreground">
-              Student ID/No.: {latestLink.student_id_no}
+              Your access request has been sent to the student. No academic information is available until the student approves your request.
             </p>
             <p className="text-sm text-muted-foreground">
-              Ask the student to open Settings and approve your parent/guardian request.
+              The student will receive a notification to review your request.
             </p>
           </CardContent>
         </Card>

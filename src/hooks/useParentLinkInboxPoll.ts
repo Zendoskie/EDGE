@@ -123,13 +123,19 @@ export function useParentLinkInboxPoll(userId: string | undefined, role: string 
           const status = String((row as { status?: string }).status ?? "pending");
           const parentUserId = String((row as { parent_user_id?: string }).parent_user_id ?? "");
           const studentUserId = String((row as { student_user_id?: string }).student_user_id ?? "");
+          // Use requested_at to differentiate request cycles; prevents duplicate notification
+          // suppression when a parent re-requests and is rejected a second time.
+          const requestedAt = String((row as { requested_at?: string }).requested_at ?? "");
           const prev = seen[id];
 
           const parentName = parentUserId ? await getName(parentUserId) : "A parent/guardian";
           const studentName = studentUserId ? await getName(studentUserId) : "the student";
 
+          // Key includes requestedAt so that re-request cycles produce distinct seen entries.
+          const seenValue = `${status}:${requestedAt}`;
+
           if (prev === undefined) {
-            seen[id] = status;
+            seen[id] = seenValue;
             if (!isInitialSeed) {
               const msg = notificationForStatusChange(role, undefined, status, {
                 linkId: id,
@@ -139,7 +145,7 @@ export function useParentLinkInboxPoll(userId: string | undefined, role: string 
               if (msg) {
                 addRef.current({
                   ...msg,
-                  dedupeKey: `parent-link-poll:${id}:${status}:new`,
+                  dedupeKey: `parent-link-poll:${id}:${status}:${requestedAt}:new`,
                 });
               }
             }
@@ -147,8 +153,10 @@ export function useParentLinkInboxPoll(userId: string | undefined, role: string 
             continue;
           }
 
-          if (prev !== status) {
-            const msg = notificationForStatusChange(role, prev, status, {
+          if (prev !== seenValue) {
+            // Extract the previously stored status (before the colon) for transition detection.
+            const prevStatus = prev?.split(":")[0];
+            const msg = notificationForStatusChange(role, prevStatus, status, {
               linkId: id,
               parentName,
               studentName,
@@ -156,10 +164,10 @@ export function useParentLinkInboxPoll(userId: string | undefined, role: string 
             if (msg) {
               addRef.current({
                 ...msg,
-                dedupeKey: `parent-link-poll:${id}:${status}`,
+                dedupeKey: `parent-link-poll:${id}:${status}:${requestedAt}`,
               });
             }
-            seen[id] = status;
+            seen[id] = seenValue;
             changed = true;
           }
         }
