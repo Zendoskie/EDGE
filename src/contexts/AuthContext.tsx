@@ -240,10 +240,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailRedirectTo: window.location.origin,
       },
     });
+
     if (error) {
       const msg = (error.message || '').toLowerCase();
+      const code = (error as { code?: string }).code ?? '';
       if (msg.includes('profiles_student_id_unique') || msg.includes('duplicate key value')) {
         throw new Error('This Student ID/No. is already in use. Please use your own unique Student ID.');
+      }
+      // Email already has an account — give an actionable message instead of the raw Supabase string.
+      if (code === 'user_already_exists' || msg.includes('user already registered')) {
+        throw new Error(
+          'This email already has an account. If you registered before, please sign in. Contact an administrator if you need help accessing your account.'
+        );
       }
       // For parent registration, surface one generic message for all credential-mismatch errors.
       if (signupRole === 'parent' && (

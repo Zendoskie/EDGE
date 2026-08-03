@@ -127,7 +127,7 @@ export default function Login() {
         }
 
         // Prevent duplicate Student ID before creating auth user.
-        // Runs via an SECURITY DEFINER RPC because anon cannot SELECT profiles (RLS),
+        // Runs via a SECURITY DEFINER RPC because anon cannot SELECT profiles (RLS),
         // and GoTrue hides the DB trigger's duplicate error behind a generic message.
         const { error: studentIdCheckError } = await supabase.rpc('validate_student_signup', {
           p_student_id_no: studentNo,
@@ -158,11 +158,19 @@ export default function Login() {
         // Pre-validate the parent Gmail against the student's stored parent email.
         // The DB trigger enforces this anyway, but GoTrue hides its message behind
         // a generic "Database error saving new user", so we surface it here.
+        // Also detects whether the email is already registered (zombie or other role).
         const { error: parentCheckError } = await supabase.rpc('validate_parent_signup', {
           p_student_id_no: signupGuardianStudentId.trim(),
           p_parent_email: signupEmail.trim(),
         });
         if (parentCheckError) {
+          const pMsg = (parentCheckError.message || '').toLowerCase();
+          if (pMsg.includes('parent_email_already_registered')) {
+            toast.error(
+              'This email already has an account. If you have a parent account, please sign in. Otherwise contact an administrator.'
+            );
+            return;
+          }
           toast.error('Student ID or Parent Gmail does not match our records.');
           return;
         }
