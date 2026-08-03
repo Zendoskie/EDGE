@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   RefreshCw, ClipboardList, Search, UserCheck, UserX, Eye,
-  ChevronDown,
+  Link2, Copy, X, AlertTriangle,
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 
@@ -83,6 +83,9 @@ const FILTER_TABS: { value: FilterTab; label: string }[] = [
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
+// Pending invitation links shown when email sending is unavailable (dev mode).
+type PendingLink = { id: string; name: string; email: string; url: string };
+
 export default function AdminStaffRequests() {
   const { role, user } = useAuth();
 
@@ -102,6 +105,9 @@ export default function AdminStaffRequests() {
   const [rejectTarget, setRejectTarget]   = useState<StaffRequest | null>(null);
   const [rejectReason, setRejectReason]   = useState('');
   const [rejectBusy, setRejectBusy]       = useState(false);
+
+  // Invitation links surfaced when the email provider is unavailable.
+  const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
 
   // ── Data loading ─────────────────────────────────────────────────────────────
 
@@ -171,7 +177,6 @@ export default function AdminStaffRequests() {
     if (busyId) return;
     setBusyId(row.id);
     try {
-      // Atomically approves the request and creates the invitation (returns invitation id + token).
       const { data, error } = await supabase.rpc(
         'admin_review_staff_request' as any,
         { p_request_id: row.id, p_status: 'approved' },
@@ -179,11 +184,6 @@ export default function AdminStaffRequests() {
       if (error) throw error;
 
       const invitationId = data as string | null;
-      // #region agent log
-      fetch('http://127.0.0.1:7856/ingest/329beaee-e1be-431d-b955-54c3ff2257dc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5efc3d'},body:JSON.stringify({sessionId:'5efc3d',location:'AdminStaffRequests.tsx:approve',message:'RPC result',data:{dataRaw:data,dataType:typeof data,invitationId},hypothesisId:'H-D',timestamp:Date.now()})}).catch(()=>{});
-      console.log('[DBG-APPROVE rpc]', { dataRaw: data, dataType: typeof data, invitationId });
-      // #endregion
-      toast.success(`${row.full_name}'s request approved. Sending invitation email…`);
 
       if (invitationId) {
         try {
@@ -191,27 +191,30 @@ export default function AdminStaffRequests() {
           toast.success(`Invitation email sent to ${row.email}.`);
         } catch (emailErr: unknown) {
           const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-          // Fetch the token so the admin can copy the link manually as a fallback.
+
+          // Fetch the token so the link can be surfaced in the UI.
           const { data: inv } = await (supabase as any)
             .from('staff_invitations')
             .select('token')
             .eq('id', invitationId)
             .maybeSingle();
+
           const inviteUrl = inv?.token
             ? `${window.location.origin}/request-staff-account?token=${inv.token}`
             : null;
 
-          toast.warning(
-            `Invitation created but email failed to send: ${msg}` +
-            (inviteUrl ? ' — Copy the link from Staff Invitations and share it manually.' : ''),
-            { duration: 10000 },
-          );
+          toast.warning(`Email failed: ${msg}`, { duration: 8000 });
 
           if (inviteUrl) {
-            navigator.clipboard.writeText(inviteUrl).catch(() => {});
-            toast.info('Invitation link copied to clipboard.', { duration: 5000 });
+            setPendingLinks((prev) => {
+              const exists = prev.some((l) => l.id === invitationId);
+              if (exists) return prev;
+              return [...prev, { id: invitationId, name: row.full_name, email: row.email, url: inviteUrl }];
+            });
           }
         }
+      } else {
+        toast.success(`${row.full_name}'s request approved.`);
       }
 
       await load();
@@ -263,6 +266,62 @@ export default function AdminStaffRequests() {
 
   return (
     <div className="mx-auto min-w-0 max-w-full space-y-5 sm:space-y-6">
+
+      {/* ── Dev-mode: invitation links when email is unavailable ─────────────── */}
+      {pendingLinks.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-amber-500">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Invitation links — email delivery unavailable
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The invitation was created successfully but the email could not be sent.
+            Copy the link below and share it with the staff member directly.
+          </p>
+          <ul className="space-y-2 pt-1">
+            {pendingLinks.map((link) => (
+              <li
+                key={link.id}
+                className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card/80 p-3 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-foreground">
+                    {link.name} · <span className="text-muted-foreground">{link.email}</span>
+                  </p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <Link2 className="h-3 w-3 shrink-0 text-primary" />
+                    <p className="truncate font-mono text-[11px] text-primary">{link.url}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(link.url).catch(() => {});
+                      toast.success('Link copied to clipboard.');
+                    }}
+                  >
+                    <Copy className="h-3 w-3" /> Copy Link
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setPendingLinks((prev) => prev.filter((l) => l.id !== link.id))}
+                    aria-label="Dismiss"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

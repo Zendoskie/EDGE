@@ -17,7 +17,7 @@ import {
 import { toast } from 'sonner';
 import {
   RefreshCw, Mail, Search, Eye, Send, Ban, Clock, CheckCircle2,
-  AlertTriangle, XCircle,
+  AlertTriangle, XCircle, Copy, Link2, X,
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 
@@ -108,6 +108,10 @@ export default function AdminStaffInvitations() {
 
   const [viewRow, setViewRow]   = useState<StaffInvitation | null>(null);
 
+  // Invitation links shown when email delivery is unavailable (dev / fallback mode).
+  type PendingLink = { id: string; email: string; url: string };
+  const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
+
   // ── Load ──────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
@@ -190,63 +194,73 @@ export default function AdminStaffInvitations() {
   // ── Actions ───────────────────────────────────────────────────────────────────
 
   const handleResend = async (inv: StaffInvitation) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7856/ingest/329beaee-e1be-431d-b955-54c3ff2257dc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5efc3d'},body:JSON.stringify({sessionId:'5efc3d',location:'AdminStaffInvitations.tsx:resend-entry',message:'handleResend called',data:{invId:inv.id,invStatus:inv.status,currentBusyId:busyId},hypothesisId:'H-E',timestamp:Date.now()})}).catch(()=>{});
-    console.log('[DBG-RESEND entry]', { invId: inv.id, invStatus: inv.status, currentBusyId: busyId });
-    // #endregion
     if (busyId) return;
     setBusyId(inv.id);
     try {
-      // Regenerate token + extend expiry via RPC.
-      const { data: rpcData, error: rpcErr } = await supabase.rpc(
-        'resend_staff_invitation' as any,
-        { p_invitation_id: inv.id },
-      );
-      // #region agent log — placed BEFORE throw so error is always captured
-      fetch('http://127.0.0.1:7856/ingest/329beaee-e1be-431d-b955-54c3ff2257dc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5efc3d'},body:JSON.stringify({sessionId:'5efc3d',location:'AdminStaffInvitations.tsx:resend-rpc',message:'resend_staff_invitation RPC result',data:{rpcDataRaw:rpcData,rpcErrCode:rpcErr?.code,rpcErrMsg:rpcErr?.message,rpcErrDetails:rpcErr?.details},hypothesisId:'H-E',timestamp:Date.now()})}).catch(()=>{});
-      console.log('[DBG-RESEND rpc]', { rpcData, rpcErrCode: rpcErr?.code, rpcErrMsg: rpcErr?.message, rpcErrDetails: rpcErr?.details, rpcErrHint: (rpcErr as any)?.hint });
-      // #endregion
-      if (rpcErr) throw rpcErr;
-      // RPC returns RETURNS TABLE → data is an array; grab the first row's token.
-      const newToken: string | null = (rpcData as any)?.[0]?.token ?? null;
+      // Generate a new 64-char hex token client-side (crypto.randomUUID is CSPRNG).
+      // This bypasses the resend_staff_invitation RPC and updates the row directly
+      // using the admin's authenticated session + the "Admins can manage staff
+      // invitations" UPDATE RLS policy — no SECURITY DEFINER complications.
+      const newToken = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+      const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Refresh the list so the new expiry/token are shown.
+      const { error: updateError } = await (supabase as any)
+        .from('staff_invitations')
+        .update({
+          token:       newToken,
+          status:      'pending',
+          expires_at:  newExpiry,
+          accepted_at: null,
+        })
+        .eq('id', inv.id)
+        .neq('status', 'accepted');
+
+      if (updateError) {
+        throw new Error(updateError.message ?? 'Failed to refresh invitation token');
+      }
+
+      const inviteUrl = `${window.location.origin}/request-staff-account?token=${newToken}`;
+
       await load();
 
-      // Attempt to send the email.
       try {
         await sendStaffInvitation(inv.id);
         toast.success(`Invitation resent to ${inv.email}.`);
       } catch (emailErr: unknown) {
         const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-
-        // Build fallback URL from the new token returned by the RPC, or re-fetch.
-        let fallbackUrl: string | null = null;
-        if (newToken) {
-          fallbackUrl = `${window.location.origin}/request-staff-account?token=${newToken}`;
-        } else {
-          const { data: fresh } = await (supabase as any)
-            .from('staff_invitations')
-            .select('token')
-            .eq('id', inv.id)
-            .maybeSingle();
-          if (fresh?.token) {
-            fallbackUrl = `${window.location.origin}/request-staff-account?token=${fresh.token}`;
-          }
-        }
-
-        toast.warning(
-          `Token refreshed but email failed: ${msg}` +
-          (fallbackUrl ? ' — Invite link copied to clipboard.' : ''),
-          { duration: 10000 },
-        );
-
-        if (fallbackUrl) {
-          navigator.clipboard.writeText(fallbackUrl).catch(() => {});
-        }
+        toast.warning(`Token refreshed. Email failed: ${msg}`, { duration: 8000 });
+        setPendingLinks((prev) => {
+          const exists = prev.some((l) => l.id === inv.id);
+          if (exists) return prev.map((l) => l.id === inv.id ? { ...l, url: inviteUrl } : l);
+          return [...prev, { id: inv.id, email: inv.email, url: inviteUrl }];
+        });
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Resend failed');
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Resend failed: ${msg}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCopyLink = async (inv: StaffInvitation) => {
+    if (busyId) return;
+    setBusyId(`copy-${inv.id}`);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('staff_invitations')
+        .select('token')
+        .eq('id', inv.id)
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!data?.token) throw new Error('Token not found for this invitation');
+
+      const url = `${window.location.origin}/request-staff-account?token=${data.token}`;
+      await navigator.clipboard.writeText(url);
+      toast.success('Invitation link copied to clipboard.');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to copy link');
     } finally {
       setBusyId(null);
     }
@@ -272,12 +286,14 @@ export default function AdminStaffInvitations() {
     }
   };
 
-  // Actions are available based on effective status
   function canResend(inv: StaffInvitation): boolean {
     return inv.status !== 'accepted';
   }
   function canCancel(inv: StaffInvitation): boolean {
     return inv.status !== 'accepted' && inv.status !== 'revoked';
+  }
+  function canCopyLink(inv: StaffInvitation): boolean {
+    return inv.status === 'pending';
   }
 
   // ── Guard ─────────────────────────────────────────────────────────────────────
@@ -288,6 +304,60 @@ export default function AdminStaffInvitations() {
 
   return (
     <div className="mx-auto min-w-0 max-w-full space-y-5 sm:space-y-6">
+
+      {/* ── Dev-mode: invitation links when email is unavailable ─────────────── */}
+      {pendingLinks.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-amber-500">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Invitation links — email delivery unavailable
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The token was refreshed but the email could not be sent.
+            Copy the link below and share it with the staff member directly.
+          </p>
+          <ul className="space-y-2 pt-1">
+            {pendingLinks.map((link) => (
+              <li
+                key={link.id}
+                className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card/80 p-3 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-muted-foreground">{link.email}</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <Link2 className="h-3 w-3 shrink-0 text-primary" />
+                    <p className="truncate font-mono text-[11px] text-primary">{link.url}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(link.url).catch(() => {});
+                      toast.success('Link copied to clipboard.');
+                    }}
+                  >
+                    <Copy className="h-3 w-3" /> Copy Link
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setPendingLinks((prev) => prev.filter((l) => l.id !== link.id))}
+                    aria-label="Dismiss"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -430,6 +500,14 @@ export default function AdminStaffInvitations() {
                         onClick={() => setViewRow(inv)}>
                         <Eye className="h-3.5 w-3.5" /> View
                       </Button>
+                      {canCopyLink(inv) && (
+                        <Button type="button" size="sm" variant="outline" className="gap-1"
+                          disabled={busyId === `copy-${inv.id}`}
+                          onClick={() => void handleCopyLink(inv)}>
+                          <Copy className="h-3.5 w-3.5" />
+                          {busyId === `copy-${inv.id}` ? 'Copying…' : 'Copy Link'}
+                        </Button>
+                      )}
                       {canResend(inv) && (
                         <Button type="button" size="sm" className="gap-1"
                           disabled={busyId === inv.id}
@@ -493,6 +571,14 @@ export default function AdminStaffInvitations() {
                               onClick={() => setViewRow(inv)}>
                               <Eye className="h-3.5 w-3.5" /> View
                             </Button>
+                            {canCopyLink(inv) && (
+                              <Button type="button" size="sm" variant="outline" className="gap-1"
+                                disabled={busyId === `copy-${inv.id}`}
+                                onClick={() => void handleCopyLink(inv)}>
+                                <Copy className="h-3.5 w-3.5" />
+                                {busyId === `copy-${inv.id}` ? 'Copying…' : 'Copy Link'}
+                              </Button>
+                            )}
                             {canResend(inv) && (
                               <Button type="button" size="sm" className="gap-1"
                                 disabled={busyId === inv.id}
@@ -553,16 +639,29 @@ export default function AdminStaffInvitations() {
                 )}
               </div>
 
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  🔒 The invitation token is not displayed here for security reasons.
-                  Use <strong>Resend</strong> to generate a fresh link and re-email the applicant.
-                </p>
-              </div>
+              {viewRow.status === 'pending' && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  Use <strong className="text-foreground">Copy Link</strong> to get the current invitation
+                  URL. Use <strong className="text-foreground">Resend</strong> to generate a fresh token
+                  and re-send the email.
+                </div>
+              )}
             </div>
           )}
 
           <DialogFooter className="gap-2 sm:gap-0">
+            {viewRow && canCopyLink(viewRow) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1"
+                disabled={busyId === `copy-${viewRow.id}`}
+                onClick={() => { setViewRow(null); void handleCopyLink(viewRow!); }}
+              >
+                <Copy className="h-4 w-4" />
+                {busyId === `copy-${viewRow.id}` ? 'Copying…' : 'Copy Link'}
+              </Button>
+            )}
             {viewRow && canResend(viewRow) && (
               <Button
                 type="button"
