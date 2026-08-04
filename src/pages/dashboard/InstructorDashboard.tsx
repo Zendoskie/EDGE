@@ -187,7 +187,9 @@ export default function InstructorDashboard() {
         .eq('status', 'active');
       const activeKeys = new Set(
         (enrollRows ?? [])
-          .filter((e): e is { student_id: string; subject_id: string } => Boolean(e.student_id && e.subject_id))
+          .filter((e): e is { student_id: string; subject_id: string; status: string } =>
+            Boolean(e.student_id && e.subject_id),
+          )
           .map((e) => `${e.student_id}::${e.subject_id}`),
       );
       const preds = (predictions ?? []).filter(
@@ -238,7 +240,9 @@ export default function InstructorDashboard() {
         .eq('status', 'active');
       const activeKeys = new Set(
         (enrollRows ?? [])
-          .filter((e): e is { student_id: string; subject_id: string } => Boolean(e.student_id && e.subject_id))
+          .filter((e): e is { student_id: string; subject_id: string; status: string } =>
+            Boolean(e.student_id && e.subject_id),
+          )
           .map((e) => `${e.student_id}::${e.subject_id}`),
       );
       return (data ?? [])

@@ -3,7 +3,9 @@ import {
   classifyEngagementScore,
   computeEngagementScore,
   computeLoginFrequencyScore,
-  computeParticipationScore,
+  computeTimeSpentScore,
+  computeAssignmentActivityScore,
+  computeAiFeedbackScore,
   isEngagementDrop,
 } from '@/lib/engagement-scoring';
 
@@ -13,21 +15,27 @@ describe('engagement-scoring', () => {
     expect(computeLoginFrequencyScore(0, 30)).toBe(0);
   });
 
-  it('scores participation against target', () => {
-    expect(computeParticipationScore(20)).toBe(100);
-    expect(computeParticipationScore(10)).toBe(50);
+  it('scores time spent against weekly hour target', () => {
+    expect(computeTimeSpentScore(5 * 3600, 7)).toBe(100);
+    expect(computeTimeSpentScore(0, 30)).toBe(0);
   });
 
-  it('computes weighted engagement score', () => {
+  it('scores assignment and AI/feedback participation', () => {
+    expect(computeAssignmentActivityScore(10)).toBe(100);
+    expect(computeAssignmentActivityScore(5)).toBe(50);
+    expect(computeAiFeedbackScore(5)).toBe(100);
+    expect(computeAiFeedbackScore(1)).toBe(20);
+  });
+
+  it('computes weighted engagement score (40/30/20/10)', () => {
     const score = computeEngagementScore({
       loginCount: 5,
-      participationCount: 20,
-      materialViewCount: 15,
-      totalSubmissions: 4,
-      timelySubmissions: 4,
+      timeSpentSeconds: 5 * 3600,
+      assignmentActivityCount: 10,
+      aiFeedbackCount: 5,
       windowDays: 7,
     });
-    expect(score).toBeGreaterThanOrEqual(90);
+    expect(score).toBe(100);
   });
 
   it('classifies scores into four levels', () => {

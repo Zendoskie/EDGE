@@ -1,14 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useStudentEngagementMetrics } from '@/hooks/useStudentEngagementMetrics';
+import { StudentEngagementCharts } from '@/components/StudentEngagementCharts';
+import { StudentEngagementActions } from '@/components/StudentEngagementActions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { LogIn, Clock, MessageSquare } from 'lucide-react';
 import { formatFeedbackStatus, formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import { useAuth } from '@/hooks/useAuth';
 
 type Props = {
   studentId: string;
   studentName?: string | null;
+  /** Optional subject scope for risk timeline (instructor subjects). */
+  subjectIds?: string[];
 };
 
 type FeedbackRow = {
@@ -20,8 +25,23 @@ type FeedbackRow = {
   created_at: string;
 };
 
-export function StudentEngagementPanel({ studentId, studentName }: Props) {
+export function StudentEngagementPanel({ studentId, studentName, subjectIds }: Props) {
+  const { role } = useAuth();
   const { metrics, isLoading: summaryLoading, error: summaryError } = useStudentEngagementMetrics(studentId);
+
+  const { data: profile } = useQuery({
+    queryKey: ['engagement-panel-profile', studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('email, full_name')
+        .eq('user_id', studentId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!studentId,
+  });
 
   const { data: feedback = [], isLoading: feedbackLoading } = useQuery({
     queryKey: ['student-engagement-feedback', studentId],
@@ -37,6 +57,7 @@ export function StudentEngagementPanel({ studentId, studentName }: Props) {
     },
     enabled: !!studentId,
     refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 
   const loading = summaryLoading || feedbackLoading;
@@ -83,6 +104,16 @@ export function StudentEngagementPanel({ studentId, studentName }: Props) {
           </div>
         </div>
       )}
+
+      <StudentEngagementCharts studentId={studentId} subjectIds={subjectIds} />
+
+      {role === 'instructor' || role === 'admin' ? (
+        <StudentEngagementActions
+          studentId={studentId}
+          studentEmail={profile?.email}
+          subjectId={subjectIds?.[0] ?? null}
+        />
+      ) : null}
 
       <div>
         <div className="flex items-center gap-2 mb-2">

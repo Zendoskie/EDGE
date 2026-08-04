@@ -235,10 +235,10 @@ type StudentEngagementContext = {
 
 function engagementLevelLabel(level: string): string {
   const normalized = level.trim().toLowerCase().replace(/\s+/g, "_");
-  if (normalized === "very_high") return "Very High";
-  if (normalized === "high") return "High";
-  if (normalized === "low") return "Low";
-  return "Moderate";
+  if (normalized === "very_high" || normalized === "highly_active") return "Highly Active";
+  if (normalized === "high" || normalized === "active") return "Active";
+  if (normalized === "low" || normalized === "inactive") return "Inactive";
+  return "Low Engagement";
 }
 
 function activityTypeLabel(type: string): string {
@@ -253,6 +253,10 @@ function activityTypeLabel(type: string): string {
     view_attendance: "Viewed attendance",
     quiz_complete: "Completed quiz",
     assignment_submit: "Submitted assignment",
+    assignment_view: "Viewed assignment",
+    ai_session: "Used AI coaching",
+    feedback_submit: "Submitted feedback",
+    page_visit: "Visited page",
   };
   return labels[type] ?? type.replace(/_/g, " ");
 }

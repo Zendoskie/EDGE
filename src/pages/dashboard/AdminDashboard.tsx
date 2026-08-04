@@ -14,7 +14,7 @@ import {
 import {
   Users, GraduationCap, Users2, BookOpen, UserCog, ShieldCheck,
   Clock, ShieldOff, Mail, ClipboardList, UserPlus, BarChart3,
-  RefreshCw, ArrowRight, CalendarCheck, Bell,
+  RefreshCw, ArrowRight, CalendarCheck, Bell, Activity,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -328,6 +328,15 @@ const QUICK_ACTIONS = [
     color: 'text-orange-400',
     bg: 'bg-orange-500/10 hover:bg-orange-500/20',
     border: 'border-orange-500/20',
+  },
+  {
+    label: 'Engagement Analytics',
+    description: 'Campus engagement trends and exports',
+    icon: Activity,
+    href: '/dashboard/admin/engagement-analytics',
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-500/10 hover:bg-emerald-500/20',
+    border: 'border-emerald-500/20',
   },
   {
     label: 'Reports',

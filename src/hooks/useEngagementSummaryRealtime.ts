@@ -11,6 +11,9 @@ function invalidateEngagementKeys(queryClient: ReturnType<typeof useQueryClient>
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-panel-activities', studentId] });
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-panel-logins', studentId] });
   void queryClient.invalidateQueries({ queryKey: ['student-engagement-subject-counts', studentId] });
+  void queryClient.invalidateQueries({ queryKey: ['student-engagement-charts', studentId] });
+  void queryClient.invalidateQueries({ queryKey: ['student-engagement-feedback', studentId] });
+  void queryClient.invalidateQueries({ queryKey: ['instructor-student-engagement-monitoring'] });
   void queryClient.invalidateQueries({ queryKey: ['predictions-engagement'] });
 }
 

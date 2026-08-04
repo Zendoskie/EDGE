@@ -18,6 +18,7 @@ import SubjectDetail from "./pages/dashboard/SubjectDetail";
 import MySubjects from "./pages/dashboard/MySubjects";
 import MyAttendance from "./pages/dashboard/MyAttendance";
 import MyScores from "./pages/dashboard/MyScores";
+import MyEngagement from "./pages/dashboard/MyEngagement";
 import Insights from "./pages/dashboard/Insights";
 import LearningAssistant from "./pages/dashboard/LearningAssistant";
 import Settings from "./pages/dashboard/Settings";
@@ -32,10 +33,13 @@ import AdminApprovals from "./pages/dashboard/AdminApprovals";
 import AdminStaffRequests from "./pages/dashboard/AdminStaffRequests";
 import AdminStaffInvitations from "./pages/dashboard/AdminStaffInvitations";
 import AdminUserManagement from "./pages/dashboard/AdminUserManagement";
+import AdminEngagementAnalytics from "./pages/dashboard/AdminEngagementAnalytics";
 import ParentPerformance from "./pages/dashboard/ParentPerformance";
 import ParentAccessRequests from "./pages/dashboard/ParentAccessRequests";
 import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
+import GuidanceEngagement from "./pages/dashboard/GuidanceEngagement";
 import StudentFeedback from "./pages/dashboard/StudentFeedback";
+import StudentEngagementMonitoring from "./pages/dashboard/StudentEngagementMonitoring";
 import NotFound from "./pages/NotFound";
 import RequestStaffAccount from "./pages/RequestStaffAccount";
 
@@ -61,7 +65,9 @@ const App = () => (
                 <Route path="my-subjects" element={<MySubjects />} />
                 <Route path="my-attendance" element={<MyAttendance />} />
                 <Route path="my-scores" element={<MyScores />} />
+                <Route path="my-engagement" element={<MyEngagement />} />
                 <Route path="insights" element={<Insights />} />
+                <Route path="student-engagement" element={<StudentEngagementMonitoring />} />
                 <Route path="learning-assistant" element={<LearningAssistant />} />
                 <Route path="enhanced-ux" element={<EnhancedUX />} />
                 <Route path="administrative" element={<AdministrativeFeatures />} />
@@ -75,9 +81,11 @@ const App = () => (
                 <Route path="admin/approvals" element={<AdminApprovals />} />
                 <Route path="admin/staff-requests" element={<AdminStaffRequests />} />
                 <Route path="admin/staff-invitations" element={<AdminStaffInvitations />} />
+                <Route path="admin/engagement-analytics" element={<AdminEngagementAnalytics />} />
                 <Route path="parent-performance" element={<ParentPerformance />} />
                 <Route path="parent-access" element={<ParentAccessRequests />} />
                 <Route path="guidance-referrals" element={<GuidanceReferrals />} />
+                <Route path="guidance-engagement" element={<GuidanceEngagement />} />
                 <Route path="feedback" element={<StudentFeedback />} />
               </Route>
               <Route path="*" element={<NotFound />} />

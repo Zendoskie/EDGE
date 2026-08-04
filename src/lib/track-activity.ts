@@ -124,10 +124,10 @@ export function authContextFromSession(session: Session | null | undefined): Stu
 
 async function getAuthContext(): Promise<StudentAuthContext | null> {
   const {
-    data: { session, user },
+    data: { session },
   } = await supabase.auth.getSession();
-  if (!session?.access_token || !user) return null;
-  return { accessToken: session.access_token, userId: user.id };
+  if (!session?.access_token || !session.user?.id) return null;
+  return { accessToken: session.access_token, userId: session.user.id };
 }
 
 async function resolveAuthContext(
@@ -631,15 +631,13 @@ export async function trackStudentActivity(params: TrackActivityParams): Promise
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const row: Record<string, unknown> = {
+    const { error } = await supabase.from('student_activity').insert({
       student_id: user.id,
       activity_type: activityType,
       activity_description: description ?? null,
       subject_id: subjectId ?? null,
       source_id: sourceId ?? null,
-    };
-
-    const { error } = await supabase.from('student_activity').insert(row);
+    });
     if (error && error.code !== '23505') {
       console.warn('trackStudentActivity failed:', error.message);
     }

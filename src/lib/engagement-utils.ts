@@ -3,18 +3,34 @@ export type CanonicalEngagementLevel = 'very_high' | 'high' | 'moderate' | 'low'
 export function canonicalEngagementLevel(level: unknown): CanonicalEngagementLevel {
   if (typeof level !== 'string') return 'moderate';
   const normalized = level.trim().toLowerCase().replace(/\s+/g, '_');
-  if (normalized === 'very_high' || normalized === 'veryhigh') return 'very_high';
-  if (normalized === 'high') return 'high';
-  if (normalized === 'low') return 'low';
-  if (normalized === 'moderate') return 'moderate';
+  if (
+    normalized === 'very_high' ||
+    normalized === 'veryhigh' ||
+    normalized === 'highly_active'
+  ) {
+    return 'very_high';
+  }
+  if (normalized === 'high' || normalized === 'active') return 'high';
+  if (
+    normalized === 'low' ||
+    normalized === 'inactive'
+  ) {
+    return 'low';
+  }
+  if (
+    normalized === 'moderate' ||
+    normalized === 'low_engagement'
+  ) {
+    return 'moderate';
+  }
   return 'moderate';
 }
 
 export function engagementLabel(level: CanonicalEngagementLevel): string {
-  if (level === 'very_high') return 'Very High';
-  if (level === 'high') return 'High';
-  if (level === 'low') return 'Low';
-  return 'Moderate';
+  if (level === 'very_high') return 'Highly Active';
+  if (level === 'high') return 'Active';
+  if (level === 'low') return 'Inactive';
+  return 'Low Engagement';
 }
 
 /** Tailwind classes for color-coded engagement badges. */
@@ -57,6 +73,10 @@ export function formatActivityTypeLabel(type: string): string {
     view_attendance: 'Viewed attendance records',
     quiz_complete: 'Completed quiz',
     assignment_submit: 'Submitted assignment',
+    assignment_view: 'Viewed assignment',
+    ai_session: 'Used AI coaching',
+    feedback_submit: 'Submitted feedback',
+    page_visit: 'Visited page',
   };
   return labels[type] ?? type.replace(/_/g, ' ');
 }

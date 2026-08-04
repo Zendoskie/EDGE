@@ -3,13 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 
 /**
- * On first mount for an approved instructor or guidance counselor, loads any
- * unread `user_inbox_notifications` rows from the database, adds them to the
- * dashboard inbox, and marks them as read.
- *
- * The "Account Approved" notification is inserted by the
- * `trg_create_approval_inbox_notification` DB trigger when an admin approves
- * the account. This hook surfaces it the first time the user logs in.
+ * Bridges durable `user_inbox_notifications` rows into the dashboard inbox.
+ * Used for account approval (instructors/guidance) and engagement alerts
+ * (students + instructors). Existing localStorage/poll notification flows stay intact.
  */
 export function useAccountApprovalNotification(
   userId: string | undefined,
@@ -18,13 +14,10 @@ export function useAccountApprovalNotification(
   const { addNotification } = useNotificationInbox();
   const addRef = useRef(addNotification);
   addRef.current = addNotification;
-  const loadedRef = useRef(false);
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!userId || !role) return;
-    if (role !== "instructor" && role !== "guidance_counselor") return;
-    if (loadedRef.current) return;
-    loadedRef.current = true;
 
     let cancelled = false;
 
@@ -35,12 +28,17 @@ export function useAccountApprovalNotification(
           .select("id, title, body")
           .eq("user_id", userId)
           .eq("read", false)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true })
+          .limit(50);
 
         if (error || cancelled || !data?.length) return;
 
+        const fresh: { id: string; title: string; body: string }[] = [];
         for (const n of data) {
           const row = n as { id: string; title: string; body: string };
+          if (seenIdsRef.current.has(row.id)) continue;
+          seenIdsRef.current.add(row.id);
+          fresh.push(row);
           addRef.current({
             title: row.title,
             body: row.body,
@@ -48,8 +46,9 @@ export function useAccountApprovalNotification(
           });
         }
 
-        // Mark all as read so they don't appear again on the next login.
-        const ids = (data as { id: string }[]).map((n) => n.id);
+        if (fresh.length === 0) return;
+
+        const ids = fresh.map((n) => n.id);
         await supabase
           .from("user_inbox_notifications")
           .update({ read: true })
@@ -61,8 +60,13 @@ export function useAccountApprovalNotification(
     };
 
     void load();
+    const timer = window.setInterval(() => {
+      void load();
+    }, 60_000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [userId, role]);
 }

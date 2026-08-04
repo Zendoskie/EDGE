@@ -188,7 +188,7 @@ export function AICoachPopup(props: {
   useEffect(() => {
     if (!open) return;
     void trackStudentActivity({
-      activityType: 'view_coaching',
+      activityType: 'ai_session',
       description: 'Opened AI coaching',
     });
     const t = window.setTimeout(() => listEndRef.current?.scrollIntoView({ behavior: "smooth" }), 30);

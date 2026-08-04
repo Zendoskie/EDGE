@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useStudentEngagementMetrics } from '@/hooks/useStudentEngagementMetrics';
+import { useStudentEngagementSummary } from '@/hooks/useStudentEngagementSummary';
+import { EngagementBadge } from '@/components/EngagementBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +23,7 @@ type FeedbackRow = {
 export function StudentEngagementCard() {
   const { user } = useAuth();
   const { metrics, isLoading, error } = useStudentEngagementMetrics(user?.id);
+  const { summary } = useStudentEngagementSummary(user?.id);
 
   const { data: latestFeedback } = useQuery({
     queryKey: ['student-engagement-feedback-latest', user?.id],
@@ -58,7 +61,20 @@ export function StudentEngagementCard() {
             Could not load engagement metrics. {error.message}
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <EngagementBadge
+                level={summary?.engagement_level ?? 'low'}
+                score={summary?.engagement_score}
+              />
+              <span className="text-sm text-muted-foreground">
+                Score{' '}
+                <span className="font-semibold text-foreground tabular-nums">
+                  {summary != null ? Math.round(summary.engagement_score * 10) / 10 : '—'}
+                </span>
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 text-sm">
             <div className="rounded-lg border p-3">
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                 <LogIn className="h-3.5 w-3.5" />
@@ -82,6 +98,7 @@ export function StudentEngagementCard() {
               </div>
               <p className="font-medium text-sm leading-snug">{formatLastLogin(metrics?.last_login_at)}</p>
             </div>
+            </div>
           </div>
         )}
 
@@ -104,9 +121,14 @@ export function StudentEngagementCard() {
               You have not submitted feedback yet. Share your learning experience or request assistance.
             </p>
           )}
-          <Button asChild variant="outline" size="sm" className="mt-1">
-            <Link to="/dashboard/feedback">View All Feedback</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2 mt-1">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/dashboard/my-engagement">View My Engagement</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/dashboard/feedback">View All Feedback</Link>
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

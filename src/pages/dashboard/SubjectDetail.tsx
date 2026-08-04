@@ -23,7 +23,6 @@ import { EngagementBadge } from '@/components/EngagementBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
-import { trackStudentActivity } from '@/lib/track-activity';
 import { sendReferralNotification } from '@/lib/referral-notifications';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
 import type {
@@ -1049,24 +1048,13 @@ function ActivityScoring({
           const { error } = await supabase.from('submissions').update(gradePayload).eq('id', existing.id);
           if (error) throw error;
         } else {
-          const { data: inserted, error } = await supabase.from('submissions').insert({
+          const { error } = await supabase.from('submissions').insert({
             activity_id: activityId,
             student_id: studentId,
             ...gradePayload,
-          }).select('id').single();
-          if (error) throw error;
-          const trackType =
-            activityType === 'quiz'
-              ? 'quiz_complete'
-              : activityType === 'project' || activityType === 'assignment'
-                ? 'assignment_submit'
-                : 'assignment_submit';
-          void trackStudentActivity({
-            activityType: trackType,
-            subjectId,
-            description: activityTitle,
-            sourceId: inserted?.id,
           });
+          if (error) throw error;
+          // Assignment submission engagement is recorded by DB trigger on submissions.
         }
       });
       await Promise.all(ops);
@@ -1892,15 +1880,18 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       </Card>
 
       <Dialog open={!!engagementStudent} onOpenChange={(open) => !open && setEngagementStudent(null)}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Student Engagement</DialogTitle>
-            <DialogDescription>Login activity and feedback for this student.</DialogDescription>
+            <DialogDescription>
+              Login activity, live engagement charts, and feedback for this student.
+            </DialogDescription>
           </DialogHeader>
           {engagementStudent ? (
             <StudentEngagementPanel
               studentId={engagementStudent.studentId}
               studentName={engagementStudent.studentName}
+              subjectIds={[subjectId]}
             />
           ) : null}
         </DialogContent>

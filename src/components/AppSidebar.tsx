@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users,
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users, Activity,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { NavLink } from '@/components/NavLink';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 const instructorItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
+  { title: 'Engagement Monitoring', url: '/dashboard/student-engagement', icon: Activity },
   { title: 'Reports', url: '/dashboard/reports', icon: FileBarChart },
   { title: 'Programs', url: '/dashboard/programs', icon: Library },
   { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },
@@ -23,6 +24,7 @@ const instructorItems = [
 const studentItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'My Subjects', url: '/dashboard/my-subjects', icon: BookOpen },
+  { title: 'My Engagement', url: '/dashboard/my-engagement', icon: Activity },
   { title: 'Feedback', url: '/dashboard/feedback', icon: FileText },
   { title: 'Attendance', url: '/dashboard/my-attendance', icon: CalendarCheck },
   { title: 'Scores', url: '/dashboard/my-scores', icon: FileText },
@@ -38,6 +40,7 @@ const parentItems = [
 
 const guidanceItems = [
   { title: 'Counseling Referrals', url: '/dashboard/guidance-referrals', icon: UserCheck },
+  { title: 'Student Engagement', url: '/dashboard/guidance-engagement', icon: Activity },
   { title: 'Settings', url: '/dashboard/settings', icon: Settings },
 ];
 
@@ -46,6 +49,7 @@ const adminItems = [
   { title: 'User Approvals',    url: '/dashboard/admin/approvals',          icon: UserCheck },
   { title: 'Staff Requests',    url: '/dashboard/admin/staff-requests',     icon: ClipboardList },
   { title: 'Staff Invitations', url: '/dashboard/admin/staff-invitations',  icon: Mail },
+  { title: 'Engagement Analytics', url: '/dashboard/admin/engagement-analytics', icon: Activity },
   { title: 'Settings',          url: '/dashboard/settings',                 icon: Settings },
 ];
 

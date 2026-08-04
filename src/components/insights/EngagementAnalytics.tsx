@@ -188,10 +188,10 @@ export function EngagementAnalytics({ instructorId }: Props) {
 
   const chartConfig = {
     count: { label: 'Count', color: 'hsl(var(--primary))' },
-    very_high: { label: 'Very High', color: engagementChartColor('very_high') },
-    high: { label: 'High', color: engagementChartColor('high') },
-    moderate: { label: 'Moderate', color: engagementChartColor('moderate') },
-    low: { label: 'Low', color: engagementChartColor('low') },
+    very_high: { label: 'Highly Active', color: engagementChartColor('very_high') },
+    high: { label: 'Active', color: engagementChartColor('high') },
+    moderate: { label: 'Low Engagement', color: engagementChartColor('moderate') },
+    low: { label: 'Inactive', color: engagementChartColor('low') },
   };
 
   if (subjectIds.length === 0) {
