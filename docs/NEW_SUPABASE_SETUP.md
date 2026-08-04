@@ -136,7 +136,8 @@ npx supabase secrets set OPENAI_MODEL=gpt-5.4-mini --env prod
 Optional:
 
 ```bash
-npx supabase secrets set FRONTEND_URL=http://localhost:5173 --env prod
+npx supabase secrets set FRONTEND_URL=https://YOUR-APP.vercel.app --project-ref zqmptaazjlovnrnzjbmy
+npx supabase secrets set APP_URL=https://YOUR-APP.vercel.app --project-ref zqmptaazjlovnrnzjbmy
 npx supabase secrets set AI_COACH_ENABLED=true --env prod
 ```
 

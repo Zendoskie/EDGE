@@ -22,6 +22,7 @@ import {
   Link2, Copy, X, AlertTriangle,
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export default function AdminStaffRequests() {
             .maybeSingle();
 
           const inviteUrl = inv?.token
-            ? `${window.location.origin}/request-staff-account?token=${inv.token}`
+            ? `${getPublicAppUrl()}/request-staff-account?token=${inv.token}`
             : null;
 
           toast.warning(`Email failed: ${msg}`, { duration: 8000 });

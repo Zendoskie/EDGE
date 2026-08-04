@@ -11,6 +11,7 @@ import {
   notifyParentOnRegistrationBestEffort,
   notifyStudentOnParentRegistrationBestEffort,
 } from '@/lib/invoke-parent-email';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
@@ -237,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           guardian_student_id: guardianStudentId,
           parent_email: parentEmail,
         },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: getPublicAppUrl() || window.location.origin,
       },
     });
 

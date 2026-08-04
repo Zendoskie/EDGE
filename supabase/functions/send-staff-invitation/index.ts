@@ -1,13 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAppUrl } from "../_shared/app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const appUrl = (Deno.env.get("APP_URL") || "https://edge.example.com").replace(/\/+$/, "");
 
 // ── Brevo helper ─────────────────────────────────────────────────────────────
 
@@ -190,6 +189,9 @@ serve(async (req) => {
     const body = await req.json();
     const invitationId = typeof body?.invitation_id === "string" ? body.invitation_id.trim() : null;
     if (!invitationId) throw new Error("invitation_id is required");
+
+    // Prefer the caller's deployed origin (Vercel) over a localhost secret.
+    const appUrl = resolveAppUrl(body?.app_url);
 
     // Load the invitation (with request data for the applicant's full name).
     const { data: inv, error: invErr } = await db

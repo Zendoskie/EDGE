@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getPublicAppUrl } from "@/lib/app-url";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -37,7 +38,7 @@ export async function sendAccountStatusEmail(
       Authorization: `Bearer ${session.access_token}`,
       apikey: ANON_KEY,
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, app_url: getPublicAppUrl() }),
   });
 
   const json = (await res.json().catch(() => ({}))) as { error?: unknown };

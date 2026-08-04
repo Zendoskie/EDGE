@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAppUrl } from "../_shared/app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,8 +13,6 @@ type AccountStatusType = "approved" | "rejected";
 function safeString(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
 }
-
-const appUrl = (Deno.env.get("APP_URL") || "https://edge.example.com").replace(/\/+$/, "");
 
 async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
   const brevoKey = Deno.env.get("BREVO_API_KEY");
@@ -56,10 +55,11 @@ function roleLabel(role: string | null | undefined): string {
 
 function buildEmail(
   type: AccountStatusType,
-  opts: { fullName?: string | null; role?: string | null },
+  opts: { fullName?: string | null; role?: string | null; appUrl: string },
 ): { subject: string; html: string } {
   const name = opts.fullName?.trim() || "Applicant";
   const label = roleLabel(opts.role);
+  const appUrl = opts.appUrl;
 
   if (type === "approved") {
     return {
@@ -108,6 +108,7 @@ serve(async (req) => {
     const body = await req.json();
     const userId = safeString(body?.user_id);
     const status = safeString(body?.status) as AccountStatusType | null;
+    const appUrl = resolveAppUrl(body?.app_url);
 
     if (!userId) throw new Error("user_id is required");
     if (!status || !["approved", "rejected"].includes(status)) {
@@ -136,6 +137,7 @@ serve(async (req) => {
       ...buildEmail(status, {
         fullName: profile.full_name,
         role: roleRow?.role ?? null,
+        appUrl,
       }),
     });
 

@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -343,7 +344,7 @@ function InvitationForm({ token }: { token: string }) {
             full_name: fullName.trim(),
             role:      inv.role,
           },
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: getPublicAppUrl() || window.location.origin,
         },
       });
 

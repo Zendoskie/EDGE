@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getPublicAppUrl, isLocalAppUrl } from "@/lib/app-url";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const ANON_KEY     = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -23,6 +24,20 @@ export async function sendStaffInvitation(invitationId: string): Promise<void> {
     throw new Error("You must be signed in to send invitation emails.");
   }
 
+  const appUrl = getPublicAppUrl();
+  if (!appUrl) {
+    throw new Error(
+      "Could not determine the public app URL. Set VITE_APP_URL to your Vercel domain " +
+      "(e.g. https://your-app.vercel.app)."
+    );
+  }
+  if (isLocalAppUrl(appUrl) && !(import.meta.env.VITE_APP_URL as string | undefined)?.trim()) {
+    console.warn(
+      "Staff invitation will use a localhost link. Set VITE_APP_URL (and Supabase APP_URL) " +
+      "to your Vercel URL before emailing staff from production."
+    );
+  }
+
   const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/send-staff-invitation`;
 
   let res: Response;
@@ -34,7 +49,7 @@ export async function sendStaffInvitation(invitationId: string): Promise<void> {
         Authorization:  `Bearer ${session.access_token}`,
         apikey:         ANON_KEY,
       },
-      body: JSON.stringify({ invitation_id: invitationId }),
+      body: JSON.stringify({ invitation_id: invitationId, app_url: appUrl }),
     });
   } catch (networkErr) {
     throw new Error(

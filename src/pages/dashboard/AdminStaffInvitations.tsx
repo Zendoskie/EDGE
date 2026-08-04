@@ -20,6 +20,7 @@ import {
   AlertTriangle, XCircle, Copy, Link2, X,
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -219,7 +220,7 @@ export default function AdminStaffInvitations() {
         throw new Error(updateError.message ?? 'Failed to refresh invitation token');
       }
 
-      const inviteUrl = `${window.location.origin}/request-staff-account?token=${newToken}`;
+      const inviteUrl = `${getPublicAppUrl()}/request-staff-account?token=${newToken}`;
 
       await load();
 
@@ -256,7 +257,7 @@ export default function AdminStaffInvitations() {
       if (error) throw new Error(error.message);
       if (!data?.token) throw new Error('Token not found for this invitation');
 
-      const url = `${window.location.origin}/request-staff-account?token=${data.token}`;
+      const url = `${getPublicAppUrl()}/request-staff-account?token=${data.token}`;
       await navigator.clipboard.writeText(url);
       toast.success('Invitation link copied to clipboard.');
     } catch (e: unknown) {
