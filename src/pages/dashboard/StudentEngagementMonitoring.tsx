@@ -40,6 +40,7 @@ import { EngagementBadge } from '@/components/EngagementBadge';
 import { RiskBadge } from '@/components/RiskBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { EngagementAlertsQueue } from '@/components/StudentEngagementActions';
+import { EngagementRiskAttentionPanel } from '@/components/EngagementRiskAttentionPanel';
 import { useInstructorEngagementAlerts } from '@/hooks/useEngagementAlerts';
 import {
   ENGAGEMENT_LEVEL_ORDER,
@@ -93,6 +94,7 @@ export default function StudentEngagementMonitoring() {
   const [engagementFilter, setEngagementFilter] = useState<string>('all');
   const [programFilter, setProgramFilter] = useState<string>('all');
   const [yearFilter, setYearFilter] = useState<string>('all');
+  const [riskFilter, setRiskFilter] = useState<string>('all');
   const [selectedStudent, setSelectedStudent] = useState<{
     studentId: string;
     fullName: string;
@@ -283,11 +285,16 @@ export default function StudentEngagementMonitoring() {
     return rows.filter((row) => {
       if (q && !row.fullName.toLowerCase().includes(q)) return false;
       if (engagementFilter !== 'all' && row.engagementLevel !== engagementFilter) return false;
+      if (riskFilter === 'elevated') {
+        if (row.riskLevel !== 'at_risk' && row.riskLevel !== 'critical') return false;
+      } else if (riskFilter !== 'all' && row.riskLevel !== riskFilter) {
+        return false;
+      }
       if (programFilter !== 'all' && row.programCode !== programFilter) return false;
       if (yearFilter !== 'all' && String(row.yearLevel ?? '') !== yearFilter) return false;
       return true;
     });
-  }, [rows, search, engagementFilter, programFilter, yearFilter]);
+  }, [rows, search, engagementFilter, riskFilter, programFilter, yearFilter]);
 
   const summary = useMemo(() => {
     const totalActive = rows.length;
@@ -381,6 +388,12 @@ export default function StudentEngagementMonitoring() {
         </CardContent>
       </Card>
 
+      <EngagementRiskAttentionPanel
+        students={rows}
+        isLoading={isLoading}
+        onOpenStudent={(studentId, fullName) => setSelectedStudent({ studentId, fullName })}
+      />
+
       <Card className="bg-card/90 border-border/70">
         <CardHeader className="space-y-4">
           <div>
@@ -411,6 +424,19 @@ export default function StudentEngagementMonitoring() {
                     {engagementLabel(level)}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={riskFilter} onValueChange={setRiskFilter}>
+              <SelectTrigger className="h-9 w-[160px] text-sm">
+                <SelectValue placeholder="Risk" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Risk</SelectItem>
+                <SelectItem value="elevated">Elevated (at risk + critical)</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="at_risk">At Risk</SelectItem>
+                <SelectItem value="stable">Stable</SelectItem>
+                <SelectItem value="excelling">Excelling</SelectItem>
               </SelectContent>
             </Select>
             <Select value={programFilter} onValueChange={setProgramFilter}>

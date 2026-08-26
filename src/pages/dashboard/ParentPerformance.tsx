@@ -10,13 +10,16 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
-import { BookOpen, Calendar, FileText, Brain } from 'lucide-react';
+import { BookOpen, Calendar, FileText, Brain, Activity } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import { EngagementBadge } from '@/components/EngagementBadge';
+import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import { canonicalEngagementLevel } from '@/lib/engagement-utils';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -241,6 +244,22 @@ export default function ParentPerformance() {
         .limit(20);
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  const { data: engagementSummary } = useQuery({
+    queryKey: ['parent-student-engagement', studentId],
+    enabled: !!studentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('student_engagement_summary')
+        .select(
+          'engagement_level, engagement_score, total_login_count, total_time_spent_seconds, last_login_at, assignments_submitted',
+        )
+        .eq('student_id', studentId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -724,6 +743,58 @@ export default function ParentPerformance() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            Platform engagement
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Read-only view of how often your linked student uses EDGE (logins, time, level).
+          </p>
+        </CardHeader>
+        <CardContent>
+          {!engagementSummary ? (
+            <p className="text-sm text-muted-foreground">No engagement summary yet for this student.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Engagement level</p>
+                <EngagementBadge level={canonicalEngagementLevel(engagementSummary.engagement_level)} />
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Score</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {Math.round(Number(engagementSummary.engagement_score ?? 0) * 10) / 10}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Logins</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {engagementSummary.total_login_count ?? 0}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Time on platform</p>
+                <p className="text-sm font-medium">
+                  {formatTimeSpent(engagementSummary.total_time_spent_seconds)}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1 sm:col-span-2">
+                <p className="text-xs text-muted-foreground">Last login</p>
+                <p className="text-sm font-medium">{formatLastLogin(engagementSummary.last_login_at)}</p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1 sm:col-span-2">
+                <p className="text-xs text-muted-foreground">Assignments submitted</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {engagementSummary.assignments_submitted ?? 0}
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="bg-card/90 border-border/70">
         <CardHeader>

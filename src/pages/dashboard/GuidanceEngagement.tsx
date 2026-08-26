@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
+import { GuidanceEngagementReferralButton } from '@/components/GuidanceEngagementReferralButton';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
 import { canonicalEngagementLevel } from '@/lib/engagement-utils';
 
@@ -100,7 +101,7 @@ export default function GuidanceEngagement() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
           <Shield className="h-3.5 w-3.5" />
-          Read-only campus view for guidance counselors.
+          Campus engagement view — open a counseling referral from a student detail when needed.
         </p>
       </div>
 
@@ -168,9 +169,21 @@ export default function GuidanceEngagement() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selected?.fullName ?? 'Student'}</DialogTitle>
-            <DialogDescription>Read-only engagement detail</DialogDescription>
+            <DialogDescription>
+              Engagement detail — you can start a counseling referral from this review.
+            </DialogDescription>
           </DialogHeader>
-          {selected ? <StudentEngagementPanel studentId={selected.studentId} /> : null}
+          {selected ? (
+            <div className="space-y-4">
+              <GuidanceEngagementReferralButton
+                studentId={selected.studentId}
+                studentName={selected.fullName}
+                engagementLevel={selected.engagementLevel}
+                engagementScore={selected.engagementScore}
+              />
+              <StudentEngagementPanel studentId={selected.studentId} />
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,3 +1,11 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/scan-engagement",
+      "schedule": "0 1 * * *"
+    }
+  ]
 }

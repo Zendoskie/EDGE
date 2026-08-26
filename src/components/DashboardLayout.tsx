@@ -15,7 +15,7 @@ import { useStudentSessionTracking } from "@/hooks/useStudentSessionTracking";
 import { useEngagementFeedbackRealtime } from "@/hooks/useEngagementFeedbackRealtime";
 import { useAdminPendingUsersPoll } from "@/hooks/useAdminPendingUsersPoll";
 import { useAdminStaffRequestsPoll } from "@/hooks/useAdminStaffRequestsPoll";
-import { useAccountApprovalNotification } from "@/hooks/useAccountApprovalNotification";
+import { useDurableInboxNotifications } from "@/hooks/useAccountApprovalNotification";
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,7 +100,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   useEngagementFeedbackRealtime(userId, role ?? undefined);
   useAdminPendingUsersPoll(userId, role ?? undefined);
   useAdminStaffRequestsPoll(userId, role ?? undefined);
-  useAccountApprovalNotification(userId, role ?? undefined);
+  useDurableInboxNotifications(userId, role ?? undefined);
 
   const { data: coachContext } = useQuery<StudentPredictionContext>({
     queryKey: ["ai-coach-student-context", userId, role],
