@@ -25,46 +25,46 @@ import {
 interface LearningRecommendation {
   id: string;
   student_id: string;
-  subject_id?: string;
-  recommendation_type: 'study_resource' | 'time_management' | 'learning_style' | 'collaboration' | 'remediation';
+  subject_id?: string | null;
+  recommendation_type: string;
   title: string;
   description: string;
-  priority: 'low' | 'medium' | 'high';
-  confidence_score: number;
-  is_actioned: boolean;
-  created_at: string;
+  priority: string | null;
+  confidence_score: number | null;
+  is_actioned: boolean | null;
+  created_at: string | null;
   subjects?: {
     code: string;
     name: string;
-  };
+  } | null;
 }
 
 interface LearningResource {
   id: string;
   title: string;
-  description: string;
-  resource_type: 'video' | 'article' | 'quiz' | 'exercise' | 'book' | 'website' | 'tool';
-  url?: string;
-  subject_id?: string;
-  difficulty_level: number;
-  estimated_time_minutes?: number;
-  tags: string[];
-  created_at: string;
+  description: string | null;
+  resource_type: string;
+  url?: string | null;
+  subject_id?: string | null;
+  difficulty_level: number | null;
+  estimated_time_minutes?: number | null;
+  tags: string[] | null;
+  created_at: string | null;
 }
 
 interface StudyPattern {
   id: string;
-  subject_id?: string;
+  subject_id?: string | null;
   study_date: string;
   study_duration_minutes: number;
-  time_of_day: 'morning' | 'afternoon' | 'evening' | 'night';
-  activity_type: 'reading' | 'practice' | 'review' | 'assignment' | 'discussion';
-  completion_rate: number;
-  difficulty_rating: number;
+  time_of_day: string | null;
+  activity_type: string | null;
+  completion_rate: number | null;
+  difficulty_rating: number | null;
   subjects?: {
     code: string;
     name: string;
-  };
+  } | null;
 }
 
 export default function AIRecommendations() {
@@ -76,7 +76,7 @@ export default function AIRecommendations() {
   // Fetch AI recommendations
   const { data: recommendations = [], isLoading: recommendationsLoading } = useQuery({
     queryKey: ['ai-recommendations', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<LearningRecommendation[]> => {
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -92,7 +92,7 @@ export default function AIRecommendations() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!user?.id,
   });
@@ -100,7 +100,7 @@ export default function AIRecommendations() {
   // Fetch learning resources
   const { data: resources = [] } = useQuery({
     queryKey: ['learning-resources', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<LearningResource[]> => {
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -111,7 +111,7 @@ export default function AIRecommendations() {
         .limit(20);
 
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!user?.id,
   });
@@ -119,7 +119,7 @@ export default function AIRecommendations() {
   // Fetch study patterns
   const { data: studyPatterns = [] } = useQuery({
     queryKey: ['study-patterns', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<StudyPattern[]> => {
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -133,7 +133,7 @@ export default function AIRecommendations() {
         .limit(50);
 
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
     enabled: !!user?.id,
   });
@@ -178,7 +178,7 @@ export default function AIRecommendations() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: string | null) => {
     switch (priority) {
       case 'high': return 'destructive';
       case 'medium': return 'default';
@@ -207,14 +207,15 @@ export default function AIRecommendations() {
     const avgSessionTime = totalStudyTime / studyPatterns.length;
     
     const timeOfDayDistribution = studyPatterns.reduce((acc, pattern) => {
-      acc[pattern.time_of_day] = (acc[pattern.time_of_day] || 0) + 1;
+      const key = pattern.time_of_day ?? 'unknown';
+      acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     const mostProductiveTime = Object.entries(timeOfDayDistribution)
       .sort(([,a], [,b]) => b - a)[0]?.[0] || 'morning';
 
-    const avgCompletionRate = studyPatterns.reduce((sum, pattern) => sum + pattern.completion_rate, 0) / studyPatterns.length;
+    const avgCompletionRate = studyPatterns.reduce((sum, pattern) => sum + (pattern.completion_rate ?? 0), 0) / studyPatterns.length;
 
     return {
       avgSessionTime: Math.round(avgSessionTime),
@@ -228,7 +229,7 @@ export default function AIRecommendations() {
 
   const filteredRecommendations = selectedType === 'all' 
     ? recommendations 
-    : recommendations.filter((rec: LearningRecommendation) => rec.recommendation_type === selectedType);
+    : recommendations.filter((rec) => rec.recommendation_type === selectedType);
 
   return (
     <div className="space-y-6">
@@ -306,7 +307,7 @@ export default function AIRecommendations() {
               </Card>
             ) : (
               <div className="space-y-4">
-                {filteredRecommendations.map((recommendation: LearningRecommendation) => (
+                {filteredRecommendations.map((recommendation) => (
                   <Card key={recommendation.id} className={recommendation.is_actioned ? 'opacity-60' : ''}>
                     <CardHeader>
                       <div className="flex items-start gap-3">
@@ -360,11 +361,11 @@ export default function AIRecommendations() {
                           <div className="flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-1">
                               <Target className="h-4 w-4" />
-                              <span>Confidence: {Math.round(recommendation.confidence_score * 100)}%</span>
+                              <span>Confidence: {Math.round((recommendation.confidence_score ?? 0) * 100)}%</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-4 w-4" />
-                              <span>Created: {new Date(recommendation.created_at).toLocaleDateString()}</span>
+                              <span>Created: {new Date(recommendation.created_at ?? Date.now()).toLocaleDateString()}</span>
                             </div>
                           </div>
                         </div>
@@ -379,7 +380,7 @@ export default function AIRecommendations() {
 
         <TabsContent value="resources" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {resources.map((resource: LearningResource) => (
+            {resources.map((resource) => (
               <Card key={resource.id} className="hover:shadow-md transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-2 mb-2">
@@ -400,7 +401,7 @@ export default function AIRecommendations() {
                           <div
                             key={i}
                             className={`w-2 h-2 rounded-full ${
-                              i < resource.difficulty_level ? 'bg-blue-500' : 'bg-gray-200'
+                              i < (resource.difficulty_level ?? 0) ? 'bg-blue-500' : 'bg-gray-200'
                             }`}
                           />
                         ))}
@@ -413,7 +414,7 @@ export default function AIRecommendations() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-1">
-                      {resource.tags.map((tag, index) => (
+                      {(resource.tags ?? []).map((tag, index) => (
                         <Badge key={index} variant="secondary" className="text-xs">
                           {tag}
                         </Badge>

@@ -77,13 +77,23 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
   if (subjectsRes.error) throw subjectsRes.error;
   if (predictionsRes.error) throw predictionsRes.error;
 
-  const studentMap = new Map((studentsRes.data ?? []).map((p) => [p.user_id, p]));
-  const instructorMap = new Map((instructorsRes.data ?? []).map((p) => [p.user_id, p]));
-  const subjectMap = new Map((subjectsRes.data ?? []).map((s) => [s.id, s]));
-  const predictionMap = new Map((predictionsRes.data ?? []).map((p) => [p.id, p]));
+  type StudentP = NonNullable<CounselingReferralRow["student"]>;
+  type InstructorP = NonNullable<CounselingReferralRow["instructor"]>;
+  type SubjectP = NonNullable<CounselingReferralRow["subject"]>;
+  type PredictionP = NonNullable<CounselingReferralRow["prediction"]> & { id: string };
 
-  let feedbackMap = new Map<string, CounselingReferralRow["latest_feedback"]>();
-  let engagementFeedbackMap = new Map<string, CounselingReferralRow["latest_engagement_feedback"]>();
+  const students = (studentsRes.data ?? []) as StudentP[];
+  const instructors = (instructorsRes.data ?? []) as InstructorP[];
+  const subjects = (subjectsRes.data ?? []) as SubjectP[];
+  const predictions = (predictionsRes.data ?? []) as PredictionP[];
+
+  const studentMap = new Map(students.map((p): [string, StudentP] => [p.user_id, p]));
+  const instructorMap = new Map(instructors.map((p): [string, InstructorP] => [p.user_id, p]));
+  const subjectMap = new Map(subjects.map((s): [string, SubjectP] => [s.id, s]));
+  const predictionMap = new Map(predictions.map((p): [string, PredictionP] => [p.id, p]));
+
+  const feedbackMap = new Map<string, CounselingReferralRow["latest_feedback"]>();
+  const engagementFeedbackMap = new Map<string, CounselingReferralRow["latest_engagement_feedback"]>();
   if (studentIds.length > 0 && subjectIds.length > 0) {
     const { data: feedbackRows, error: feedbackError } = await supabase
       .from("student_feedback")
@@ -131,15 +141,24 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
     }
   }
 
-  return rows.map((r) => ({
-    ...(r as CounselingReferralRow),
-    student: studentMap.get(r.student_id as string) ?? null,
-    instructor: instructorMap.get(r.instructor_id as string) ?? null,
-    subject: subjectMap.get(r.subject_id as string) ?? null,
-    prediction: r.prediction_id ? (predictionMap.get(r.prediction_id as string) as CounselingReferralRow["prediction"]) ?? null : null,
-    latest_feedback: feedbackMap.get(`${r.student_id}:${r.subject_id}`) ?? null,
-    latest_engagement_feedback: engagementFeedbackMap.get(r.student_id as string) ?? null,
-  }));
+  return rows.map((r): CounselingReferralRow => {
+    const prediction = r.prediction_id ? predictionMap.get(r.prediction_id as string) ?? null : null;
+    return {
+      ...(r as CounselingReferralRow),
+      student: studentMap.get(r.student_id as string) ?? null,
+      instructor: instructorMap.get(r.instructor_id as string) ?? null,
+      subject: subjectMap.get(r.subject_id as string) ?? null,
+      prediction: prediction
+        ? {
+            risk_level: prediction.risk_level,
+            risk_score: prediction.risk_score,
+            recommendation: prediction.recommendation,
+          }
+        : null,
+      latest_feedback: feedbackMap.get(`${r.student_id}:${r.subject_id}`) ?? null,
+      latest_engagement_feedback: engagementFeedbackMap.get(r.student_id as string) ?? null,
+    };
+  });
 }
 
 const REFERRAL_SELECT =

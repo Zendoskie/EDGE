@@ -587,11 +587,14 @@ export default function InstructorDashboard() {
       if (error) throw error;
 
       const profileIds = Array.from(new Set((data ?? []).map((r) => r.student_id).filter(Boolean)));
+      type ProfileLite = { user_id: string; full_name: string | null; email: string | null; student_id: string | null };
       const { data: profiles } = profileIds.length
         ? await supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', profileIds)
-        : { data: [] as Array<Record<string, unknown>> };
+        : { data: [] as ProfileLite[] };
 
-      const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+      const profileMap = new Map(
+        ((profiles ?? []) as ProfileLite[]).map((p): [string, ProfileLite] => [p.user_id, p]),
+      );
       return (data ?? []).map((r) => ({
         ...r,
         student: profileMap.get(r.student_id) ?? null,

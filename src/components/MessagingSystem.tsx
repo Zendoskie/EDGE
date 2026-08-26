@@ -65,7 +65,7 @@ export default function MessagingSystem({ onUnreadChange }: MessagingSystemProps
   // Fetch conversations
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery({
     queryKey: ['conversations', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<Conversation[]> => {
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -76,29 +76,43 @@ export default function MessagingSystem({ onUnreadChange }: MessagingSystemProps
           created_at,
           is_read,
           sender_id,
-          receiver_id,
-          sender:profiles!sender_id(full_name, email),
-          receiver:profiles!receiver_id(full_name, email)
+          receiver_id
         `)
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      if (!data?.length) return [];
+
+      // sender/receiver FKs point at auth.users, not profiles — load partners separately
+      const partnerIds = [
+        ...new Set(
+          data.map((m) => (m.sender_id === user.id ? m.receiver_id : m.sender_id))
+        ),
+      ];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', partnerIds);
+      const profileByUserId = new Map(
+        (profiles ?? []).map((p) => [p.user_id, p])
+      );
 
       // Group messages by conversation partner
       const conversationMap = new Map<string, Conversation>();
       
-      data.forEach((message: any) => {
+      data.forEach((message) => {
         const partnerId = message.sender_id === user.id ? message.receiver_id : message.sender_id;
-        const partner = message.sender_id === user.id ? message.receiver : message.sender;
+        const partner = profileByUserId.get(partnerId);
+        if (!partner) return;
         
-        if (!conversationMap.has(partnerId) || new Date(message.created_at) > new Date(conversationMap.get(partnerId)!.last_message_time)) {
+        if (!conversationMap.has(partnerId) || new Date(message.created_at ?? 0) > new Date(conversationMap.get(partnerId)!.last_message_time)) {
           conversationMap.set(partnerId, {
             user_id: partnerId,
             full_name: partner.full_name,
             email: partner.email,
             last_message: message.content,
-            last_message_time: message.created_at,
+            last_message_time: message.created_at ?? '',
             unread_count: message.sender_id !== user.id && !message.is_read ? 1 : 0
           });
         } else if (message.sender_id !== user.id && !message.is_read) {
@@ -122,31 +136,36 @@ export default function MessagingSystem({ onUnreadChange }: MessagingSystemProps
   // Fetch messages for selected conversation
   const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['messages', user?.id, selectedConversation],
-    queryFn: async () => {
+    queryFn: async (): Promise<Message[]> => {
       if (!user?.id || !selectedConversation) return [];
       
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:profiles!sender_id(full_name, email),
-          receiver:profiles!receiver_id(full_name, email)
-        `)
+        .select('*')
         .or(`(sender_id.eq.${user.id},receiver_id.eq.${selectedConversation}),(sender_id.eq.${selectedConversation},receiver_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      if (!data) return [];
 
       // Mark messages as read
-      const unreadMessages = data.filter((msg: any) => msg.receiver_id === user.id && !msg.is_read);
+      const unreadMessages = data.filter((msg) => msg.receiver_id === user.id && !msg.is_read);
       if (unreadMessages.length > 0) {
         await supabase
           .from('messages')
           .update({ is_read: true })
-          .in('id', unreadMessages.map((msg: any) => msg.id));
+          .in('id', unreadMessages.map((msg) => msg.id));
       }
 
-      return data;
+      return data.map((msg) => ({
+        id: msg.id,
+        sender_id: msg.sender_id,
+        receiver_id: msg.receiver_id,
+        content: msg.content,
+        message_type: msg.message_type ?? 'direct',
+        is_read: !!msg.is_read,
+        created_at: msg.created_at ?? '',
+      }));
     },
     enabled: !!user?.id && !!selectedConversation,
   });
@@ -287,7 +306,7 @@ export default function MessagingSystem({ onUnreadChange }: MessagingSystemProps
                   <div className="text-center text-muted-foreground">Loading messages...</div>
                 ) : (
                   <div className="space-y-4">
-                    {messages.map((message: Message) => (
+                    {messages.map((message) => (
                       <div
                         key={message.id}
                         className={`flex ${message.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}

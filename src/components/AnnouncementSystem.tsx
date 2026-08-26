@@ -56,7 +56,7 @@ export default function AnnouncementSystem() {
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    priority: 'normal' as const,
+    priority: 'normal' as Announcement['priority'],
     subject_id: '',
     is_pinned: false,
     expires_at: ''
@@ -84,7 +84,7 @@ export default function AnnouncementSystem() {
   // Fetch announcements
   const { data: announcements = [], isLoading } = useQuery({
     queryKey: ['announcements', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<Announcement[]> => {
       if (!user?.id) return [];
 
       let query = supabase
@@ -92,7 +92,6 @@ export default function AnnouncementSystem() {
         .select(`
           *,
           subjects(code, name),
-          instructor:profiles!instructor_id(full_name, email),
           announcement_views(count)
         `)
         .eq('is_published', true)
@@ -109,7 +108,9 @@ export default function AnnouncementSystem() {
           .eq('student_id', user.id)
           .eq('status', 'active');
 
-        const subjectIds = enrollments?.map(e => e.subject_id) || [];
+        const subjectIds = (enrollments ?? [])
+          .map(e => e.subject_id)
+          .filter((id): id is string => !!id);
         if (subjectIds.length > 0) {
           query = query.in('subject_id', subjectIds);
         } else {
@@ -124,7 +125,47 @@ export default function AnnouncementSystem() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      if (!data?.length) return [];
+
+      // instructor_id references auth.users, not profiles — load instructors separately
+      const instructorIds = [...new Set(data.map((a) => a.instructor_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', instructorIds);
+      const profileByUserId = new Map(
+        (profiles ?? []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email }])
+      );
+
+      const asPriority = (value: string | null): Announcement['priority'] => {
+        if (value === 'low' || value === 'high' || value === 'urgent' || value === 'normal') {
+          return value;
+        }
+        return 'normal';
+      };
+
+      return data.map((row) => {
+        const viewCount = Array.isArray(row.announcement_views)
+          ? Number((row.announcement_views[0] as { count?: number } | undefined)?.count ?? 0)
+          : 0;
+
+        return {
+          id: row.id,
+          instructor_id: row.instructor_id,
+          subject_id: row.subject_id,
+          title: row.title,
+          content: row.content,
+          priority: asPriority(row.priority),
+          is_pinned: !!row.is_pinned,
+          is_published: !!row.is_published,
+          published_at: row.published_at ?? row.created_at ?? '',
+          expires_at: row.expires_at ?? undefined,
+          created_at: row.created_at ?? '',
+          subjects: row.subjects ?? undefined,
+          instructor: profileByUserId.get(row.instructor_id),
+          _count: { views: viewCount },
+        };
+      });
     },
     enabled: !!user?.id,
   });
@@ -313,7 +354,7 @@ export default function AnnouncementSystem() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Priority</label>
-                    <Select value={formData.priority} onValueChange={(value: any) => setFormData(prev => ({ ...prev, priority: value }))}>
+                    <Select value={formData.priority} onValueChange={(value: Announcement['priority']) => setFormData(prev => ({ ...prev, priority: value }))}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -376,7 +417,7 @@ export default function AnnouncementSystem() {
             </CardContent>
           </Card>
         ) : (
-          announcements.map((announcement: Announcement) => (
+          announcements.map((announcement) => (
             <Card key={announcement.id} className={announcement.is_pinned ? 'border-blue-200 bg-blue-50/50' : ''}>
               <CardHeader>
                 <div className="flex items-start justify-between">

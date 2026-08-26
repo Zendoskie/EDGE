@@ -7,9 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-export const INSIGHTS_TAB_VALUES = ['overview', 'analytics', 'predictions', 'interventions'] as const;
-export type InsightsTabValue = (typeof INSIGHTS_TAB_VALUES)[number];
+import { type InsightsTabValue } from '@/components/insights/insights-tabs';
 
 const TAB_ITEMS: { value: InsightsTabValue; label: string; icon: LucideIcon }[] = [
   { value: 'overview', label: 'Overview', icon: BarChart3 },
@@ -73,6 +71,3 @@ export function InsightsDesktopTabsList() {
     </TabsList>
   );
 }
-
-/** Applied to each TabsContent panel — zooms out on mobile so charts/text fit. */
-export const INSIGHTS_TAB_PANEL_CLASS = 'mt-4 min-w-0 insights-tab-panel sm:mt-6';

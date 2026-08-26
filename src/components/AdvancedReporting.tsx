@@ -71,7 +71,7 @@ export default function AdvancedReporting() {
   // Fetch report templates
   const { data: templates = [] } = useQuery({
     queryKey: ['report-templates', role],
-    queryFn: async () => {
+    queryFn: async (): Promise<ReportTemplate[]> => {
       if (role !== 'instructor') return [];
       
       const { data, error } = await supabase
@@ -80,7 +80,14 @@ export default function AdvancedReporting() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? '',
+        type: row.type as ReportTemplate['type'],
+        created_by: row.created_by ?? '',
+        created_at: row.created_at ?? '',
+      }));
     },
     enabled: role === 'instructor',
   });
@@ -88,7 +95,7 @@ export default function AdvancedReporting() {
   // Fetch generated reports
   const { data: reports = [], isLoading: reportsLoading } = useQuery({
     queryKey: ['generated-reports', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<GeneratedReport[]> => {
       if (!user?.id) return [];
       
       const { data, error } = await supabase
@@ -101,7 +108,21 @@ export default function AdvancedReporting() {
         .order('generated_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        template_id: row.template_id,
+        parameters: (row.parameters as Record<string, any>) ?? {},
+        status: (row.status as GeneratedReport['status']) ?? 'pending',
+        file_url: row.file_url ?? undefined,
+        generated_at: row.generated_at ?? '',
+        expires_at: row.expires_at ?? '',
+        report_templates: row.report_templates
+          ? {
+              name: row.report_templates.name,
+              type: row.report_templates.type,
+            }
+          : undefined,
+      }));
     },
     enabled: !!user?.id,
   });
@@ -326,7 +347,7 @@ export default function AdvancedReporting() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {templates.map((template: ReportTemplate) => (
+              {templates.map((template) => (
                 <div
                   key={template.id}
                   className={`p-3 border rounded-lg cursor-pointer transition-colors ${
@@ -357,7 +378,7 @@ export default function AdvancedReporting() {
           <CardContent>
             {selectedTemplate ? (
               <div className="space-y-4">
-                {renderParameterInputs(templates.find((t: ReportTemplate) => t.id === selectedTemplate)!)}
+                {renderParameterInputs(templates.find((t) => t.id === selectedTemplate)!)}
                 <div className="flex gap-2">
                   <Button
                     onClick={handleGenerateReport}
@@ -411,7 +432,7 @@ export default function AdvancedReporting() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {reports.map((report: GeneratedReport) => (
+                  {reports.map((report) => (
                     <div key={report.id} className="p-3 border rounded-lg">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">

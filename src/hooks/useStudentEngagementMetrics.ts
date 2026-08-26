@@ -128,7 +128,7 @@ export function useStudentEngagementMetrics(studentId: string | undefined | null
         void query.refetch();
       }
     });
-  }, [studentId, query.refetch]);
+  }, [studentId, query]);
 
   return {
     metrics: query.data ?? null,

@@ -46,20 +46,26 @@ export default function SubjectDetail() {
 
   const { data: subject, isLoading: subjectLoading } = useQuery({
     queryKey: ['subject', id],
-    queryFn: async () => {
+    queryFn: async (): Promise<SubjectWithInstructor> => {
       const { data, error } = await supabase
         .from('subjects')
         .select('*, programs(name, code)')
         .eq('id', id!)
         .single();
       if (error) throw error;
-      if (!data?.instructor_id) return data;
-      const { data: instructorProfile } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email')
-        .eq('user_id', data.instructor_id)
-        .maybeSingle();
-      return { ...data, instructor_profile: instructorProfile ?? null } as SubjectWithInstructor;
+      let instructorProfile = null;
+      if (data.instructor_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .eq('user_id', data.instructor_id)
+          .maybeSingle();
+        instructorProfile = profile;
+      }
+      return {
+        ...data,
+        instructor_profile: instructorProfile ?? null,
+      } as SubjectWithInstructor;
     },
     enabled: !!id,
   });

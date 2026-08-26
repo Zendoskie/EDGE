@@ -22,12 +22,31 @@ import {
   Bell
 } from 'lucide-react';
 
-type Jsonish = Record<string, unknown>;
+type OfflineSubject = {
+  id: string;
+  code: string;
+  name: string;
+  instructor_id?: string | null;
+};
+
+type OfflineAttendance = {
+  status: string;
+  date?: string;
+};
+
+type OfflineScore = {
+  score: number | null;
+  activities?: {
+    max_score: number;
+    type?: string;
+    title?: string;
+  } | null;
+};
 
 interface OfflineData {
-  subjects: Jsonish[];
-  attendance: Jsonish[];
-  scores: Jsonish[];
+  subjects: OfflineSubject[];
+  attendance: OfflineAttendance[];
+  scores: OfflineScore[];
   lastSync: string;
 }
 
@@ -44,40 +63,54 @@ export default function OfflineSupport() {
   // Load and cache data for offline use
   const { data: subjects } = useQuery({
     queryKey: ['offline-subjects', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<OfflineSubject[]> => {
       const { data } = await supabase
         .from('enrollments')
         .select('subjects(id, code, name, instructor_id)')
         .eq('student_id', user!.id);
-      return data?.map(e => e.subjects) || [];
+      return (data ?? [])
+        .map((e) => e.subjects)
+        .filter((s): s is NonNullable<typeof s> => s != null)
+        .map((s) => ({
+          id: s.id,
+          code: s.code,
+          name: s.name,
+          instructor_id: s.instructor_id,
+        }));
     },
     enabled: !!user?.id && isOnline,
   });
 
   const { data: attendance } = useQuery({
     queryKey: ['offline-attendance', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<OfflineAttendance[]> => {
       const { data } = await supabase
         .from('attendance')
         .select('*')
         .eq('student_id', user!.id)
         .order('date', { ascending: false })
         .limit(50);
-      return data || [];
+      return (data ?? []).map((row) => ({
+        status: row.status,
+        date: row.date,
+      }));
     },
     enabled: !!user?.id && isOnline,
   });
 
   const { data: scores } = useQuery({
     queryKey: ['offline-scores', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<OfflineScore[]> => {
       const { data } = await supabase
         .from('submissions')
-        .select('score, activities(max_score, type, name), subjects(code, name)')
+        .select('score, activities(max_score, type, title)')
         .eq('student_id', user!.id)
         .order('created_at', { ascending: false })
         .limit(50);
-      return data || [];
+      return (data ?? []).map((row) => ({
+        score: row.score,
+        activities: row.activities,
+      }));
     },
     enabled: !!user?.id && isOnline,
   });
@@ -133,7 +166,8 @@ export default function OfflineSupport() {
     
     const total = validScores.reduce((sum, s) => {
       const maxScore = s.activities?.max_score || 100;
-      return sum + (s.score / maxScore) * 100;
+      const score = s.score ?? 0;
+      return sum + (score / maxScore) * 100;
     }, 0);
     
     return Math.round(total / validScores.length);
@@ -278,7 +312,7 @@ export default function OfflineSupport() {
                     <div className="space-y-2">
                       {offlineData.scores.slice(0, 5).map((score, index) => (
                         <div key={index} className="flex items-center justify-between text-sm">
-                          <span>{score.activities?.name}</span>
+                          <span>{score.activities?.title}</span>
                           <Badge variant="outline">
                             {score.score}/{score.activities?.max_score}
                           </Badge>

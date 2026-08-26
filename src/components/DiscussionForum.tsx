@@ -89,7 +89,9 @@ export default function DiscussionForum() {
           .eq('student_id', user.id)
           .eq('status', 'active');
         
-        const subjectIds = enrollments?.map(e => e.subject_id) || [];
+        const subjectIds = (enrollments ?? [])
+          .map(e => e.subject_id)
+          .filter((id): id is string => !!id);
         if (subjectIds.length > 0) {
           query = query.in('id', subjectIds);
         } else {
@@ -109,15 +111,14 @@ export default function DiscussionForum() {
   // Fetch discussion threads
   const { data: threads = [], isLoading: threadsLoading } = useQuery({
     queryKey: ['discussion-threads', user?.id, selectedSubject, searchQuery],
-    queryFn: async () => {
+    queryFn: async (): Promise<DiscussionThread[]> => {
       if (!user?.id) return [];
 
       let query = supabase
         .from('discussion_threads')
         .select(`
           *,
-          subjects(code, name),
-          author:profiles!author_id(full_name, email)
+          subjects(code, name)
         `)
         .order('is_pinned', { ascending: false })
         .order('last_reply_at', { ascending: false });
@@ -134,7 +135,32 @@ export default function DiscussionForum() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      if (!data?.length) return [];
+
+      // author_id references auth.users, not profiles — load authors separately
+      const authorIds = [...new Set(data.map((t) => t.author_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', authorIds);
+      const profileByUserId = new Map(
+        (profiles ?? []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email }])
+      );
+
+      return data.map((thread) => ({
+        id: thread.id,
+        subject_id: thread.subject_id,
+        author_id: thread.author_id,
+        title: thread.title,
+        content: thread.content,
+        is_pinned: !!thread.is_pinned,
+        is_locked: !!thread.is_locked,
+        reply_count: thread.reply_count ?? 0,
+        last_reply_at: thread.last_reply_at ?? thread.created_at ?? '',
+        created_at: thread.created_at ?? '',
+        subjects: thread.subjects ?? undefined,
+        author: profileByUserId.get(thread.author_id),
+      }));
     },
     enabled: !!user?.id,
   });
@@ -142,30 +168,47 @@ export default function DiscussionForum() {
   // Fetch thread replies
   const { data: replies = [], isLoading: repliesLoading } = useQuery({
     queryKey: ['discussion-replies', selectedThread],
-    queryFn: async () => {
+    queryFn: async (): Promise<DiscussionReply[]> => {
       if (!selectedThread) return [];
       
       const { data, error } = await supabase
         .from('discussion_replies')
-        .select(`
-          *,
-          author:profiles!author_id(full_name, email)
-        `)
+        .select('*')
         .eq('thread_id', selectedThread)
         .eq('is_deleted', false)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      
+      if (!data?.length) return [];
+
+      const authorIds = [...new Set(data.map((r) => r.author_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', authorIds);
+      const profileByUserId = new Map(
+        (profiles ?? []).map((p) => [p.user_id, { full_name: p.full_name, email: p.email }])
+      );
+
       // Organize replies hierarchically
       const replyMap = new Map<string, DiscussionReply>();
       const rootReplies: DiscussionReply[] = [];
-      
-      data.forEach((reply: any) => {
-        replyMap.set(reply.id, { ...reply, replies: [] });
+
+      data.forEach((reply) => {
+        replyMap.set(reply.id, {
+          id: reply.id,
+          thread_id: reply.thread_id,
+          author_id: reply.author_id,
+          content: reply.content,
+          parent_reply_id: reply.parent_reply_id ?? undefined,
+          is_deleted: !!reply.is_deleted,
+          created_at: reply.created_at ?? '',
+          author: profileByUserId.get(reply.author_id),
+          replies: [],
+        });
       });
-      
-      data.forEach((reply: any) => {
+
+      data.forEach((reply) => {
         if (reply.parent_reply_id) {
           const parent = replyMap.get(reply.parent_reply_id);
           if (parent) {
@@ -175,7 +218,7 @@ export default function DiscussionForum() {
           rootReplies.push(replyMap.get(reply.id)!);
         }
       });
-      
+
       return rootReplies;
     },
     enabled: !!selectedThread,
@@ -256,7 +299,7 @@ export default function DiscussionForum() {
     }
   };
 
-  const selectedThreadData = threads.find((t: DiscussionThread) => t.id === selectedThread);
+  const selectedThreadData = threads.find((t) => t.id === selectedThread);
 
   const renderReplies = (replies: DiscussionReply[], depth = 0) => {
     return replies.map((reply) => (
@@ -266,7 +309,7 @@ export default function DiscussionForum() {
             <Avatar>
               <AvatarImage src={undefined} />
               <AvatarFallback>
-                {reply.author?.full_name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                {(reply.author?.full_name ?? '?').split(' ').map(n => n[0]).join('').toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1">
@@ -429,7 +472,7 @@ export default function DiscussionForum() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {threads.map((thread: DiscussionThread) => (
+                  {threads.map((thread) => (
                     <div
                       key={thread.id}
                       onClick={() => setSelectedThread(thread.id)}
@@ -486,7 +529,7 @@ export default function DiscussionForum() {
                     <Avatar>
                       <AvatarImage src={undefined} />
                       <AvatarFallback>
-                        {selectedThreadData.author?.full_name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        {(selectedThreadData.author?.full_name ?? '?').split(' ').map(n => n[0]).join('').toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">

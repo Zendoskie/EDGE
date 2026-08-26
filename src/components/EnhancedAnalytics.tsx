@@ -47,14 +47,6 @@ import {
   Zap
 } from 'lucide-react';
 
-interface PerformanceData {
-  date: string;
-  score: number;
-  attendance: number;
-  subject: string;
-  type: string;
-}
-
 interface TrendData {
   period: string;
   averageScore: number;
@@ -70,6 +62,42 @@ interface SubjectPerformance {
   trendValue: number;
 }
 
+interface ScoreRow {
+  score: number | null;
+  submitted_at: string | null;
+  activities: {
+    max_score: number;
+    type: string;
+    title: string;
+    subject_id: string | null;
+    subjects: { code: string; name: string } | null;
+  };
+}
+
+interface AttendanceRow {
+  date: string;
+  status: string;
+  subjects: { code: string; name: string };
+}
+
+interface PredictionRow {
+  risk_level: string;
+  created_at: string | null;
+  subjects: { code: string; name: string };
+}
+
+interface AnalyticsPayload {
+  scores: ScoreRow[];
+  attendance: AttendanceRow[];
+  predictions: PredictionRow[];
+}
+
+const EMPTY_ANALYTICS: AnalyticsPayload = {
+  scores: [],
+  attendance: [],
+  predictions: [],
+};
+
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export default function EnhancedAnalytics() {
@@ -77,10 +105,10 @@ export default function EnhancedAnalytics() {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'semester'>('month');
 
   // Fetch comprehensive performance data
-  const { data: performanceData = [], isLoading } = useQuery({
+  const { data: performanceData = EMPTY_ANALYTICS, isLoading } = useQuery({
     queryKey: ['performance-analytics', user?.id, timeRange],
-    queryFn: async () => {
-      if (!user?.id) return [];
+    queryFn: async (): Promise<AnalyticsPayload> => {
+      if (!user?.id) return EMPTY_ANALYTICS;
 
       const daysBack = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 120;
       const startDate = new Date();
@@ -91,18 +119,18 @@ export default function EnhancedAnalytics() {
         .from('submissions')
         .select(`
           score,
-          created_at,
+          submitted_at,
           activities!inner(
             max_score,
             type,
-            name,
+            title,
             subject_id,
             subjects(code, name)
           )
         `)
         .eq('student_id', user.id)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: true });
+        .gte('submitted_at', startDate.toISOString())
+        .order('submitted_at', { ascending: true });
 
       // Get attendance data
       const { data: attendance } = await supabase
@@ -120,20 +148,25 @@ export default function EnhancedAnalytics() {
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
-      return { scores, attendance, predictions };
+      return {
+        scores: (scores ?? []) as ScoreRow[],
+        attendance: (attendance ?? []) as AttendanceRow[],
+        predictions: (predictions ?? []) as PredictionRow[],
+      };
     },
     enabled: !!user?.id,
   });
 
   // Process data for charts
   const processTrendData = (): TrendData[] => {
-    if (!performanceData.scores || !performanceData.attendance) return [];
+    if (!performanceData.scores.length && !performanceData.attendance.length) return [];
 
     const groupedByPeriod = new Map<string, { scores: number[], attendance: number[], risk: number[] }>();
     
     // Group data by time period
-    performanceData.scores.forEach((score: any) => {
-      const date = new Date(score.created_at);
+    performanceData.scores.forEach((score) => {
+      if (score.score == null || !score.submitted_at || !score.activities?.max_score) return;
+      const date = new Date(score.submitted_at);
       const period = timeRange === 'week' 
         ? date.toLocaleDateString('en', { weekday: 'short' })
         : timeRange === 'month'
@@ -148,7 +181,7 @@ export default function EnhancedAnalytics() {
       groupedByPeriod.get(period)!.scores.push(normalizedScore);
     });
 
-    performanceData.attendance.forEach((att: any) => {
+    performanceData.attendance.forEach((att) => {
       const date = new Date(att.date);
       const period = timeRange === 'week' 
         ? date.toLocaleDateString('en', { weekday: 'short' })
@@ -174,11 +207,12 @@ export default function EnhancedAnalytics() {
   };
 
   const processSubjectPerformance = (): SubjectPerformance[] => {
-    if (!performanceData.scores) return [];
+    if (!performanceData.scores.length) return [];
 
     const subjectMap = new Map<string, { scores: number[]; subjectName: string }>();
     
-    performanceData.scores.forEach((score: any) => {
+    performanceData.scores.forEach((score) => {
+      if (score.score == null) return;
       const subjectCode = score.activities?.subjects?.code;
       const subjectName = score.activities?.subjects?.name;
       if (!subjectCode || !subjectName || !score.activities?.max_score) return;
@@ -226,8 +260,8 @@ export default function EnhancedAnalytics() {
     averageScore: subjectPerformance.length 
       ? Math.round(subjectPerformance.reduce((sum, s) => sum + s.averageScore, 0) / subjectPerformance.length)
       : 0,
-    attendanceRate: performanceData.attendance?.length 
-      ? Math.round((performanceData.attendance.filter((a: any) => a.status === 'present' || a.status === 'late').length / performanceData.attendance.length) * 100)
+    attendanceRate: performanceData.attendance.length 
+      ? Math.round((performanceData.attendance.filter((a) => a.status === 'present' || a.status === 'late').length / performanceData.attendance.length) * 100)
       : 0,
     totalSubjects: subjectPerformance.length,
     improvingSubjects: subjectPerformance.filter(s => s.trend === 'up').length,

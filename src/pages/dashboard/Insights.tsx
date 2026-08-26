@@ -60,9 +60,11 @@ import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import {
   InsightsDesktopTabsList,
   InsightsTabMobileSelect,
+} from '@/components/insights/InsightsTabNavigation';
+import {
   INSIGHTS_TAB_PANEL_CLASS,
   type InsightsTabValue,
-} from '@/components/insights/InsightsTabNavigation';
+} from '@/components/insights/insights-tabs';
 
 const CHART_MARGIN = { top: 8, right: 8, left: 4, bottom: 28 };
 const CHART_MARGIN_TALL_X = { top: 8, right: 8, left: 4, bottom: 52 };

@@ -753,7 +753,6 @@ const ROLE_TABS: { value: RoleTab; label: string }[] = [
 
 export default function AdminUserManagement() {
   const { role } = useAuth();
-  if (role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   const [allRows, setAllRows]         = useState<UserRow[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -850,6 +849,8 @@ export default function AdminUserManagement() {
     return rows;
   }, [allRows, activeTab, statusFilter, search, sortOrder]);
 
+  if (role !== 'admin') return <Navigate to="/dashboard" replace />;
+
   // ── Selection helpers ──────────────────────────────────────────────────────
   const isAllSelected =
     displayRows.length > 0 && displayRows.every(r => selectedIds.has(r.userId));
@@ -874,7 +875,8 @@ export default function AdminUserManagement() {
   function toggleRow(id: string) {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
