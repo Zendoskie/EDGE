@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, History, NotebookPen } from 'lucide-react';
+import { Bell, CalendarClock, NotebookPen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/hooks/useAuth';
 import {
   useEngagementInterventions,
   useLogEngagementIntervention,
   useStudentEngagementAlerts,
 } from '@/hooks/useEngagementAlerts';
+import { InterventionHistory } from '@/components/InterventionHistory';
 import {
   engagementAlertTypeLabel,
   engagementInterventionActionLabel,
@@ -22,27 +25,63 @@ type Props = {
   studentId: string;
   studentEmail?: string | null;
   subjectId?: string | null;
+  referralId?: string | null;
+  variant?: 'instructor' | 'guidance';
 };
 
 const ACTIONS: { type: EngagementInterventionAction; label: string; needsEmail?: boolean }[] = [
   { type: 'send_reminder', label: 'Send Reminder' },
   { type: 'send_email_reminder', label: 'Send Email Reminder', needsEmail: true },
   { type: 'schedule_consultation', label: 'Schedule Consultation' },
+  { type: 'parent_contact', label: 'Contact Parent' },
+  { type: 'provide_learning_materials', label: 'Provide Learning Materials' },
   { type: 'add_note', label: 'Add Engagement Note' },
   { type: 'mark_contacted', label: 'Mark Student as Contacted' },
 ];
 
-export function StudentEngagementActions({ studentId, studentEmail, subjectId }: Props) {
+function defaultFollowUpDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+export function StudentEngagementActions({
+  studentId,
+  studentEmail,
+  subjectId,
+  referralId,
+  variant = 'instructor',
+}: Props) {
+  const { user, role } = useAuth();
   const { data: alerts = [], isLoading: alertsLoading } = useStudentEngagementAlerts(studentId);
   const { data: interventions = [], isLoading: historyLoading } = useEngagementInterventions(studentId);
   const logIntervention = useLogEngagementIntervention();
   const [note, setNote] = useState('');
   const [selectedAlertId, setSelectedAlertId] = useState<string>('none');
+  const [followUpDate, setFollowUpDate] = useState(defaultFollowUpDate);
 
   const openAlerts = alerts.filter((a) => a.status === 'open');
+  const actions =
+    variant === 'guidance'
+      ? [
+          {
+            type: 'guidance_counseling' as const,
+            label: 'Record Counseling Intervention',
+          },
+        ]
+      : ACTIONS;
 
   const runAction = async (actionType: EngagementInterventionAction, needsEmail?: boolean) => {
     try {
+      if (actionType !== 'add_note' && !followUpDate) {
+        toast.error('Choose a follow-up date.');
+        return;
+      }
+
       await logIntervention.mutateAsync({
         studentId,
         actionType,
@@ -51,9 +90,19 @@ export function StudentEngagementActions({ studentId, studentEmail, subjectId }:
         sendEmail: Boolean(needsEmail),
         studentEmail,
         subjectId,
+        referralId,
+        followUpDueAt:
+          actionType === 'add_note'
+            ? null
+            : new Date(`${followUpDate}T09:00:00`).toISOString(),
       });
-      toast.success(`${engagementInterventionActionLabel(actionType)} logged`);
+      toast.success(
+        actionType === 'add_note'
+          ? 'Engagement note logged'
+          : `${engagementInterventionActionLabel(actionType)} logged with a follow-up`,
+      );
       setNote('');
+      setFollowUpDate(defaultFollowUpDate());
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to log action');
     }
@@ -89,7 +138,9 @@ export function StudentEngagementActions({ studentId, studentEmail, subjectId }:
       <div className="rounded-lg border border-border/60 p-3 space-y-3">
         <div className="flex items-center gap-2">
           <NotebookPen className="h-4 w-4 text-primary" />
-          <p className="text-sm font-medium">Instructor Actions</p>
+          <p className="text-sm font-medium">
+            {variant === 'guidance' ? 'Guidance intervention' : 'Staff actions'}
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="engagement-action-note">Note (optional)</Label>
@@ -100,6 +151,22 @@ export function StudentEngagementActions({ studentId, studentEmail, subjectId }:
             placeholder="Add a short message or consultation details…"
             className="min-h-[72px]"
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`engagement-follow-up-date-${variant}`} className="flex items-center gap-1.5">
+            <CalendarClock className="h-3.5 w-3.5" />
+            Follow-up date
+          </Label>
+          <Input
+            id={`engagement-follow-up-date-${variant}`}
+            type="date"
+            min={new Date().toISOString().slice(0, 10)}
+            value={followUpDate}
+            onChange={(event) => setFollowUpDate(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            EDGE will remind the responsible staff member when outcome review is due.
+          </p>
         </div>
         {openAlerts.length > 0 ? (
           <div className="space-y-2">
@@ -119,7 +186,7 @@ export function StudentEngagementActions({ studentId, studentEmail, subjectId }:
           </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
-          {ACTIONS.map((action) => (
+          {actions.map((action) => (
             <Button
               key={action.type}
               type="button"
@@ -132,34 +199,18 @@ export function StudentEngagementActions({ studentId, studentEmail, subjectId }:
             </Button>
           ))}
         </div>
-        {ACTIONS.some((a) => a.needsEmail) && !studentEmail ? (
+        {actions.some((a) => a.needsEmail) && !studentEmail ? (
           <p className="text-xs text-muted-foreground">Email reminder unavailable — student email not found.</p>
         ) : null}
       </div>
 
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <History className="h-4 w-4 text-primary" />
-          <p className="text-sm font-medium">Intervention History</p>
-        </div>
-        {historyLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : interventions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No engagement interventions logged yet.</p>
-        ) : (
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {interventions.map((item) => (
-              <div key={item.id} className="rounded-lg border border-border/60 p-3 space-y-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Badge variant="secondary">{engagementInterventionActionLabel(item.action_type)}</Badge>
-                  <span className="text-xs text-muted-foreground">{formatLastLogin(item.created_at)}</span>
-                </div>
-                {item.note ? <p className="text-sm text-muted-foreground">{item.note}</p> : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <InterventionHistory
+        studentId={studentId}
+        interventions={interventions}
+        isLoading={historyLoading}
+        currentUserId={user?.id}
+        isAdmin={role === 'admin'}
+      />
     </div>
   );
 }

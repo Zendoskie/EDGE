@@ -3,7 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
+import {
+  useCounselingReferrals,
+  type CounselingReferralRow,
+} from '@/hooks/useCounselingReferrals';
+import { StudentEngagementActions } from '@/components/StudentEngagementActions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ReferralStatusBadge } from '@/components/ReferralStatusBadge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +33,8 @@ export default function GuidanceReferrals() {
   const queryClient = useQueryClient();
   const [reviewTarget, setReviewTarget] = useState<{ id: string; status: 'approved' | 'rejected' } | null>(null);
   const [counselorRemarks, setCounselorRemarks] = useState('');
+  const [interventionTarget, setInterventionTarget] =
+    useState<CounselingReferralRow | null>(null);
 
   const {
     data: referrals = [],
@@ -222,6 +228,16 @@ export default function GuidanceReferrals() {
                         Reject
                       </Button>
                     </div>
+                  ) : normalizeReferralStatus(r.status) === 'approved' ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setInterventionTarget(r)}
+                      >
+                        Track counseling outcome
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               ))}
@@ -258,6 +274,32 @@ export default function GuidanceReferrals() {
               {reviewMutation.isPending ? 'Saving…' : reviewTarget?.status === 'approved' ? 'Approve' : 'Reject'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!interventionTarget}
+        onOpenChange={(open) => {
+          if (!open) setInterventionTarget(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Closed-loop counseling intervention</DialogTitle>
+            <DialogDescription>
+              Record the counseling action, schedule the follow-up, and later compare the
+              student&apos;s engagement and risk outcomes.
+            </DialogDescription>
+          </DialogHeader>
+          {interventionTarget ? (
+            <StudentEngagementActions
+              studentId={interventionTarget.student_id}
+              studentEmail={interventionTarget.student?.email}
+              subjectId={interventionTarget.subject_id}
+              referralId={interventionTarget.id}
+              variant="guidance"
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

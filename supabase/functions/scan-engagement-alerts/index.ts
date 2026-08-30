@@ -10,8 +10,8 @@ const corsHeaders = {
 /**
  * Daily automated engagement alert scan.
  * Invoked by Vercel Cron (Authorization: Bearer CRON_SECRET) or service role.
- * Runs scan_engagement_inactivity_alerts() which evaluates all students and
- * writes durable inbox notifications for new alerts.
+ * Runs engagement inactivity and due intervention follow-up scans, writing
+ * durable inbox notifications for newly detected work.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -40,13 +40,21 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const db = createClient(supabaseUrl, serviceKey);
 
-    const { data, error } = await db.rpc("scan_engagement_inactivity_alerts");
-    if (error) throw error;
+    const [
+      { data: studentsScanned, error: engagementError },
+      { data: followUpsDue, error: followUpError },
+    ] = await Promise.all([
+      db.rpc("scan_engagement_inactivity_alerts"),
+      db.rpc("scan_due_intervention_followups"),
+    ]);
+    if (engagementError) throw engagementError;
+    if (followUpError) throw followUpError;
 
     return new Response(
       JSON.stringify({
         success: true,
-        students_scanned: data ?? 0,
+        students_scanned: studentsScanned ?? 0,
+        intervention_followups_due: followUpsDue ?? 0,
         ran_at: new Date().toISOString(),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

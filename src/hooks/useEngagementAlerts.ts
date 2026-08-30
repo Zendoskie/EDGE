@@ -7,6 +7,7 @@ import type {
   EngagementAlert,
   EngagementIntervention,
   EngagementInterventionAction,
+  EngagementOutcomeRating,
 } from '@/lib/engagement-alerts';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -91,7 +92,7 @@ export function useEngagementInterventions(studentId: string | undefined | null)
     queryFn: async () => {
       const { data, error } = await supabase
         .from('engagement_interventions')
-        .select('*')
+        .select('*, intervention_staff_outcomes(outcome_note, completed_by)')
         .eq('student_id', studentId!)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -113,6 +114,8 @@ type LogInterventionInput = {
   sendEmail?: boolean;
   studentEmail?: string | null;
   subjectId?: string | null;
+  referralId?: string | null;
+  followUpDueAt?: string | null;
 };
 
 export function useLogEngagementIntervention() {
@@ -147,6 +150,9 @@ export function useLogEngagementIntervention() {
         p_alert_id: input.alertId ?? null,
         p_metadata: (input.metadata ?? {}) as Json,
         p_notify_student: input.actionType !== 'add_note',
+        p_subject_id: input.subjectId ?? undefined,
+        p_referral_id: input.referralId ?? undefined,
+        p_follow_up_due_at: input.followUpDueAt ?? undefined,
       });
       if (error) throw error;
 
@@ -160,6 +166,39 @@ export function useLogEngagementIntervention() {
         queryKey: ['student-engagement-alerts', variables.studentId],
       });
       void queryClient.invalidateQueries({ queryKey: ['instructor-engagement-alerts'] });
+    },
+  });
+}
+
+type CompleteInterventionInput = {
+  interventionId: string;
+  studentId: string;
+  outcomeRating: EngagementOutcomeRating;
+  outcomeNote?: string;
+};
+
+export function useCompleteEngagementIntervention() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: CompleteInterventionInput) => {
+      const { data, error } = await supabase.rpc('complete_engagement_intervention', {
+        p_intervention_id: input.interventionId,
+        p_outcome_rating: input.outcomeRating,
+        p_outcome_note: input.outcomeNote?.trim() || undefined,
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['engagement-interventions', variables.studentId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['student-engagement-alerts', variables.studentId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['instructor-engagement-alerts'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-engagement-analytics'] });
     },
   });
 }

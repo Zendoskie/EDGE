@@ -431,33 +431,111 @@ export type Database = {
       engagement_interventions: {
         Row: {
           action_type: string
+          actor_role: string
           alert_id: string | null
+          assignments_submitted_delta: number | null
+          baseline_assignments_submitted: number | null
+          baseline_engagement_level: string | null
+          baseline_engagement_score: number | null
+          baseline_login_count: number | null
+          baseline_risk_level: string | null
+          baseline_risk_score: number | null
+          completed_at: string | null
+          completed_by: string | null
           created_at: string
+          engagement_score_delta: number | null
+          follow_up_due_at: string | null
+          follow_up_notified_at: string | null
           id: string
           instructor_id: string
+          login_count_delta: number | null
           metadata: Json
           note: string | null
+          outcome_assignments_submitted: number | null
+          outcome_engagement_level: string | null
+          outcome_engagement_score: number | null
+          outcome_login_count: number | null
+          outcome_rating: string | null
+          outcome_risk_level: string | null
+          outcome_risk_score: number | null
+          referral_id: string | null
+          risk_score_delta: number | null
+          status: string
           student_id: string
+          subject_id: string | null
+          updated_at: string
         }
         Insert: {
           action_type: string
+          actor_role?: string
           alert_id?: string | null
+          assignments_submitted_delta?: number | null
+          baseline_assignments_submitted?: number | null
+          baseline_engagement_level?: string | null
+          baseline_engagement_score?: number | null
+          baseline_login_count?: number | null
+          baseline_risk_level?: string | null
+          baseline_risk_score?: number | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string
+          engagement_score_delta?: number | null
+          follow_up_due_at?: string | null
+          follow_up_notified_at?: string | null
           id?: string
           instructor_id: string
+          login_count_delta?: number | null
           metadata?: Json
           note?: string | null
+          outcome_assignments_submitted?: number | null
+          outcome_engagement_level?: string | null
+          outcome_engagement_score?: number | null
+          outcome_login_count?: number | null
+          outcome_rating?: string | null
+          outcome_risk_level?: string | null
+          outcome_risk_score?: number | null
+          referral_id?: string | null
+          risk_score_delta?: number | null
+          status?: string
           student_id: string
+          subject_id?: string | null
+          updated_at?: string
         }
         Update: {
           action_type?: string
+          actor_role?: string
           alert_id?: string | null
+          assignments_submitted_delta?: number | null
+          baseline_assignments_submitted?: number | null
+          baseline_engagement_level?: string | null
+          baseline_engagement_score?: number | null
+          baseline_login_count?: number | null
+          baseline_risk_level?: string | null
+          baseline_risk_score?: number | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string
+          engagement_score_delta?: number | null
+          follow_up_due_at?: string | null
+          follow_up_notified_at?: string | null
           id?: string
           instructor_id?: string
+          login_count_delta?: number | null
           metadata?: Json
           note?: string | null
+          outcome_assignments_submitted?: number | null
+          outcome_engagement_level?: string | null
+          outcome_engagement_score?: number | null
+          outcome_login_count?: number | null
+          outcome_rating?: string | null
+          outcome_risk_level?: string | null
+          outcome_risk_score?: number | null
+          referral_id?: string | null
+          risk_score_delta?: number | null
+          status?: string
           student_id?: string
+          subject_id?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -465,6 +543,20 @@ export type Database = {
             columns: ["alert_id"]
             isOneToOne: false
             referencedRelation: "engagement_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_interventions_referral_id_fkey"
+            columns: ["referral_id"]
+            isOneToOne: false
+            referencedRelation: "counseling_referrals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "engagement_interventions_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
             referencedColumns: ["id"]
           },
         ]
@@ -589,6 +681,38 @@ export type Database = {
             columns: ["subject_id"]
             isOneToOne: false
             referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intervention_staff_outcomes: {
+        Row: {
+          completed_by: string
+          created_at: string
+          intervention_id: string
+          outcome_note: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_by: string
+          created_at?: string
+          intervention_id: string
+          outcome_note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_by?: string
+          created_at?: string
+          intervention_id?: string
+          outcome_note?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intervention_staff_outcomes_intervention_id_fkey"
+            columns: ["intervention_id"]
+            isOneToOne: true
+            referencedRelation: "engagement_interventions"
             referencedColumns: ["id"]
           },
         ]
@@ -1812,6 +1936,14 @@ export type Database = {
         Args: { p_token: string; p_user_id: string }
         Returns: undefined
       }
+      complete_engagement_intervention: {
+        Args: {
+          p_intervention_id: string
+          p_outcome_note?: string
+          p_outcome_rating: string
+        }
+        Returns: string
+      }
       create_engagement_alert: {
         Args: {
           p_alert_type: string
@@ -1883,10 +2015,13 @@ export type Database = {
         Args: {
           p_action_type: string
           p_alert_id?: string
+          p_follow_up_due_at?: string
           p_metadata?: Json
           p_note?: string
           p_notify_student?: boolean
+          p_referral_id?: string
           p_student_id: string
+          p_subject_id?: string
         }
         Returns: string
       }
@@ -1927,6 +2062,7 @@ export type Database = {
         }[]
       }
       scan_engagement_inactivity_alerts: { Args: never; Returns: number }
+      scan_due_intervention_followups: { Args: never; Returns: number }
       validate_parent_signup: {
         Args: { p_parent_email: string; p_student_id_no: string }
         Returns: undefined

@@ -10,6 +10,8 @@ import {
   TrendingUp,
   Award,
   AlertTriangle,
+  ClipboardCheck,
+  Clock3,
 } from 'lucide-react';
 import {
   Bar,
@@ -40,6 +42,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import {
+  engagementInterventionActionLabel,
+  formatSignedDelta,
+} from '@/lib/engagement-alerts';
 
 const ACTIVE_COLOR = 'hsl(142 76% 36%)';
 const INACTIVE_COLOR = 'hsl(0 72% 51%)';
@@ -330,6 +336,108 @@ export default function AdminEngagementAnalytics() {
                 </ResponsiveContainer>
               </div>
             </InsightsChartFrame>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card/90 border-border/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ClipboardCheck className="h-4 w-4 text-primary" />
+            Intervention Effectiveness
+          </CardTitle>
+          <CardDescription>
+            Closed-loop completion and measured engagement outcomes. Staff assessments are
+            reported separately from the AI risk model.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <Skeleton className="h-36 w-full" />
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Open follow-ups</p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {data?.interventionEffectiveness.open ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Due now
+                  </p>
+                  <p className="text-2xl font-semibold tabular-nums text-amber-600">
+                    {data?.interventionEffectiveness.due ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Completion rate</p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {data?.interventionEffectiveness.completionRate ?? 0}%
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Average engagement change</p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {formatSignedDelta(
+                      data?.interventionEffectiveness.averageEngagementDelta ?? null,
+                      ' pts',
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Badge variant="outline">
+                  {data?.interventionEffectiveness.total ?? 0} total interventions
+                </Badge>
+                <Badge variant="outline">
+                  {data?.interventionEffectiveness.completed ?? 0} completed
+                </Badge>
+                <Badge variant="outline">
+                  {data?.interventionEffectiveness.improved ?? 0} assessed improved
+                </Badge>
+                <Badge variant="outline">
+                  Avg. completion:{' '}
+                  {data?.interventionEffectiveness.averageDaysToOutcome != null
+                    ? `${data.interventionEffectiveness.averageDaysToOutcome} days`
+                    : '—'}
+                </Badge>
+              </div>
+
+              {(data?.interventionEffectiveness.byAction.length ?? 0) > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-border/60">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/30 text-left text-muted-foreground">
+                        <th className="px-3 py-2 font-medium">Action</th>
+                        <th className="px-3 py-2 text-right font-medium">Total</th>
+                        <th className="px-3 py-2 text-right font-medium">Completed</th>
+                        <th className="px-3 py-2 text-right font-medium">Improved</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data?.interventionEffectiveness.byAction ?? []).map((row) => (
+                        <tr key={row.actionType} className="border-b border-border/40">
+                          <td className="px-3 py-2 font-medium">
+                            {engagementInterventionActionLabel(row.actionType)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.total}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.completed}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.improved}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No closed-loop intervention outcomes have been recorded yet.
+                </p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

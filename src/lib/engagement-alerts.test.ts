@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  engagementOutcomeLabel,
   engagementAlertTypeLabel,
   engagementInterventionActionLabel,
+  formatSignedDelta,
+  interventionStatusLabel,
+  isInterventionFollowUpDue,
 } from '@/lib/engagement-alerts';
 
 describe('engagement-alerts labels', () => {
@@ -19,5 +23,36 @@ describe('engagement-alerts labels', () => {
     expect(engagementInterventionActionLabel('schedule_consultation')).toBe('Schedule Consultation');
     expect(engagementInterventionActionLabel('add_note')).toBe('Add Engagement Note');
     expect(engagementInterventionActionLabel('mark_contacted')).toBe('Mark Student as Contacted');
+    expect(engagementInterventionActionLabel('guidance_counseling')).toBe('Guidance Counseling');
+    expect(engagementInterventionActionLabel('parent_contact')).toBe('Contact Parent');
+    expect(engagementInterventionActionLabel('provide_learning_materials')).toBe(
+      'Provide Learning Materials',
+    );
+  });
+});
+
+describe('closed-loop intervention helpers', () => {
+  it('detects overdue follow-ups without treating closed records as due', () => {
+    const now = new Date('2026-08-30T12:00:00.000Z');
+    expect(
+      isInterventionFollowUpDue(
+        { status: 'open', follow_up_due_at: '2026-08-29T12:00:00.000Z' },
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isInterventionFollowUpDue(
+        { status: 'completed', follow_up_due_at: '2026-08-29T12:00:00.000Z' },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('formats lifecycle, outcome, and measured deltas', () => {
+    expect(interventionStatusLabel('follow_up_due')).toBe('Follow-up due');
+    expect(engagementOutcomeLabel('no_change')).toBe('No meaningful change');
+    expect(formatSignedDelta(8.25, ' pts')).toBe('+8.3 pts');
+    expect(formatSignedDelta(-4)).toBe('-4');
+    expect(formatSignedDelta(null)).toBe('—');
   });
 });

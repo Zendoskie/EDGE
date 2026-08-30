@@ -1,8 +1,8 @@
-import { chromium, type Page } from 'playwright-core';
+import { chromium } from 'playwright-core';
 
 const BASE_URL = (process.env.E2E_BASE_URL || 'https://edge-yc7z.vercel.app').replace(/\/+$/, '');
 
-async function assertNoLocalhostInPage(page: Page, label: string) {
+async function assertNoLocalhostInPage(page, label) {
   const html = await page.content();
   if (/http:\/\/localhost(?::\d+)?/i.test(html) && !html.includes('vite')) {
     // Soft check: production marketing/login should not advertise localhost invite hosts.
@@ -16,7 +16,7 @@ async function main() {
     headless: true,
   });
   const page = await browser.newPage();
-  const failures: string[] = [];
+  const failures = [];
 
   try {
     // 1) Public shell loads
@@ -27,8 +27,9 @@ async function main() {
     await assertNoLocalhostInPage(page, 'home');
 
     // 2) Auth/login route reachable
-    await page.goto(BASE_URL + '/auth', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(async () => {
-      await page.goto(BASE_URL + '/login', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(BASE_URL + '/login', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
     });
     const bodyText = await page.locator('body').innerText();
     if (!/sign in|log in|email|password|EDGE/i.test(bodyText)) {

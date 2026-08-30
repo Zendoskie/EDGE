@@ -30,9 +30,107 @@ export type AdminEngagementAnalytics = {
   noActivity: AdminStudentEngagementRow[];
   mostActive: AdminStudentEngagementRow[];
   lowestEngagement: AdminStudentEngagementRow[];
+  interventionEffectiveness: InterventionEffectiveness;
 };
 
 const NO_ACTIVITY_DAYS = 7;
+
+export type InterventionAnalyticsRow = {
+  action_type: string;
+  status: string;
+  follow_up_due_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+  outcome_rating: string | null;
+  engagement_score_delta: number | null;
+};
+
+export type InterventionEffectiveness = {
+  total: number;
+  open: number;
+  due: number;
+  completed: number;
+  improved: number;
+  completionRate: number;
+  averageEngagementDelta: number | null;
+  averageDaysToOutcome: number | null;
+  byAction: {
+    actionType: string;
+    total: number;
+    completed: number;
+    improved: number;
+  }[];
+};
+
+export function computeInterventionEffectiveness(
+  rows: InterventionAnalyticsRow[],
+  now = new Date(),
+): InterventionEffectiveness {
+  const trackedRows = rows.filter((row) => row.action_type !== 'add_note');
+  const terminal = new Set(['completed', 'cancelled']);
+  const completedRows = trackedRows.filter((row) => row.status === 'completed');
+  const due = trackedRows.filter((row) => {
+    if (terminal.has(row.status)) return false;
+    if (row.status === 'follow_up_due') return true;
+    if (!row.follow_up_due_at) return false;
+    const dueAt = Date.parse(row.follow_up_due_at);
+    return Number.isFinite(dueAt) && dueAt <= now.getTime();
+  }).length;
+  const improved = completedRows.filter((row) => row.outcome_rating === 'improved').length;
+  const deltas = completedRows
+    .map((row) => row.engagement_score_delta)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  const durations = completedRows
+    .map((row) => {
+      if (!row.completed_at) return null;
+      const start = Date.parse(row.created_at);
+      const finish = Date.parse(row.completed_at);
+      if (!Number.isFinite(start) || !Number.isFinite(finish) || finish < start) return null;
+      return (finish - start) / (24 * 60 * 60 * 1000);
+    })
+    .filter((value): value is number => value != null);
+
+  const actionBuckets = new Map<
+    string,
+    { actionType: string; total: number; completed: number; improved: number }
+  >();
+  for (const row of trackedRows) {
+    const bucket = actionBuckets.get(row.action_type) ?? {
+      actionType: row.action_type,
+      total: 0,
+      completed: 0,
+      improved: 0,
+    };
+    bucket.total += 1;
+    if (row.status === 'completed') bucket.completed += 1;
+    if (row.outcome_rating === 'improved') bucket.improved += 1;
+    actionBuckets.set(row.action_type, bucket);
+  }
+
+  return {
+    total: trackedRows.length,
+    open: trackedRows.filter((row) => !terminal.has(row.status)).length,
+    due,
+    completed: completedRows.length,
+    improved,
+    completionRate:
+      trackedRows.length > 0
+        ? Math.round((completedRows.length / trackedRows.length) * 1000) / 10
+        : 0,
+    averageEngagementDelta:
+      deltas.length > 0
+        ? Math.round((deltas.reduce((sum, value) => sum + value, 0) / deltas.length) * 10) / 10
+        : null,
+    averageDaysToOutcome:
+      durations.length > 0
+        ? Math.round((durations.reduce((sum, value) => sum + value, 0) / durations.length) * 10) /
+          10
+        : null,
+    byAction: [...actionBuckets.values()].sort(
+      (a, b) => b.total - a.total || a.actionType.localeCompare(b.actionType),
+    ),
+  };
+}
 
 function monthKey(iso: string): string {
   const d = new Date(iso);
@@ -238,6 +336,28 @@ export function useAdminEngagementAnalytics(enabled: boolean) {
         .sort((a, b) => a.engagement_score - b.engagement_score || a.total_login_count - b.total_login_count)
         .slice(0, 10);
 
+      const { data: interventionRows, error: interventionError } = await supabase
+        .from('engagement_interventions')
+        .select(
+          'action_type, status, follow_up_due_at, created_at, completed_at, outcome_rating, engagement_score_delta',
+        )
+        .order('created_at', { ascending: false })
+        .limit(2000);
+      if (interventionError) throw interventionError;
+
+      const interventionEffectiveness = computeInterventionEffectiveness(
+        (interventionRows ?? []).map((row) => ({
+          action_type: row.action_type,
+          status: row.status,
+          follow_up_due_at: row.follow_up_due_at,
+          created_at: row.created_at,
+          completed_at: row.completed_at,
+          outcome_rating: row.outcome_rating,
+          engagement_score_delta:
+            row.engagement_score_delta == null ? null : Number(row.engagement_score_delta),
+        })),
+      );
+
       return {
         rows,
         activeInactive: [
@@ -249,6 +369,7 @@ export function useAdminEngagementAnalytics(enabled: boolean) {
         noActivity,
         mostActive,
         lowestEngagement,
+        interventionEffectiveness,
       };
     },
     enabled,

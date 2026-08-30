@@ -12,7 +12,23 @@ export type EngagementInterventionAction =
   | 'send_email_reminder'
   | 'schedule_consultation'
   | 'add_note'
-  | 'mark_contacted';
+  | 'mark_contacted'
+  | 'guidance_counseling'
+  | 'parent_contact'
+  | 'provide_learning_materials';
+
+export type EngagementInterventionStatus =
+  | 'open'
+  | 'follow_up_due'
+  | 'completed'
+  | 'cancelled';
+
+export type EngagementOutcomeRating = 'improved' | 'no_change' | 'declined';
+
+export type InterventionStaffOutcome = {
+  outcome_note: string | null;
+  completed_by: string;
+};
 
 export type EngagementAlert = {
   id: string;
@@ -38,10 +54,86 @@ export type EngagementIntervention = {
   student_id: string;
   instructor_id: string;
   action_type: EngagementInterventionAction;
+  actor_role: 'instructor' | 'guidance_counselor' | 'admin';
   note: string | null;
   metadata: Record<string, unknown>;
+  subject_id: string | null;
+  referral_id: string | null;
+  status: EngagementInterventionStatus;
+  follow_up_due_at: string | null;
+  follow_up_notified_at: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
+  baseline_engagement_score: number | null;
+  baseline_engagement_level: string | null;
+  baseline_risk_score: number | null;
+  baseline_risk_level: string | null;
+  baseline_assignments_submitted: number | null;
+  baseline_login_count: number | null;
+  outcome_engagement_score: number | null;
+  outcome_engagement_level: string | null;
+  outcome_risk_score: number | null;
+  outcome_risk_level: string | null;
+  outcome_assignments_submitted: number | null;
+  outcome_login_count: number | null;
+  engagement_score_delta: number | null;
+  risk_score_delta: number | null;
+  assignments_submitted_delta: number | null;
+  login_count_delta: number | null;
+  outcome_rating: EngagementOutcomeRating | null;
+  intervention_staff_outcomes?: InterventionStaffOutcome[] | InterventionStaffOutcome | null;
   created_at: string;
+  updated_at: string;
 };
+
+export function isInterventionFollowUpDue(
+  intervention: Pick<EngagementIntervention, 'status' | 'follow_up_due_at'>,
+  now = new Date(),
+): boolean {
+  if (
+    intervention.status === 'completed' ||
+    intervention.status === 'cancelled' ||
+    !intervention.follow_up_due_at
+  ) {
+    return false;
+  }
+  const dueAt = Date.parse(intervention.follow_up_due_at);
+  return Number.isFinite(dueAt) && dueAt <= now.getTime();
+}
+
+export function interventionStatusLabel(status: string): string {
+  switch (status) {
+    case 'open':
+      return 'Follow-up scheduled';
+    case 'follow_up_due':
+      return 'Follow-up due';
+    case 'completed':
+      return 'Completed';
+    case 'cancelled':
+      return 'Cancelled';
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+export function engagementOutcomeLabel(outcome: string | null): string {
+  switch (outcome) {
+    case 'improved':
+      return 'Improved';
+    case 'no_change':
+      return 'No meaningful change';
+    case 'declined':
+      return 'Declined';
+    default:
+      return 'Not evaluated';
+  }
+}
+
+export function formatSignedDelta(value: number | null, suffix = ''): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? '+' : ''}${rounded}${suffix}`;
+}
 
 export function engagementAlertTypeLabel(type: string): string {
   switch (type) {
@@ -72,6 +164,12 @@ export function engagementInterventionActionLabel(action: string): string {
       return 'Add Engagement Note';
     case 'mark_contacted':
       return 'Mark Student as Contacted';
+    case 'guidance_counseling':
+      return 'Guidance Counseling';
+    case 'parent_contact':
+      return 'Contact Parent';
+    case 'provide_learning_materials':
+      return 'Provide Learning Materials';
     default:
       return action.replace(/_/g, ' ');
   }
