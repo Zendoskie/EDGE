@@ -37,15 +37,13 @@ import {
 } from '@/lib/engagement-export';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { InsightsChartFrame } from '@/components/insights/InsightsChartFrame';
+import { AnimatedNumber } from '@/components/motion/AnimatedNumber';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
-import {
-  engagementInterventionActionLabel,
-  formatSignedDelta,
-} from '@/lib/engagement-alerts';
+import { engagementInterventionActionLabel } from '@/lib/engagement-alerts';
 
 const ACTIVE_COLOR = 'hsl(142 76% 36%)';
 const INACTIVE_COLOR = 'hsl(0 72% 51%)';
@@ -175,42 +173,50 @@ export default function AdminEngagementAnalytics() {
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="edge-metric-card">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground">Total Students</p>
             <p className="text-2xl font-semibold tabular-nums">
-              {isLoading ? '—' : data?.rows.length ?? 0}
+              {isLoading ? '—' : <AnimatedNumber value={data?.rows.length ?? 0} />}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="edge-metric-card">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground">Active</p>
             <p className="text-2xl font-semibold tabular-nums text-emerald-600">
-              {isLoading
-                ? '—'
-                : data?.activeInactive.find((x) => x.key === 'active')?.value ?? 0}
+              {isLoading ? (
+                '—'
+              ) : (
+                <AnimatedNumber
+                  value={data?.activeInactive.find((x) => x.key === 'active')?.value ?? 0}
+                />
+              )}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="edge-metric-card">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground">Inactive / Low</p>
             <p className="text-2xl font-semibold tabular-nums text-destructive">
-              {isLoading
-                ? '—'
-                : data?.activeInactive.find((x) => x.key === 'inactive')?.value ?? 0}
+              {isLoading ? (
+                '—'
+              ) : (
+                <AnimatedNumber
+                  value={data?.activeInactive.find((x) => x.key === 'inactive')?.value ?? 0}
+                />
+              )}
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="edge-metric-card">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Download className="h-3.5 w-3.5" />
               No Activity (7+ days)
             </p>
             <p className="text-2xl font-semibold tabular-nums">
-              {isLoading ? '—' : data?.noActivity.length ?? 0}
+              {isLoading ? '—' : <AnimatedNumber value={data?.noActivity.length ?? 0} />}
             </p>
           </CardContent>
         </Card>
@@ -290,7 +296,7 @@ export default function AdminEngagementAnalytics() {
         </Card>
       </div>
 
-      <Card className="bg-card/90 border-border/70">
+      <Card className="edge-glass-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
@@ -357,33 +363,45 @@ export default function AdminEngagementAnalytics() {
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-lg border p-3">
+                <div className="edge-metric-card rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Open follow-ups</p>
                   <p className="text-2xl font-semibold tabular-nums">
-                    {data?.interventionEffectiveness.open ?? 0}
+                    <AnimatedNumber value={data?.interventionEffectiveness.open ?? 0} />
                   </p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="edge-metric-card rounded-xl border p-3">
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock3 className="h-3.5 w-3.5" />
                     Due now
                   </p>
                   <p className="text-2xl font-semibold tabular-nums text-amber-600">
-                    {data?.interventionEffectiveness.due ?? 0}
+                    <AnimatedNumber value={data?.interventionEffectiveness.due ?? 0} />
                   </p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="edge-metric-card rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Completion rate</p>
                   <p className="text-2xl font-semibold tabular-nums">
-                    {data?.interventionEffectiveness.completionRate ?? 0}%
+                    <AnimatedNumber
+                      value={data?.interventionEffectiveness.completionRate ?? 0}
+                      decimals={1}
+                      suffix="%"
+                    />
                   </p>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="edge-metric-card rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">Average engagement change</p>
                   <p className="text-2xl font-semibold tabular-nums">
-                    {formatSignedDelta(
-                      data?.interventionEffectiveness.averageEngagementDelta ?? null,
-                      ' pts',
+                    {data?.interventionEffectiveness.averageEngagementDelta == null ? (
+                      '—'
+                    ) : (
+                      <AnimatedNumber
+                        value={data.interventionEffectiveness.averageEngagementDelta}
+                        decimals={1}
+                        prefix={
+                          data.interventionEffectiveness.averageEngagementDelta > 0 ? '+' : ''
+                        }
+                        suffix=" pts"
+                      />
                     )}
                   </p>
                 </div>

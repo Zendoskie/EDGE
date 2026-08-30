@@ -1,4 +1,5 @@
-import { Outlet, Navigate } from "react-router-dom";
+import { Navigate, useLocation, useOutlet } from "react-router-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +40,26 @@ type StudentPredictionContext = {
   metrics: SubjectCoachingMetrics | null;
   coachingSubjects: SubjectCoachingMetrics[];
 };
+
+function AnimatedDashboardOutlet() {
+  const location = useLocation();
+  const outlet = useOutlet();
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        initial={reduceMotion ? false : { opacity: 0, y: 8, filter: "blur(3px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        exit={reduceMotion ? undefined : { opacity: 0, y: -4, filter: "blur(2px)" }}
+        transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <ErrorBoundary>{outlet}</ErrorBoundary>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
 function DashboardHeader() {
   const { state } = useSidebar();
@@ -173,10 +194,8 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
             variant="compact"
           />
           <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6">
-            <div className="content-grid animate-fade-in">
-              <ErrorBoundary>
-                <Outlet />
-              </ErrorBoundary>
+            <div className="content-grid">
+              <AnimatedDashboardOutlet />
             </div>
           </main>
         </div>

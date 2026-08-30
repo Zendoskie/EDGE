@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InterventionOutcomeDialog } from '@/components/InterventionOutcomeDialog';
+import { InterventionJourneyTimeline } from '@/components/InterventionJourneyTimeline';
+import { AnimatedNumber } from '@/components/motion/AnimatedNumber';
 import {
   engagementInterventionActionLabel,
   engagementOutcomeLabel,
-  formatSignedDelta,
   interventionStatusLabel,
   isInterventionFollowUpDue,
   type EngagementIntervention,
@@ -35,6 +36,25 @@ function statusVariant(
   if (isInterventionFollowUpDue(intervention)) return 'destructive';
   if (intervention.status === 'cancelled') return 'outline';
   return 'secondary';
+}
+
+function AnimatedDelta({
+  value,
+  suffix = '',
+}: {
+  value: number | null;
+  suffix?: string;
+}) {
+  if (value == null) return <span>—</span>;
+  const numericValue = Number(value);
+  return (
+    <AnimatedNumber
+      value={numericValue}
+      decimals={Number.isInteger(numericValue) ? 0 : 1}
+      prefix={numericValue > 0 ? '+' : ''}
+      suffix={suffix}
+    />
+  );
 }
 
 export function InterventionHistory({
@@ -68,7 +88,7 @@ export function InterventionHistory({
             const outcomeNote = staffOutcomeNote(item);
 
             return (
-              <div key={item.id} className="space-y-3 rounded-lg border border-border/60 p-3">
+              <div key={item.id} className="edge-glass-card space-y-3 rounded-xl border p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
@@ -86,6 +106,8 @@ export function InterventionHistory({
                 </div>
 
                 {item.note ? <p className="text-sm text-muted-foreground">{item.note}</p> : null}
+
+                <InterventionJourneyTimeline intervention={item} />
 
                 <div className="grid gap-2 text-xs sm:grid-cols-2">
                   <div className="rounded-md bg-muted/35 p-2">
@@ -116,14 +138,15 @@ export function InterventionHistory({
                     {item.status === 'completed' ? (
                       <>
                         <p className="text-muted-foreground">
-                          Engagement: {formatSignedDelta(item.engagement_score_delta, ' points')}
+                          Engagement:{' '}
+                          <AnimatedDelta value={item.engagement_score_delta} suffix=" points" />
                         </p>
                         <p className="text-muted-foreground">
-                          Risk score: {formatSignedDelta(item.risk_score_delta, ' points')}
+                          Risk score: <AnimatedDelta value={item.risk_score_delta} suffix=" points" />
                         </p>
                         <p className="text-muted-foreground">
-                          Logins: {formatSignedDelta(item.login_count_delta)}
-                          {' · '}Assignments: {formatSignedDelta(item.assignments_submitted_delta)}
+                          Logins: <AnimatedDelta value={item.login_count_delta} />
+                          {' · '}Assignments: <AnimatedDelta value={item.assignments_submitted_delta} />
                         </p>
                       </>
                     ) : (

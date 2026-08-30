@@ -7,6 +7,8 @@ export type StudentEngagementSummaryRow = {
   student_id: string;
   engagement_level: string;
   engagement_score: number;
+  previous_engagement_level: string | null;
+  previous_engagement_score: number | null;
   total_login_count: number;
   total_time_spent_seconds: number;
   last_login_at: string | null;
@@ -33,7 +35,7 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
       const { data, error } = await supabase
         .from('student_engagement_summary')
         .select(
-          'student_id, engagement_level, engagement_score, total_login_count, total_time_spent_seconds, last_login_at, assignments_submitted, ai_sessions, feedback_count',
+          'student_id, engagement_level, engagement_score, previous_engagement_level, previous_engagement_score, total_login_count, total_time_spent_seconds, last_login_at, assignments_submitted, ai_sessions, feedback_count',
         )
         .eq('student_id', studentId!)
         .maybeSingle();
@@ -45,6 +47,9 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
         student_id: data.student_id,
         engagement_level: data.engagement_level,
         engagement_score: Number(data.engagement_score ?? 0),
+        previous_engagement_level: data.previous_engagement_level ?? null,
+        previous_engagement_score:
+          data.previous_engagement_score == null ? null : Number(data.previous_engagement_score),
         total_login_count: data.total_login_count ?? 0,
         total_time_spent_seconds: data.total_time_spent_seconds ?? 0,
         last_login_at: data.last_login_at ?? null,

@@ -122,7 +122,7 @@ export function StudentEngagementActions({
         ) : (
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {openAlerts.map((alert) => (
-              <div key={alert.id} className="rounded-lg border border-border/60 p-3 space-y-1">
+              <div key={alert.id} className="edge-glass-card space-y-1 rounded-xl border p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{engagementAlertTypeLabel(alert.alert_type)}</Badge>
                   <span className="text-xs text-muted-foreground">{formatLastLogin(alert.created_at)}</span>
@@ -135,7 +135,7 @@ export function StudentEngagementActions({
         )}
       </div>
 
-      <div className="rounded-lg border border-border/60 p-3 space-y-3">
+      <div className="edge-glass-card space-y-3 rounded-xl border p-3">
         <div className="flex items-center gap-2">
           <NotebookPen className="h-4 w-4 text-primary" />
           <p className="text-sm font-medium">
@@ -230,7 +230,7 @@ export function EngagementAlertsQueue({
   const open = alerts.filter((a) => a.status === 'open').slice(0, 12);
 
   return (
-    <div className="rounded-lg border border-border/60 p-4 space-y-3">
+    <div className="edge-glass-card space-y-3 rounded-xl border p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Bell className="h-4 w-4 text-primary" />

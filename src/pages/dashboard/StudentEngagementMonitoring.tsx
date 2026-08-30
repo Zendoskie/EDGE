@@ -41,6 +41,7 @@ import { RiskBadge } from '@/components/RiskBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { EngagementAlertsQueue } from '@/components/StudentEngagementActions';
 import { EngagementRiskAttentionPanel } from '@/components/EngagementRiskAttentionPanel';
+import { AnimatedNumber } from '@/components/motion/AnimatedNumber';
 import { useInstructorEngagementAlerts } from '@/hooks/useEngagementAlerts';
 import {
   ENGAGEMENT_LEVEL_ORDER,
@@ -361,7 +362,7 @@ export default function StudentEngagementMonitoring() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 min-w-0">
         {statCards.map((stat) => (
-          <Card key={stat.title} className="bg-card/90 interactive-lift">
+          <Card key={stat.title} className="edge-metric-card interactive-lift">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
@@ -370,14 +371,19 @@ export default function StudentEngagementMonitoring() {
               {isLoading ? (
                 <Skeleton className="h-9 w-16" />
               ) : (
-                <p className="text-3xl font-bold tabular-nums">{stat.value}</p>
+                <p className="text-3xl font-bold tabular-nums">
+                  <AnimatedNumber
+                    value={stat.value}
+                    decimals={Number.isInteger(stat.value) ? 0 : 1}
+                  />
+                </p>
               )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="bg-card/90 border-border/70">
+      <Card className="edge-glass-card">
         <CardContent className="pt-5">
           <EngagementAlertsQueue
             alerts={engagementAlerts}
@@ -394,7 +400,7 @@ export default function StudentEngagementMonitoring() {
         onOpenStudent={(studentId, fullName) => setSelectedStudent({ studentId, fullName })}
       />
 
-      <Card className="bg-card/90 border-border/70">
+      <Card className="edge-glass-card">
         <CardHeader className="space-y-4">
           <div>
             <CardTitle className="text-lg">Engagement roster</CardTitle>
