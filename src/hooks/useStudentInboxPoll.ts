@@ -8,6 +8,7 @@ import {
   studentNoParticipationNotification,
   studentPredictionNotifications,
 } from "@/lib/notification-events";
+import { resolveProfileSource } from "@/lib/notification-sources";
 
 const POLL_KEY_PREFIX = "edge_inbox_poll_";
 const COACHING_REC_SEEN_PREFIX = "edge_coaching_rec_seen_";
@@ -64,6 +65,16 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
       const nowIso = new Date().toISOString();
 
       try {
+        const sourceCache = new Map<string, string>();
+        const getSourceName = async (actorId?: string | null) => {
+          if (!actorId) return "Course Instructor";
+          const cached = sourceCache.get(actorId);
+          if (cached) return cached;
+          const sourceName = await resolveProfileSource(actorId, "Course Instructor");
+          sourceCache.set(actorId, sourceName);
+          return sourceName;
+        };
+
         // Missing-grade alerts: when an instructor publishes grades for an activity,
         // notify students who do not have a recorded score for that activity.
         const { data: myEnrollments } = await supabase
@@ -78,7 +89,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
         if (mySubjectIds.length > 0) {
           const { data: publishedActivities } = await supabase
             .from("activities")
-            .select("id, title, grades_published_at, subject_id, subjects(code)")
+            .select("id, title, grades_published_at, grades_published_by, subject_id, subjects(code, instructor_id)")
             .in("subject_id", mySubjectIds)
             .gt("grades_published_at", lastPoll);
 
@@ -88,8 +99,9 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
             id: string;
             title: string;
             grades_published_at: string;
+            grades_published_by: string | null;
             subject_id: string | null;
-            subjects: { code?: string } | null;
+            subjects: { code?: string; instructor_id?: string | null } | null;
           }>;
 
           if (published.length > 0) {
@@ -114,10 +126,14 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
               if (!isMissing) continue;
 
               const courseCode = a.subjects?.code ?? "your course";
+              const sourceName = await getSourceName(
+                a.grades_published_by ?? a.subjects?.instructor_id,
+              );
               addRef.current({
                 title: "Missing grade",
                 body: `${courseCode}: "${a.title}" grades were published, but no score is recorded for you yet. Contact your instructor.`,
                 dedupeKey: `missing-grade:${a.id}:${a.grades_published_at}`,
+                sourceName,
               });
             }
           }
@@ -125,7 +141,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
 
         const { data: subsGraded } = await supabase
           .from("submissions")
-          .select("id, score, graded_at, submitted_at, activities(title)")
+          .select("id, score, graded_at, graded_by, submitted_at, activities(title, grades_published_by, subjects(instructor_id))")
           .eq("student_id", userId)
           .not("score", "is", null)
           .gt("graded_at", lastPoll);
@@ -134,21 +150,32 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
           const row = s as {
             id: string;
             graded_at: string | null;
+            graded_by: string | null;
             submitted_at: string | null;
-            activities: { title?: string } | null;
+            activities: {
+              title?: string;
+              grades_published_by?: string | null;
+              subjects?: { instructor_id?: string | null } | null;
+            } | null;
           };
           const t = row.graded_at || row.submitted_at || "";
           const title = row.activities?.title ?? "Activity";
+          const sourceName = await getSourceName(
+            row.graded_by ??
+              row.activities?.grades_published_by ??
+              row.activities?.subjects?.instructor_id,
+          );
           addRef.current({
             title: "New grade posted",
             body: `${title}: your work has been graded. Open Scores to review.`,
             dedupeKey: `sub-grade:${row.id}:${t}`,
+            sourceName,
           });
         }
 
         const { data: subsLegacy } = await supabase
           .from("submissions")
-          .select("id, score, graded_at, submitted_at, activities(title)")
+          .select("id, score, graded_at, graded_by, submitted_at, activities(title, grades_published_by, subjects(instructor_id))")
           .eq("student_id", userId)
           .not("score", "is", null)
           .is("graded_at", null)
@@ -158,15 +185,26 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
           const row = s as {
             id: string;
             graded_at: string | null;
+            graded_by: string | null;
             submitted_at: string | null;
-            activities: { title?: string } | null;
+            activities: {
+              title?: string;
+              grades_published_by?: string | null;
+              subjects?: { instructor_id?: string | null } | null;
+            } | null;
           };
           const t = row.submitted_at || "";
           const title = row.activities?.title ?? "Activity";
+          const sourceName = await getSourceName(
+            row.graded_by ??
+              row.activities?.grades_published_by ??
+              row.activities?.subjects?.instructor_id,
+          );
           addRef.current({
             title: "New grade posted",
             body: `${title}: your work has been graded. Open Scores to review.`,
             dedupeKey: `sub-grade:${row.id}:${t}`,
+            sourceName,
           });
         }
 
@@ -216,22 +254,31 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
 
         const { data: attRows } = await supabase
           .from("attendance")
-          .select("id, date, status, created_at")
+          .select("id, date, status, created_at, recorded_by, subjects(instructor_id)")
           .eq("student_id", userId)
           .gt("created_at", lastPoll);
 
         for (const a of attRows ?? []) {
-          const row = a as { id: string; date: string; status: string };
+          const row = a as {
+            id: string;
+            date: string;
+            status: string;
+            recorded_by: string | null;
+            subjects: { instructor_id?: string | null } | null;
+          };
           addRef.current({
             title: "Attendance recorded",
             body: `${row.date}: ${row.status}`,
             dedupeKey: `att:${row.id}:${row.date}:${row.status}`,
+            sourceName: await getSourceName(
+              row.recorded_by ?? row.subjects?.instructor_id,
+            ),
           });
         }
 
         const { data: interventions } = await supabase
           .from("interventions")
-          .select("id, sent_at, subject_id, message, subjects(code)")
+          .select("id, sent_at, subject_id, message, subjects(code, instructor_id)")
           .eq("student_id", userId)
           .gt("sent_at", lastPoll)
           .order("sent_at", { ascending: false })
@@ -242,7 +289,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
             id: string;
             sent_at: string | null;
             message: string | null;
-            subjects: { code?: string } | null;
+            subjects: { code?: string; instructor_id?: string | null } | null;
           };
           const msg = row.message?.trim();
           if (!msg || !msg.toLowerCase().startsWith("early warning alert")) continue;
@@ -251,6 +298,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
             title: "Instructor early warning",
             body: `${code}: ${msg}`,
             dedupeKey: `early-warning:${row.id}:${row.sent_at ?? ""}`,
+            sourceName: await getSourceName(row.subjects?.instructor_id),
           });
         }
 

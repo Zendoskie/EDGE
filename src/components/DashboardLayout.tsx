@@ -26,6 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICoachPopup } from "@/components/AICoachPopup";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { shouldShowHeaderAiCoach } from "@/lib/dashboard-role-features";
 import {
   buildStudentCoachingContext,
   formatAtRiskSubjectLabels,
@@ -184,15 +185,17 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
         <AppSidebar />
         <div className="flex-1 min-h-0 flex flex-col">
           <DashboardHeader />
-          <AICoachPopup
-            riskLevel={coachContext?.riskLevel ?? null}
-            subjectLabel={coachContext?.subjectLabel ?? null}
-            atRiskSubjects={coachContext?.atRiskSubjects ?? []}
-            metrics={coachContext?.metrics ?? null}
-            coachingSubjects={coachContext?.coachingSubjects ?? []}
-            storageKey="edge_ai_coach_dismissed_dashboard_header_v1"
-            variant="compact"
-          />
+          {shouldShowHeaderAiCoach(role) ? (
+            <AICoachPopup
+              riskLevel={coachContext?.riskLevel ?? null}
+              subjectLabel={coachContext?.subjectLabel ?? null}
+              atRiskSubjects={coachContext?.atRiskSubjects ?? []}
+              metrics={coachContext?.metrics ?? null}
+              coachingSubjects={coachContext?.coachingSubjects ?? []}
+              storageKey="edge_ai_coach_dismissed_dashboard_header_v1"
+              variant="compact"
+            />
+          ) : null}
           <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6">
             <div className="content-grid">
               <AnimatedDashboardOutlet />

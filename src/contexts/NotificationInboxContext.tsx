@@ -12,6 +12,7 @@ export type InboxNotification = {
   id: string;
   /** When set, prevents duplicate entries (Realtime + polling). */
   dedupeKey?: string;
+  sourceName: string;
   title: string;
   body: string;
   createdAt: number;
@@ -39,13 +40,20 @@ function loadFromStorage(userId: string): InboxNotification[] {
         typeof (x as InboxNotification).body === "string" &&
         typeof (x as InboxNotification).createdAt === "number" &&
         typeof (x as InboxNotification).read === "boolean",
-    );
+    ).map((item) => ({
+      ...item,
+      sourceName:
+        typeof (item as Partial<InboxNotification>).sourceName === "string" &&
+        (item as Partial<InboxNotification>).sourceName?.trim()
+          ? (item as InboxNotification).sourceName.trim()
+          : "EDGE System",
+    }));
   } catch {
     return [];
   }
 }
 
-type AddInput = { title: string; body: string; dedupeKey?: string };
+type AddInput = { title: string; body: string; dedupeKey?: string; sourceName?: string };
 
 type InboxContextValue = {
   items: InboxNotification[];
@@ -86,6 +94,7 @@ export function NotificationInboxProvider({
       const n: InboxNotification = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         dedupeKey: input.dedupeKey,
+        sourceName: input.sourceName?.trim() || "EDGE System",
         title: input.title,
         body: input.body,
         createdAt: Date.now(),

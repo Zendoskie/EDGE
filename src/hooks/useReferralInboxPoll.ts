@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import { normalizeReferralStatus, referralStatusLabel } from "@/lib/referral-utils";
+import { resolveProfileSource } from "@/lib/notification-sources";
 
 const POLL_INTERVAL_MS = 90_000;
 const SEEN_KEY_PREFIX = "edge_referral_poll_seen_";
@@ -106,7 +107,7 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
       try {
         let query = supabase
           .from("counseling_referrals")
-          .select("id, status, created_at")
+          .select("id, status, created_at, instructor_id, reviewed_by")
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -121,8 +122,14 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
         let changed = false;
 
         for (const row of data ?? []) {
-          const id = String((row as { id?: string }).id ?? "");
-          const status = String((row as { status?: string }).status ?? "pending");
+          const referral = row as {
+            id?: string;
+            status?: string;
+            instructor_id?: string | null;
+            reviewed_by?: string | null;
+          };
+          const id = String(referral.id ?? "");
+          const status = String(referral.status ?? "pending");
           const prev = seen[id];
 
           if (prev === undefined) {
@@ -133,6 +140,10 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
                 addRef.current({
                   ...msg,
                   dedupeKey: `referral-poll:${id}:${status}:new`,
+                  sourceName: await resolveProfileSource(
+                    referral.instructor_id,
+                    "Course Instructor",
+                  ),
                 });
               }
             }
@@ -146,6 +157,10 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
               addRef.current({
                 ...msg,
                 dedupeKey: `referral-poll:${id}:${status}`,
+                sourceName: await resolveProfileSource(
+                  referral.reviewed_by ?? referral.instructor_id,
+                  referral.reviewed_by ? "Guidance Counselor" : "Course Instructor",
+                ),
               });
             }
             seen[id] = status;

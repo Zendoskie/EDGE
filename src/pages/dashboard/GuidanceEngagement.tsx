@@ -26,17 +26,11 @@ import { EngagementBadge } from '@/components/EngagementBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { GuidanceEngagementReferralButton } from '@/components/GuidanceEngagementReferralButton';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
-import { canonicalEngagementLevel } from '@/lib/engagement-utils';
-
-type Row = {
-  studentId: string;
-  fullName: string;
-  engagementLevel: string;
-  engagementScore: number;
-  totalLogins: number;
-  totalTime: number;
-  lastLoginAt: string | null;
-};
+import {
+  buildGuidanceEngagementRows,
+  type GuidanceEngagementRow,
+  type GuidanceStudentProfile,
+} from '@/lib/guidance-engagement';
 
 /**
  * Guidance counselors: campus-wide read-only engagement view.
@@ -45,11 +39,11 @@ type Row = {
 export default function GuidanceEngagement() {
   const { role } = useAuth();
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Row | null>(null);
+  const [selected, setSelected] = useState<GuidanceEngagementRow | null>(null);
 
   const { data: rows = [], isLoading, error } = useQuery({
     queryKey: ['guidance-engagement-readonly'],
-    queryFn: async (): Promise<Row[]> => {
+    queryFn: async (): Promise<GuidanceEngagementRow[]> => {
       const { data: summaries, error: summaryError } = await supabase
         .from('student_engagement_summary')
         .select(
@@ -59,24 +53,13 @@ export default function GuidanceEngagement() {
 
       const studentIds = [...new Set((summaries ?? []).map((s) => s.student_id))];
       const { data: profiles } = studentIds.length
-        ? await supabase.from('profiles').select('user_id, full_name').in('user_id', studentIds)
-        : { data: [] as { user_id: string; full_name: string | null }[] };
+        ? await supabase
+            .from('profiles')
+            .select('user_id, full_name, email, student_id')
+            .in('user_id', studentIds)
+        : { data: [] as GuidanceStudentProfile[] };
 
-      const nameById = new Map(
-        (profiles ?? []).map((p) => [p.user_id, p.full_name?.trim() || 'Student']),
-      );
-
-      return (summaries ?? [])
-        .map((s) => ({
-          studentId: s.student_id,
-          fullName: nameById.get(s.student_id) || 'Student',
-          engagementLevel: canonicalEngagementLevel(s.engagement_level),
-          engagementScore: Number(s.engagement_score ?? 0),
-          totalLogins: s.total_login_count ?? 0,
-          totalTime: s.total_time_spent_seconds ?? 0,
-          lastLoginAt: s.last_login_at,
-        }))
-        .sort((a, b) => a.fullName.localeCompare(b.fullName));
+      return buildGuidanceEngagementRows(summaries ?? [], profiles ?? []);
     },
     enabled: role === 'guidance_counselor',
     refetchInterval: 60_000,
@@ -181,7 +164,10 @@ export default function GuidanceEngagement() {
                 engagementLevel={selected.engagementLevel}
                 engagementScore={selected.engagementScore}
               />
-              <StudentEngagementPanel studentId={selected.studentId} />
+              <StudentEngagementPanel
+                studentId={selected.studentId}
+                studentName={selected.fullName}
+              />
             </div>
           ) : null}
         </DialogContent>

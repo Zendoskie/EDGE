@@ -10,7 +10,14 @@ import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from "@/lib/ri
 export const ATTENDANCE_THRESHOLD = 0.7;
 export const ATTENDANCE_THRESHOLD_PCT = Math.round(ATTENDANCE_THRESHOLD * 100);
 
-export type NotificationPayload = { title: string; body: string; dedupeKey: string };
+export type NotificationPayload = {
+  title: string;
+  body: string;
+  dedupeKey: string;
+  sourceName: string;
+};
+
+const EDGE_SYSTEM_SOURCE = "EDGE System";
 
 type PredictionRowLike = {
   id?: unknown;
@@ -52,12 +59,14 @@ export function studentPredictionNotifications(
       title: "Risk classification changed",
       body: `${code}: your status changed from ${riskLabel(prevRisk)} to ${riskLabel(riskLevel)}. Open Performance Insights.`,
       dedupeKey: `risk-change:${id}:${prevRisk}->${riskLevel}`,
+      sourceName: EDGE_SYSTEM_SOURCE,
     });
   } else if (!prevRisk) {
     out.push({
       title: "Academic insight updated",
       body: `New prediction for ${code}. Open Performance Insights.`,
       dedupeKey: `pred:${id}`,
+      sourceName: EDGE_SYSTEM_SOURCE,
     });
   }
 
@@ -72,6 +81,7 @@ export function studentPredictionNotifications(
         title: "Attendance below threshold",
         body: `${code}: your attendance is ${attendancePct(attRate)}% (below ${ATTENDANCE_THRESHOLD_PCT}%). Review your attendance record.`,
         dedupeKey: `att-threshold:${id}:${attendancePct(attRate)}`,
+        sourceName: EDGE_SYSTEM_SOURCE,
       });
     }
   }
@@ -97,6 +107,7 @@ export function studentCoachingRecommendationNotification(
     title: "New AI coaching recommendation",
     body: `${code}: ${preview}`,
     dedupeKey: `coaching-rec:${id}:${rec.length}:${rec.slice(0, 48)}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -122,6 +133,7 @@ export function instructorAtRiskNotification(
     title: `Student now ${riskLabel(riskLevel)}`,
     body: `${studentName} in ${code} is now classified as ${riskLabel(riskLevel)}. Review Risk Analysis.`,
     dedupeKey: `instructor-at-risk:${studentId}:${subjectId}:${riskLevel}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -166,6 +178,7 @@ export function studentEngagementDropNotification(
     title: "Engagement level changed",
     body: `Your engagement dropped from ${engagementLabel(previous)} to ${engagementLabel(current)}. Visit your dashboard to stay on track.`,
     dedupeKey: `engagement-drop:${studentId}:${previous}->${current}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -182,6 +195,7 @@ export function studentInactivityNotification(row: EngagementSummaryLike): Notif
     title: "We miss you!",
     body: `You have not logged in for ${daysSince} days. Log in to keep your engagement on track.`,
     dedupeKey: `inactivity:${studentId}:${daysSince}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -203,6 +217,7 @@ export function studentNoParticipationNotification(
     title: "Low course participation",
     body: `No recorded participation in the last ${ENGAGEMENT_CONFIG.noParticipationDays} days. Explore your subjects and learning materials.`,
     dedupeKey: `no-participation:${studentId}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -227,6 +242,7 @@ export function instructorEngagementAlertNotification(
     title: `Student engagement dropped to ${engagementLabel(current)}`,
     body: `${studentName} (${code}) engagement changed from ${engagementLabel(previous)} to ${engagementLabel(current)}.`,
     dedupeKey: `instructor-engagement:${studentId}:${previous}->${current}`,
+    sourceName: EDGE_SYSTEM_SOURCE,
   };
 }
 
@@ -242,6 +258,7 @@ export function instructorEngagementFeedbackNotification(opts: {
     title: "New student feedback",
     body: `${studentName} submitted new feedback: ${topic}.`,
     dedupeKey: `engagement-feedback:${opts.feedbackId}`,
+    sourceName: studentName,
   };
 }
 
@@ -257,5 +274,6 @@ export function guidanceEngagementFeedbackNotification(opts: {
     title: "Referred student submitted feedback",
     body: `${studentName} submitted feedback (${topic}) while a counseling referral is active.`,
     dedupeKey: `guidance-engagement-feedback:${opts.feedbackId}`,
+    sourceName: studentName,
   };
 }

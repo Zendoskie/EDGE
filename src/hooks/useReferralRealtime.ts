@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import { normalizeReferralStatus, referralStatusLabel } from "@/lib/referral-utils";
+import { resolveProfileSource } from "@/lib/notification-sources";
 
 function invalidateReferralQueries(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -102,7 +103,7 @@ export function useReferralRealtime(
     if (!userId || !role) return;
     if (!["student", "instructor", "guidance_counselor"].includes(role)) return;
 
-    const handleRow = (eventType: string, row: Record<string, unknown> | undefined) => {
+    const handleRow = async (eventType: string, row: Record<string, unknown> | undefined) => {
       if (!row) return;
       const id = String(row.id ?? "");
       const status = normalizeReferralStatus(row.status);
@@ -110,9 +111,18 @@ export function useReferralRealtime(
 
       const msg = notificationForReferral(role, eventType, row);
       if (msg) {
+        const actorId =
+          eventType === "UPDATE" && typeof row.reviewed_by === "string"
+            ? row.reviewed_by
+            : typeof row.instructor_id === "string"
+              ? row.instructor_id
+              : null;
+        const fallback =
+          eventType === "UPDATE" ? "Guidance Counselor" : "Course Instructor";
         addRef.current({
           ...msg,
           dedupeKey: `referral:${id}:${status}:${eventType}`,
+          sourceName: await resolveProfileSource(actorId, fallback),
         });
       }
 
@@ -132,7 +142,7 @@ export function useReferralRealtime(
           filter: `student_id=eq.${userId}`,
         },
         (payload) => {
-          handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
+          void handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
         },
       );
     } else if (role === "instructor") {
@@ -145,7 +155,7 @@ export function useReferralRealtime(
           filter: `instructor_id=eq.${userId}`,
         },
         (payload) => {
-          handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
+          void handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
         },
       );
     } else {
@@ -159,7 +169,7 @@ export function useReferralRealtime(
         (payload) => {
           const row = payload.new as Record<string, unknown> | undefined;
           if (!row || normalizeReferralStatus(row.status) !== "pending") return;
-          handleRow(payload.eventType, row);
+          void handleRow(payload.eventType, row);
         },
       );
       channel = channel.on(
@@ -170,7 +180,7 @@ export function useReferralRealtime(
           table: "counseling_referrals",
         },
         (payload) => {
-          handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
+          void handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
         },
       );
     }

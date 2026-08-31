@@ -70,6 +70,9 @@ export function NotificationInboxTrigger() {
                     !n.read && "bg-primary/5",
                   )}
                 >
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-primary/90">
+                    From {n.sourceName}
+                  </p>
                   <p className="text-sm font-medium leading-snug">{n.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{n.body}</p>
                   <p className="mt-1.5 text-[10px] text-muted-foreground/80">

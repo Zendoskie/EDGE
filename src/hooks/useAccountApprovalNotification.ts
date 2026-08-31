@@ -2,6 +2,13 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 
+type DurableNotificationRow = {
+  id: string;
+  title: string;
+  body: string;
+  source_name: string;
+};
+
 /**
  * Bridges durable `user_inbox_notifications` into the dashboard bell inbox.
  * Covers account approval, engagement alerts, and any other server-written rows.
@@ -21,8 +28,8 @@ export function useDurableInboxNotifications(
 
     let cancelled = false;
 
-    const ingest = async (rows: { id: string; title: string; body: string }[]) => {
-      const fresh: { id: string; title: string; body: string }[] = [];
+    const ingest = async (rows: DurableNotificationRow[]) => {
+      const fresh: DurableNotificationRow[] = [];
       for (const row of rows) {
         if (seenIdsRef.current.has(row.id)) continue;
         seenIdsRef.current.add(row.id);
@@ -30,6 +37,7 @@ export function useDurableInboxNotifications(
         addRef.current({
           title: row.title,
           body: row.body,
+          sourceName: row.source_name,
           dedupeKey: `user-inbox-notification:${row.id}`,
         });
       }
@@ -48,14 +56,14 @@ export function useDurableInboxNotifications(
       try {
         const { data, error } = await supabase
           .from("user_inbox_notifications")
-          .select("id, title, body")
+          .select("id, title, body, source_name")
           .eq("user_id", userId)
           .eq("read", false)
           .order("created_at", { ascending: true })
           .limit(50);
 
         if (error || cancelled || !data?.length) return;
-        await ingest(data as { id: string; title: string; body: string }[]);
+        await ingest(data as DurableNotificationRow[]);
       } catch (e) {
         console.warn("useDurableInboxNotifications:", e);
       }
@@ -77,9 +85,9 @@ export function useDurableInboxNotifications(
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const row = payload.new as { id: string; title: string; body: string; read?: boolean };
+          const row = payload.new as DurableNotificationRow & { read?: boolean };
           if (!row?.id || row.read) return;
-          void ingest([{ id: row.id, title: row.title, body: row.body }]);
+          void ingest([row]);
         },
       )
       .subscribe();

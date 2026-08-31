@@ -4,6 +4,7 @@ export type ParentLinkNotification = {
   title: string;
   body: string;
   dedupeKey: string;
+  sourceName: string;
 };
 
 export function studentParentRequestNotification(opts: {
@@ -12,8 +13,9 @@ export function studentParentRequestNotification(opts: {
 }): ParentLinkNotification {
   return {
     title: "Parent Access Request",
-    body: "Your registered parent is requesting access to your academic records. Open Parent Access Requests to approve or reject.",
+    body: `${opts.parentName} is requesting access to your academic records. Open Parent Access Requests to approve or reject.`,
     dedupeKey: `parent-link-request:${opts.linkId}:pending`,
+    sourceName: opts.parentName.trim() || "Parent/Guardian",
   };
 }
 
@@ -32,6 +34,7 @@ export function parentLinkDecisionNotification(opts: {
       title: "Access request approved",
       body: `Your request to access ${studentName}'s academic information has been approved. You can now view their academic records.`,
       dedupeKey: `parent-link-approved:${opts.linkId}:${cycle}`,
+      sourceName: studentName,
     };
   }
 
@@ -40,6 +43,7 @@ export function parentLinkDecisionNotification(opts: {
       title: "Access request rejected",
       body: `Your request to access ${studentName}'s academic information has been rejected. You may submit a new request from your dashboard.`,
       dedupeKey: `parent-link-rejected:${opts.linkId}:${cycle}`,
+      sourceName: studentName,
     };
   }
 

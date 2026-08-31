@@ -1786,6 +1786,7 @@ export type Database = {
           created_at: string
           id: string
           read: boolean
+          source_name: string
           title: string
           user_id: string
         }
@@ -1794,6 +1795,7 @@ export type Database = {
           created_at?: string
           id?: string
           read?: boolean
+          source_name: string
           title: string
           user_id: string
         }
@@ -1802,6 +1804,7 @@ export type Database = {
           created_at?: string
           id?: string
           read?: boolean
+          source_name?: string
           title?: string
           user_id?: string
         }
