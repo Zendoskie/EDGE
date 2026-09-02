@@ -6,7 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
-import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import {
+  formatAssessmentTypeLabel,
+  isCourseworkAssessmentType,
+  isExamAssessmentType,
+  isProjectAssessmentType,
+} from '@/lib/assessment-types';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { trackStudentActivity } from '@/lib/track-activity';
 
@@ -172,10 +177,16 @@ export default function MyScores() {
       ? (attendanceRecords.filter((a: any) => a.status === 'present' || a.status === 'late').length / attendanceRecords.length) * 100
       : null;
     const activityAverage = averageOf(
-      withScores.filter((x: any) => x.type === 'quiz' || x.type === 'assignment' || x.type === 'activity').map((x: any) => x.pct),
+      withScores
+        .filter((x: any) => isCourseworkAssessmentType(x.assessmentType || x.type))
+        .map((x: any) => x.pct),
     );
-    const projectAverage = averageOf(withScores.filter((x: any) => x.type === 'project').map((x: any) => x.pct));
-    const examAverage = averageOf(withScores.filter((x: any) => x.type === 'exam').map((x: any) => x.pct));
+    const projectAverage = averageOf(
+      withScores.filter((x: any) => isProjectAssessmentType(x.assessmentType || x.type)).map((x: any) => x.pct),
+    );
+    const examAverage = averageOf(
+      withScores.filter((x: any) => isExamAssessmentType(x.assessmentType || x.type)).map((x: any) => x.pct),
+    );
     const weightedAverage = computeWeightedGrade({
       activityAverage,
       projectAverage,
@@ -265,12 +276,7 @@ export default function MyScores() {
                         return (
                           <li key={a.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 text-sm">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="capitalize">{a.type}</span>
-                              {a.assessmentType ? (
-                                <Badge variant="outline" className="text-xs font-normal">
-                                  {formatAssessmentTypeLabel(a.assessmentType)}
-                                </Badge>
-                              ) : null}
+                              <span>{formatAssessmentTypeLabel(a.assessmentType || a.type)}</span>
                               <span className="font-medium">{a.title}</span>
                               {a.due_date && (
                                 <span className={`text-xs ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>

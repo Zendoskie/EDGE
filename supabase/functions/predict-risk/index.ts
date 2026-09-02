@@ -59,6 +59,7 @@ const ASSESSMENT_TYPE_ALIASES: Record<string, AssessmentType> = {
   assignment: "assignment",
   quiz: "quiz",
   project: "project",
+  exam: "midterm_exam",
   laboratory_exam: "laboratory_exam",
   laboratoryexam: "laboratory_exam",
   laboratory: "laboratory_exam",

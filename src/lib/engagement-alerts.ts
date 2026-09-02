@@ -152,6 +152,32 @@ export function engagementAlertTypeLabel(type: string): string {
   }
 }
 
+export function engagementActorRoleLabel(role: string | null | undefined): string {
+  switch (role) {
+    case 'guidance_counselor':
+      return 'Guidance Counselor';
+    case 'admin':
+      return 'Administrator';
+    default:
+      return 'Instructor';
+  }
+}
+
+export function formatEngagementFollowUpNotice(opts: {
+  actorRole?: string | null;
+  actorName: string;
+  studentName: string;
+  completed?: boolean;
+}): string {
+  const role = engagementActorRoleLabel(opts.actorRole);
+  const actor = opts.actorName.trim() || 'Staff';
+  const student = opts.studentName.trim() || 'the student';
+  if (opts.completed) {
+    return `${role} ${actor} completed an engagement follow-up for ${student}.`;
+  }
+  return `${role} ${actor} sent an engagement follow-up for ${student}.`;
+}
+
 export function engagementInterventionActionLabel(action: string): string {
   switch (action) {
     case 'send_reminder':

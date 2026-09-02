@@ -13,7 +13,12 @@ import { RiskBadge } from '@/components/RiskBadge';
 import { BookOpen, Calendar, FileText, Brain, Activity } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
-import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import {
+  formatAssessmentTypeLabel,
+  isCourseworkAssessmentType,
+  isExamAssessmentType,
+  isProjectAssessmentType,
+} from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
@@ -530,9 +535,17 @@ export default function ParentPerformance() {
       });
       const graded = items.filter((i) => i.pct != null);
       const average = graded.length > 0 ? Math.round(graded.reduce((acc, cur) => acc + (cur.pct ?? 0), 0) / graded.length) : null;
-      const activityAverage = averageOf(items.filter((i) => i.type === 'quiz' || i.type === 'assignment' || i.type === 'activity').map((i) => i.pct));
-      const projectAverage = averageOf(items.filter((i) => i.type === 'project').map((i) => i.pct));
-      const examAverage = averageOf(items.filter((i) => i.type === 'exam').map((i) => i.pct));
+      const activityAverage = averageOf(
+        items
+          .filter((i) => isCourseworkAssessmentType(i.assessmentType || i.type))
+          .map((i) => i.pct),
+      );
+      const projectAverage = averageOf(
+        items.filter((i) => isProjectAssessmentType(i.assessmentType || i.type)).map((i) => i.pct),
+      );
+      const examAverage = averageOf(
+        items.filter((i) => isExamAssessmentType(i.assessmentType || i.type)).map((i) => i.pct),
+      );
       const weightedAverage = computeWeightedGrade({
         activityAverage,
         projectAverage,
@@ -949,9 +962,8 @@ export default function ParentPerformance() {
                         <li key={a.id} className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0 text-sm">
                           <div>
                             <p className="font-medium">{a.title}</p>
-                            <p className="text-xs text-muted-foreground capitalize">
-                              {a.type}
-                              {a.assessmentType ? ` · ${formatAssessmentTypeLabel(a.assessmentType)}` : ''}
+                            <p className="text-xs text-muted-foreground">
+                              {formatAssessmentTypeLabel(a.assessmentType || a.type)}
                               {a.due_date ? ` · Due ${new Date(a.due_date).toLocaleDateString()}` : ''}
                             </p>
                           </div>

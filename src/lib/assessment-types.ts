@@ -16,9 +16,26 @@ const LABEL_BY_VALUE = Object.fromEntries(
 
 export function formatAssessmentTypeLabel(value: string | null | undefined): string {
   if (!value) return '—';
+  if (value === 'exam') return 'Exam';
   return LABEL_BY_VALUE[value as AssessmentType] ?? value.replace(/_/g, ' ');
 }
 
 export function isValidAssessmentType(value: string | null | undefined): value is AssessmentType {
   return !!value && value in LABEL_BY_VALUE;
+}
+
+const COURSEWORK_TYPES = new Set(['activity', 'assignment', 'quiz']);
+const PROJECT_TYPES = new Set(['project']);
+const EXAM_TYPES = new Set(['exam', 'laboratory_exam', 'midterm_exam', 'final_exam']);
+
+export function isCourseworkAssessmentType(value: string | null | undefined): boolean {
+  return !!value && COURSEWORK_TYPES.has(value);
+}
+
+export function isProjectAssessmentType(value: string | null | undefined): boolean {
+  return !!value && PROJECT_TYPES.has(value);
+}
+
+export function isExamAssessmentType(value: string | null | undefined): boolean {
+  return !!value && EXAM_TYPES.has(value);
 }

@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
-import type {
-  EngagementAlert,
-  EngagementIntervention,
-  EngagementInterventionAction,
-  EngagementOutcomeRating,
+import {
+  formatEngagementFollowUpNotice,
+  type EngagementAlert,
+  type EngagementIntervention,
+  type EngagementInterventionAction,
+  type EngagementOutcomeRating,
 } from '@/lib/engagement-alerts';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -119,7 +120,7 @@ type LogInterventionInput = {
 };
 
 export function useLogEngagementIntervention() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -127,6 +128,27 @@ export function useLogEngagementIntervention() {
       if (!user?.id) throw new Error('Missing instructor session');
 
       if (input.sendEmail && input.studentEmail) {
+        const [{ data: actorProfile }, { data: studentProfile }] = await Promise.all([
+          supabase.from('profiles').select('full_name, email').eq('user_id', user.id).maybeSingle(),
+          supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('user_id', input.studentId)
+            .maybeSingle(),
+        ]);
+        const actorName =
+          actorProfile?.full_name?.trim() || actorProfile?.email?.trim() || 'Staff';
+        const studentName =
+          studentProfile?.full_name?.trim() || studentProfile?.email?.trim() || 'the student';
+        const followUpBody = formatEngagementFollowUpNotice({
+          actorRole: role,
+          actorName,
+          studentName,
+        });
+        const emailBody = input.note?.trim()
+          ? `${followUpBody}\n\n${input.note.trim()}`
+          : followUpBody;
+
         const { error: emailError } = await supabase.functions.invoke('send-notification', {
           body: {
             to: input.studentEmail,
@@ -135,9 +157,7 @@ export function useLogEngagementIntervention() {
             risk_level: 'stable',
             subject_code: 'EDGE',
             subject_name: 'Engagement follow-up',
-            body:
-              input.note?.trim() ||
-              'Your instructor sent an engagement reminder via EDGE. Please log in and check your courses.',
+            body: emailBody,
           },
         });
         if (emailError) throw new Error(emailError.message || 'Failed to send email');

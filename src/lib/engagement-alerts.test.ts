@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  engagementActorRoleLabel,
   engagementOutcomeLabel,
   engagementAlertTypeLabel,
   engagementInterventionActionLabel,
+  formatEngagementFollowUpNotice,
   formatSignedDelta,
   interventionStatusLabel,
   isInterventionFollowUpDue,
@@ -28,6 +30,30 @@ describe('engagement-alerts labels', () => {
     expect(engagementInterventionActionLabel('provide_learning_materials')).toBe(
       'Provide Learning Materials',
     );
+  });
+});
+
+describe('engagement follow-up notification copy', () => {
+  it('identifies the instructor, student, and action', () => {
+    expect(engagementActorRoleLabel('instructor')).toBe('Instructor');
+    expect(
+      formatEngagementFollowUpNotice({
+        actorRole: 'instructor',
+        actorName: 'Jane Reyes',
+        studentName: 'Mark Santos',
+      }),
+    ).toBe('Instructor Jane Reyes sent an engagement follow-up for Mark Santos.');
+  });
+
+  it('uses completed wording when the follow-up is closed', () => {
+    expect(
+      formatEngagementFollowUpNotice({
+        actorRole: 'instructor',
+        actorName: 'Jane Reyes',
+        studentName: 'Mark Santos',
+        completed: true,
+      }),
+    ).toBe('Instructor Jane Reyes completed an engagement follow-up for Mark Santos.');
   });
 });
 
