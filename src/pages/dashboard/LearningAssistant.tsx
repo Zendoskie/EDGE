@@ -10,7 +10,7 @@ export default function LearningAssistant() {
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
         <div>
           <h1 className="text-2xl font-display font-bold">Learning Assistant</h1>
           <p className="text-muted-foreground">Your AI-powered academic companion</p>

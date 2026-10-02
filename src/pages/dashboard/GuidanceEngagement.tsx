@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Search, Shield } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,17 +76,17 @@ export default function GuidanceEngagement() {
   }
 
   return (
-    <div className="space-y-6 page-section">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" />
-          Student Engagement
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
-          <Shield className="h-3.5 w-3.5" />
-          Campus engagement view — open a counseling referral from a student detail when needed.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <section className="page-section overflow-hidden">
+        <div className="page-section-header">
+          <div>
+            <h1 className="text-xl font-display font-bold sm:text-2xl">Student Engagement</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Campus engagement view. Open a counseling referral from a student record when support is needed.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {error ? (
         <p className="text-sm text-destructive">Could not load engagement data. {error.message}</p>

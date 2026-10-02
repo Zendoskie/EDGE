@@ -199,7 +199,7 @@ export default function Insights() {
     return (
       <div className="space-y-6 animate-fade-in min-w-0">
         <section className="page-section overflow-hidden">
-          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+          <div className="page-section-header ">
             <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
           </div>
         </section>
@@ -491,7 +491,7 @@ function StudentInsights({ userId }: { userId: string }) {
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
           <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>
@@ -1032,7 +1032,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
           <h1 className="text-xl sm:text-2xl font-display font-bold">Performance Insights</h1>
         </div>
       </section>

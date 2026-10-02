@@ -64,18 +64,8 @@ function PopInSection({ children, className = "" }: { children: ReactNode; class
 
 function AmbientBackground() {
   return (
-    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
-      <div className="absolute -left-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-primary/20 blur-[100px] dark:bg-primary/25" />
-      <div className="absolute -right-20 top-1/4 h-[22rem] w-[22rem] rounded-full bg-violet-500/15 blur-[90px] dark:bg-violet-400/20" />
-      <div className="absolute bottom-0 left-1/3 h-[20rem] w-[20rem] rounded-full bg-cyan-500/10 blur-[80px] dark:bg-cyan-400/15" />
-      <div
-        className="absolute inset-0 opacity-[0.35] dark:opacity-[0.2]"
-        style={{
-          backgroundImage: `linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
-            linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px)`,
-          backgroundSize: "48px 48px",
-        }}
-      />
+    <div className="pointer-events-none fixed inset-0 -z-10 bg-background" aria-hidden>
+      <div className="absolute inset-x-0 top-0 h-px bg-border" />
     </div>
   );
 }
@@ -83,16 +73,15 @@ function AmbientBackground() {
 function HeroVisualMock() {
   return (
     <div className="relative mx-auto w-full max-w-lg lg:mx-0">
-      <div className="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-violet-500/25 via-primary/15 to-cyan-500/20 blur-2xl" />
-      <div className="relative space-y-4 rounded-2xl border border-violet-500/25 bg-card/95 p-5 shadow-2xl shadow-violet-500/10 backdrop-blur-md dark:border-violet-500/40 dark:bg-card/90 dark:shadow-violet-500/20 md:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-violet-500/35 bg-gradient-to-r from-violet-500/10 via-primary/5 to-cyan-500/10 px-3 py-3 sm:px-4 dark:from-violet-500/15">
+      <div className="relative space-y-4 rounded-lg border border-border bg-card p-5 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-3 sm:px-4">
           <div className="flex min-w-0 items-center gap-2.5">
-            <Sparkles className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+            <Brain className="h-5 w-5 shrink-0 text-primary" aria-hidden />
             <span className="text-base font-semibold leading-snug text-foreground md:text-[1.0625rem]">
               AI layer active
             </span>
           </div>
-          <span className="shrink-0 text-sm font-medium leading-snug tracking-wide text-violet-700 dark:text-violet-200">
+          <span className="shrink-0 text-sm font-medium leading-snug tracking-wide text-muted-foreground">
             {AI_COACH_MODEL_SHORT} + analytics
           </span>
         </div>
@@ -110,7 +99,7 @@ function HeroVisualMock() {
             </div>
             <Badge
               variant="secondary"
-              className="h-fit shrink-0 border-violet-500/35 bg-violet-500/15 px-3 py-1 text-sm font-medium text-violet-800 dark:border-violet-500/45 dark:bg-violet-500/25 dark:text-violet-100"
+              className="h-fit shrink-0 px-3 py-1 text-sm font-medium"
             >
               At risk
             </Badge>
@@ -134,7 +123,7 @@ function HeroVisualMock() {
           </div>
           <div className="rounded-xl border border-border/60 bg-muted/45 p-3.5 md:p-4 dark:bg-muted/25">
             <p className="text-xs font-semibold uppercase tracking-wide text-foreground/80 md:text-[0.8125rem]">Coach</p>
-            <p className="mt-2 text-sm font-semibold leading-snug text-violet-800 dark:text-violet-100 md:text-base">{AI_COACH_MODEL_SHORT}</p>
+            <p className="mt-2 text-sm font-semibold leading-snug text-foreground md:text-base">{AI_COACH_MODEL_SHORT}</p>
             <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-primary md:text-base">
               <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
               Active
@@ -182,7 +171,7 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
               className="shrink-0 text-left transition-opacity hover:opacity-[0.92]"
               aria-label="EDGE home"
             >
-              <span className="font-display text-xl font-bold tracking-tight text-transparent sm:text-2xl md:text-[1.65rem] bg-gradient-to-r from-white via-cyan-100 to-violet-200 bg-clip-text drop-shadow-[0_0_24px_rgba(100,206,251,0.35)]">
+              <span className="font-display text-xl font-semibold tracking-tight text-white sm:text-2xl">
                 EDGE
               </span>
             </button>
@@ -272,12 +261,12 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
           <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
             <div className="group relative max-w-xl lg:max-w-xl xl:max-w-2xl">
               <div
-                className="pointer-events-none absolute -inset-px rounded-2xl opacity-70 blur-sm transition-opacity group-hover:opacity-100 bg-gradient-to-br from-cyan-500/35 via-transparent to-violet-500/40"
+                className="pointer-events-none absolute -inset-px rounded-lg border border-border"
                 aria-hidden
               />
               <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.07] py-6 pl-6 pr-5 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] backdrop-blur-md before:pointer-events-none before:absolute before:inset-0 before:bg-gradient-to-br before:from-white/[0.06] before:to-transparent before:to-60% md:py-8 md:pl-8 md:pr-7">
                 <div
-                  className="absolute bottom-5 left-5 top-5 w-[3px] rounded-full bg-gradient-to-b from-cyan-400/95 to-violet-500/95 md:left-6"
+                  className="absolute bottom-5 left-5 top-5 w-px bg-border md:left-6"
                   aria-hidden
                 />
                 <p className="relative ml-2 text-[1.0625rem] leading-[1.72] tracking-[0.01em] text-white/90 md:ml-3 md:text-xl md:leading-[1.68] xl:text-[1.375rem] xl:leading-relaxed">
@@ -287,7 +276,7 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
                   </span>
                   <span className="mt-4 block text-balance md:mt-5">
                     the in-app coach runs on{" "}
-                    <span className="font-semibold text-cyan-100 [text-shadow:0_0_24px_rgba(165,243,252,0.25)]">{AI_COACH_MODEL_LABEL}</span>
+                    <span className="font-semibold text-white">{AI_COACH_MODEL_LABEL}</span>
                     —clear, supportive next steps for students and instructors.
                   </span>
                 </p>
@@ -314,8 +303,7 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
             </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-              <Badge className="rounded-full border-0 bg-white/15 px-3 py-1 text-xs font-normal text-white shadow-md backdrop-blur-sm hover:bg-white/20 sm:text-sm">
-                <Sparkles className="mr-1 h-3 w-3 shrink-0" />
+              <Badge className="border-0 bg-white/15 px-3 py-1 text-xs font-normal text-white hover:bg-white/20 sm:text-sm">
                 Coach: {AI_COACH_MODEL_SHORT}
               </Badge>
               <Badge
@@ -363,10 +351,9 @@ function AiSpotlightSection() {
     },
   ];
   return (
-    <div className="relative mb-20 overflow-hidden rounded-3xl border border-violet-500/25 bg-gradient-to-br from-violet-500/10 via-background to-cyan-500/10 p-8 shadow-lg dark:from-violet-500/15 dark:via-background dark:to-cyan-500/15 md:p-10">
-      <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-gradient-to-br from-violet-500/20 to-transparent blur-3xl" />
+    <div className="relative mb-20 rounded-lg border border-border bg-card p-8 md:p-10">
       <div className="relative mx-auto max-w-3xl text-center">
-        <Badge variant="outline" className="mb-4 border-violet-500/40 bg-violet-500/5 text-violet-700 dark:text-violet-300">
+        <Badge variant="outline" className="mb-4">
           Intelligence in EDGE
         </Badge>
         <h2 className="font-display text-2xl font-bold text-foreground md:text-3xl">Artificial intelligence at the core</h2>
@@ -382,7 +369,7 @@ function AiSpotlightSection() {
             key={p.title}
             className="rounded-2xl border border-border/80 bg-card/90 p-6 text-center shadow-sm backdrop-blur-sm dark:bg-card/70"
           >
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-primary text-white shadow-md">
+            <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <p.icon className="h-6 w-6" />
             </div>
             <h3 className="font-semibold text-foreground">{p.title}</h3>
@@ -431,9 +418,9 @@ export default function Landing() {
   return (
     <div className="relative min-h-screen">
       <LandingVideoHero navigate={navigate} />
-      <div className="relative min-h-screen bg-gradient-to-b from-background via-background to-secondary/25 dark:from-background dark:via-background dark:to-secondary/20">
+      <div className="relative min-h-screen bg-background">
         <AmbientBackground />
-        <div className="h-1 w-full bg-gradient-to-r from-transparent via-primary to-transparent opacity-90" />
+        <div className="h-px w-full bg-border" />
 
         <div className="container relative mx-auto max-w-6xl px-4 py-10 md:py-16">
         {/* Stats */}
@@ -442,20 +429,8 @@ export default function Landing() {
             {stats.map((s) => (
               <div
                 key={s.label}
-                className={`group relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur-sm transition-all hover:shadow-md dark:bg-card/50 ${
-                  s.highlight
-                    ? "border-violet-500/40 bg-gradient-to-br from-violet-500/10 via-card/90 to-primary/5 hover:border-violet-500/55 dark:from-violet-500/15 dark:via-card/70"
-                    : "border-border/70 bg-card/80 hover:border-primary/25"
-                }`}
+                className="rounded-lg border border-border bg-card p-5"
               >
-                <div
-                  className={`absolute right-0 top-0 h-16 w-16 translate-x-6 -translate-y-6 rounded-full blur-2xl transition-opacity group-hover:opacity-100 ${
-                    s.highlight ? "bg-violet-500/25 dark:bg-violet-400/20" : "bg-primary/10 dark:bg-primary/20"
-                  }`}
-                />
-                {s.highlight ? (
-                  <Sparkles className="mb-2 h-4 w-4 text-violet-600 dark:text-violet-400" />
-                ) : null}
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{s.label}</p>
                 <p
                   className={`mt-2 font-display font-bold text-foreground ${s.highlight ? "text-xl sm:text-2xl md:text-3xl break-words" : "text-3xl"}`}
@@ -477,7 +452,7 @@ export default function Landing() {
           <div id="capabilities" className="mb-4 scroll-mt-28 text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-primary">Capabilities</p>
             <h2 className="mt-2 font-display text-3xl font-bold text-foreground md:text-4xl">What EDGE offers</h2>
-            <div className="mx-auto mt-4 h-1 w-20 rounded-full bg-gradient-to-r from-primary to-violet-500" />
+            <div className="mx-auto mt-4 h-px w-16 bg-border" />
             <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
               Monitoring, <span className="font-medium text-foreground">AI-driven signals</span>, and guided support in one
               place.
@@ -530,27 +505,18 @@ export default function Landing() {
             ].map((f) => (
               <Card
                 key={f.title}
-                className={`group relative overflow-hidden border-border/60 bg-card/90 shadow-md backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-xl dark:bg-card/70 ${f.ring} hover:ring-2`}
+                className="border-border bg-card"
               >
-                <div
-                  className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${f.gradient} opacity-90`}
-                  aria-hidden
-                />
-                <CardContent className="p-6 pt-7 text-center">
+                <CardContent className="p-6 text-center">
                   {(f.title.includes("LLM") ||
                     f.title.includes("Predictive") ||
                     f.title.includes("Continuous")) && (
-                    <Badge
-                      variant="outline"
-                      className="mb-3 border-violet-500/35 text-[10px] font-normal text-violet-700 dark:text-violet-300"
-                    >
+                    <Badge variant="outline" className="mb-3 text-[10px] font-normal">
                       Uses LLMs
                     </Badge>
                   )}
-                  <div
-                    className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${f.gradient} shadow-lg shadow-black/10 ring-4 ring-white/50 dark:ring-black/20`}
-                  >
-                    <f.icon className="h-7 w-7 text-white" />
+                  <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary">
+                    <f.icon className="h-5 w-5 text-primary-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">{f.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
@@ -564,10 +530,8 @@ export default function Landing() {
         <PopInSection>
           <div
             id="how-it-works"
-            className="relative mx-auto mb-20 max-w-4xl scroll-mt-28 overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-card/95 via-card/90 to-primary/5 p-8 shadow-xl backdrop-blur-md dark:from-card/80 dark:via-card/70 dark:to-primary/10 md:p-12"
+            className="relative mx-auto mb-20 max-w-4xl scroll-mt-28 rounded-lg border border-border bg-card p-8 md:p-12"
           >
-            <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-primary/10 blur-3xl dark:bg-primary/20" />
-            <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
             <div className="relative text-center">
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm dark:bg-background/40">
                 <ShieldCheck className="h-3.5 w-3.5 text-primary" />
@@ -598,7 +562,7 @@ export default function Landing() {
                 },
               ].map((item, i) => (
                 <div key={item.step} className="relative text-center">
-                  <div className="relative z-10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/30">
+                  <div className="relative z-10 mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
                     {item.step}
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">{item.title}</h3>
@@ -615,11 +579,10 @@ export default function Landing() {
         {/* Bottom CTA */}
         <PopInSection className="flex justify-center">
           <div id="bottom-cta" className="container mx-auto max-w-6xl scroll-mt-28 px-4 pb-20 pt-4">
-            <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-r from-primary/15 via-violet-500/10 to-cyan-500/10 p-10 text-center shadow-lg dark:from-primary/20 dark:via-violet-500/15 dark:to-cyan-500/15 md:p-14">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/40 via-transparent to-transparent dark:from-white/5" />
+            <div className="relative rounded-lg border border-border bg-card p-10 text-center md:p-14">
               <div className="relative">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-primary shadow-lg">
-                  <Sparkles className="h-7 w-7 text-white" />
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary">
+                  <GraduationCap className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <h2 className="font-display text-2xl font-bold text-foreground md:text-3xl">Ready to explore EDGE?</h2>
                 <p className="mx-auto mt-3 max-w-lg text-muted-foreground">

@@ -85,7 +85,7 @@ export default function Programs() {
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
           <div>
             <h1 className="text-2xl font-display font-bold">Programs</h1>
             <p className="text-sm text-muted-foreground mt-1">Organize degree programs and academic groups for subjects.</p>

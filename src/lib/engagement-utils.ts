@@ -36,13 +36,13 @@ export function engagementLabel(level: CanonicalEngagementLevel): string {
 /** Tailwind classes for color-coded engagement badges. */
 export function engagementBadgeClassName(level: CanonicalEngagementLevel): string {
   if (level === 'very_high') {
-    return 'border-transparent bg-blue-600 text-white hover:bg-blue-600/85 dark:bg-blue-600 dark:text-white';
+    return 'border-transparent bg-primary text-primary-foreground';
   }
   if (level === 'high') {
-    return 'border-transparent bg-emerald-600 text-white hover:bg-emerald-600/85 dark:bg-emerald-600 dark:text-white';
+    return 'border-transparent bg-success text-success-foreground';
   }
   if (level === 'moderate') {
-    return 'border-transparent bg-amber-500 text-white hover:bg-amber-500/85 dark:bg-amber-500 dark:text-white';
+    return 'border-transparent bg-warning text-warning-foreground';
   }
   return 'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/85';
 }

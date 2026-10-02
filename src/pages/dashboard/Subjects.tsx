@@ -113,7 +113,7 @@ export default function Subjects() {
   return (
     <div className="space-y-8 animate-fade-in">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground mb-2">Subjects</h1>
           <p className="text-muted-foreground">Manage and organize your academic subjects</p>
@@ -177,7 +177,7 @@ export default function Subjects() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-pulse-glow">
+          <div className="">
             <BookOpen className="h-8 w-8 text-muted-foreground/50" />
           </div>
           <p className="text-muted-foreground text-sm ml-3">Loading subjects...</p>
@@ -200,7 +200,7 @@ export default function Subjects() {
           {subjects.map(s => (
             <Card
               key={s.id}
-              className="card-shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group border border-border/60 bg-card/90"
+              className="cursor-pointer border border-border bg-card"
               onClick={() => navigate(`/dashboard/subjects/${s.id}`)}
             >
               <CardContent className="p-6">

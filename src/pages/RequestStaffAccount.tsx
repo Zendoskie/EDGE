@@ -34,8 +34,8 @@ function PageShell({ children }: { children: React.ReactNode }) {
     <div className="app-shell-bg flex min-h-dvh w-full flex-col items-center justify-center px-4 py-12">
       <div className="mx-auto w-full max-w-lg animate-fade-in">
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
-            <Shield className="w-8 h-8 text-primary-foreground" />
+          <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-md bg-primary">
+            <Shield className="h-6 w-6 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
           <p className="text-muted-foreground mt-2 text-sm">

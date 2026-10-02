@@ -45,7 +45,7 @@ export default function MyEngagement() {
   return (
     <div className="min-w-0 space-y-6">
       <section className="page-section edge-glass-card overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card/80 via-card/70 to-primary/10">
+        <div className="page-section-header ">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
               <Activity className="h-6 w-6 text-primary" />

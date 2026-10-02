@@ -34,15 +34,26 @@ export async function invokeAiCoach(body: Record<string, unknown>): Promise<Reco
   }
 
   const base = SUPABASE_URL.replace(/\/$/, "");
-  const res = await fetch(`${base}/functions/v1/ai-coach`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: ANON_KEY,
-    },
-    body: JSON.stringify(body),
-  });
+  const bodyText = JSON.stringify(body);
+  const postCoach = () =>
+    fetch(`${base}/functions/v1/ai-coach`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: ANON_KEY,
+      },
+      body: bodyText,
+      signal: AbortSignal.timeout(14_000),
+    });
+
+  let res: Response;
+  try {
+    res = await postCoach();
+  } catch {
+    // A dropped connection on a follow-up leaves the chat stuck. Try once more.
+    res = await postCoach();
+  }
 
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 

@@ -16,7 +16,7 @@ import {
 export const MAX_MESSAGE_HISTORY = 12;
 export const MAX_MESSAGE_LENGTH = 1000;
 export const MAX_CHAT_OUTPUT_TOKENS = 600;
-export const MODEL_TIMEOUT_MS = 20_000;
+export const MODEL_TIMEOUT_MS = 12_000;
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -138,21 +138,31 @@ export async function callOpenAiChat(opts: {
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? MODEL_TIMEOUT_MS);
   const doFetch = opts.fetchImpl ?? fetch;
   try {
+    const model = opts.model;
+    const gpt5 = /^gpt-5/i.test(model);
+    const payload: Record<string, unknown> = {
+      model,
+      messages: [
+        { role: "system", content: opts.system },
+        ...opts.messages.slice(-MAX_MESSAGE_HISTORY).map((m) => ({ role: m.role, content: m.content })),
+      ],
+      max_completion_tokens: opts.maxTokens ?? MAX_CHAT_OUTPUT_TOKENS,
+    };
+    // gpt-5.4-mini rejects non-default temperature and spends the edge CPU budget on medium reasoning.
+    if (!gpt5 && opts.temperature != null) payload.temperature = opts.temperature;
+    if (gpt5) payload.reasoning_effort = "none";
+
     const res = await doFetch(OPENAI_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.apiKey}` },
-      body: JSON.stringify({
-        model: opts.model,
-        messages: [
-          { role: "system", content: opts.system },
-          ...opts.messages.slice(-MAX_MESSAGE_HISTORY).map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: opts.temperature ?? 0.4,
-        max_completion_tokens: opts.maxTokens ?? MAX_CHAT_OUTPUT_TOKENS,
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!res.ok) throw new CoachModelError(`http_${res.status}`);
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null) as { error?: { code?: string; param?: string; type?: string } } | null;
+      const detail = errBody?.error?.code || errBody?.error?.param || errBody?.error?.type;
+      throw new CoachModelError(detail ? `http_${res.status}:${String(detail).slice(0, 80)}` : `http_${res.status}`);
+    }
     const json = await res.json().catch(() => null);
     const text = json?.choices?.[0]?.message?.content;
     if (typeof text !== "string") throw new CoachModelError("invalid_response");

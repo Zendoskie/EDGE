@@ -82,7 +82,7 @@ export function InterventionJourneyTimeline({
         aria-hidden="true"
       >
         <motion.div
-          className="h-full origin-left bg-gradient-to-r from-primary via-cyan-400 to-emerald-400"
+          className="h-full origin-left bg-primary"
           initial={reduceMotion ? false : { scaleX: 0 }}
           animate={{ scaleX: progress / 100 }}
           transition={{ duration: reduceMotion ? 0 : 0.8, ease: [0.22, 1, 0.36, 1] }}

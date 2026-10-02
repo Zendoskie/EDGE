@@ -30,12 +30,12 @@ export function riskBadgeClassName(level: CanonicalRiskLevel): string {
     return "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/85";
   }
   if (level === "at_risk") {
-    return "border-transparent bg-amber-500 text-white hover:bg-amber-500/85 dark:bg-amber-500 dark:text-white";
+    return "border-transparent bg-warning text-warning-foreground";
   }
   if (level === "stable") {
-    return "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/85 dark:bg-emerald-600 dark:text-white";
+    return "border-transparent bg-success text-success-foreground";
   }
-  return "border-transparent bg-blue-600 text-white hover:bg-blue-600/85 dark:bg-blue-600 dark:text-white";
+  return "border-transparent bg-primary text-primary-foreground";
 }
 
 /** Chart fill colors aligned with badge semantics. */

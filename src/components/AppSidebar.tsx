@@ -91,11 +91,11 @@ export function AppSidebar() {
         closeTimer.current = window.setTimeout(() => setOpen(false), 140);
       }}
     >
-      <SidebarContent className="border-r border-sidebar-border/40 bg-sidebar/90 backdrop-blur-md">
+      <SidebarContent className="border-r border-sidebar-border bg-sidebar">
         <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center justify-center gap-3 px-4 py-5 border-b border-sidebar-border/20 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-violet-500 flex items-center justify-center flex-shrink-0 shadow-md shadow-primary/20">
-              <GraduationCap className="w-4 h-4 text-sidebar-primary-foreground" />
+          <SidebarGroupLabel className="flex items-center gap-2.5 border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-sidebar-primary">
+              <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
             </div>
             {showText && (
               <span className="text-sidebar-foreground font-display font-bold text-lg leading-none">EDGE</span>
@@ -109,10 +109,10 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard' || item.url.startsWith('/dashboard/admin/')}
-                      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/55 transition-all duration-200 ease-in-out interactive-lift group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium shadow-sm border border-sidebar-border/60"
+                      className="group flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
+                      activeClassName="bg-sidebar-accent font-medium text-sidebar-primary"
                     >
-                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                      <item.icon className="h-4 w-4 shrink-0" />
                       {showText && <span className="text-sm font-medium">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
@@ -124,7 +124,7 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/50 p-4 group-data-[collapsible=icon]:p-2 bg-sidebar/80">
         {showText && (
-          <div className="mb-3 p-2 rounded-xl border border-sidebar-border/40 bg-sidebar-accent/35">
+          <div className="mb-3 rounded-md border border-sidebar-border px-2.5 py-2">
             <p className="text-xs text-sidebar-foreground/80 truncate font-medium">
               {user?.email}
             </p>

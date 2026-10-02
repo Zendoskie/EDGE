@@ -288,7 +288,7 @@ export default function EnhancedSecurity() {
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
         <div>
           <h1 className="text-2xl font-display font-bold">Enhanced Security</h1>
           <p className="text-muted-foreground">Advanced security and access control</p>

@@ -347,7 +347,7 @@ export default function StudentEngagementMonitoring() {
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+        <div className="page-section-header ">
           <div>
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
               <Activity className="h-6 w-6 text-primary" />
