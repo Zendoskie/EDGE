@@ -221,9 +221,17 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
     },
   });
 
+  const reduceMotion = useReducedMotion();
+
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="peoplo-canvas flex h-[100dvh] min-h-app w-full overflow-hidden">
+      <motion.div
+        className="flex h-[100dvh] min-h-0 w-full min-w-0 flex-1 flex-col"
+        initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      >
+      <div className="peoplo-canvas flex h-full min-h-0 w-full flex-1 overflow-hidden">
         <AppSidebar />
         <div className="flex-1 min-h-0 flex flex-col">
           <DashboardHeader />
@@ -246,6 +254,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
           <MobileTabBar items={navItemsForRole(role)} />
         </div>
       </div>
+      </motion.div>
     </SidebarProvider>
   );
 }

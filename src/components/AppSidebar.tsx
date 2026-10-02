@@ -94,9 +94,9 @@ export function AppSidebar() {
         closeTimer.current = window.setTimeout(() => setOpen(false), 140);
       }}
     >
-      <SidebarContent className="m-3 rounded-[22px] border border-sidebar-border bg-sidebar shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)]">
-        <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2.5 border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+      <SidebarContent className="m-3 rounded-[22px] border border-sidebar-border bg-sidebar shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)] group-data-[collapsible=icon]:m-1.5 group-data-[collapsible=icon]:mb-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:!flex-none group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:rounded-b-none">
+        <SidebarGroup className="group-data-[collapsible=icon]:p-1">
+          <SidebarGroupLabel className="flex h-auto items-center gap-2.5 border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:!mt-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1 group-data-[collapsible=icon]:!opacity-100">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] bg-sidebar-primary">
               <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
             </div>
@@ -104,15 +104,15 @@ export function AppSidebar() {
               <span className="text-sidebar-foreground font-display font-bold text-lg leading-none">EDGE</span>
             )}
           </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2 py-3 group-data-[collapsible=icon]:px-1">
-            <SidebarMenu className="space-y-1">
+          <SidebarGroupContent className="px-2 py-3 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
+            <SidebarMenu className="space-y-1 group-data-[collapsible=icon]:items-center">
               {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                <SidebarMenuItem key={item.title} className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                  <SidebarMenuButton asChild className="group-data-[collapsible=icon]:!size-8">
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard' || item.url.startsWith('/dashboard/admin/')}
-                      className="group flex items-center gap-3 rounded-[12px] px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
+                      className="group flex items-center gap-3 rounded-[12px] px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
                       activeClassName="bg-sidebar-accent font-semibold text-sidebar-primary"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -125,7 +125,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="mx-3 mb-3 rounded-b-[22px] border border-t-0 border-sidebar-border bg-sidebar p-4 group-data-[collapsible=icon]:p-2">
+      <SidebarFooter className="mx-3 mb-3 rounded-b-[22px] border border-t-0 border-sidebar-border bg-sidebar p-4 group-data-[collapsible=icon]:mx-1.5 group-data-[collapsible=icon]:mb-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:rounded-b-[18px] group-data-[collapsible=icon]:rounded-t-none group-data-[collapsible=icon]:p-1.5">
         {showText && (
           <div className="mb-3 rounded-md border border-sidebar-border px-2.5 py-2">
             <p className="truncate text-xs font-medium text-sidebar-foreground">
@@ -139,7 +139,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           size={showText ? 'sm' : 'icon'}
-          className="w-full justify-start text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center"
+          className="w-full justify-start text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onClick={signOut}
         >
           <LogOut className="h-4 w-4 shrink-0" />

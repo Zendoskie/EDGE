@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Users, CheckCircle2, ArrowLeft, Loader2,
-  Lock, AlertTriangle, XCircle,
+  CheckCircle2, Loader2, AlertTriangle, XCircle, ClipboardList, Shield, UserCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/ui/password-input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
-import { AuthSplit } from '@/components/shell/AuthSplit';
+import { AuthFrame } from '@/components/shell/AuthSlider';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -32,15 +30,19 @@ const ROLE_LABELS: Record<StaffRole, string> = {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <AuthSplit>
-      <div className="animate-fade-in">
-        <div className="mb-6 lg:hidden">
-          <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Student Risk Analysis and AI Coaching System</p>
-        </div>
+    <div className="edge-auth-staff">
+      <AuthFrame
+        headline="Request a staff account"
+        sub="Instructors and guidance counselors ask an administrator to review access."
+        steps={[
+          { title: "Submit your details", body: "Share your name, email, and role.", icon: ClipboardList },
+          { title: "Wait for review", body: "An administrator approves or declines the request.", icon: Shield },
+          { title: "Sign in after approval", body: "Use the account only once access is granted.", icon: UserCheck },
+        ]}
+      >
         {children}
-      </div>
-    </AuthSplit>
+      </AuthFrame>
+    </div>
   );
 }
 
@@ -121,117 +123,85 @@ function RequestForm() {
 
   if (submitted) {
     return (
-      <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-        <CardContent className="flex flex-col items-center gap-5 px-6 py-10 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/15 ring-1 ring-green-500/30">
-            <CheckCircle2 className="h-8 w-8 text-green-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-display font-bold text-foreground">Request Submitted</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Your staff account request has been submitted. An administrator will review it shortly.
-              You will be contacted at{' '}
-              <span className="font-medium text-foreground">{email}</span> once a decision is made.
-            </p>
-          </div>
-          <Button variant="outline" className="w-full" onClick={() => navigate('/login')}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Sign In
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="edge-auth-status">
+        <CheckCircle2 aria-hidden />
+        <h2>Request submitted</h2>
+        <p className="edge-auth-lead">
+          An administrator will review it and contact you at {email}.
+        </p>
+        <Button type="button" className="w-full" onClick={() => navigate('/login')}>
+          Back to sign in
+        </Button>
+      </div>
     );
   }
 
   return (
-    <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-      <CardHeader className="border-b border-border/60 pb-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Users className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <CardTitle className="text-base">Request Staff Account</CardTitle>
-            <CardDescription className="text-xs mt-0.5">
-              For Instructors and Guidance Counselors only. Reviewed by an administrator.
-            </CardDescription>
-          </div>
+    <>
+      <h2>Request staff access</h2>
+      <p className="edge-auth-lead">
+        Instructors and guidance counselors. An administrator reviews each request.
+      </p>
+      <form onSubmit={handleSubmit} noValidate className="edge-auth-fields">
+        <div className="space-y-2">
+          <Label htmlFor="req-full-name">Full name <span className="text-destructive">*</span></Label>
+          <Input id="req-full-name" value={fullName}
+            onChange={(e) => { setFullName(e.target.value); clearError('fullName'); }}
+            placeholder="Juan Dela Cruz" aria-invalid={!!errors.fullName} disabled={loading} />
+          {errors.fullName && <p className="edge-auth-error">{errors.fullName}</p>}
         </div>
-      </CardHeader>
 
-      <CardContent className="pt-5">
-        <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="req-full-name">Full Name <span className="text-destructive">*</span></Label>
-            <Input id="req-full-name" value={fullName}
-              onChange={(e) => { setFullName(e.target.value); clearError('fullName'); }}
-              placeholder="Juan Dela Cruz" aria-invalid={!!errors.fullName} disabled={loading} />
-            {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
+        <div className="space-y-2">
+          <Label htmlFor="req-email">Personal Gmail <span className="text-destructive">*</span></Label>
+          <Input id="req-email" type="email" value={email}
+            onChange={(e) => { setEmail(e.target.value); clearError('email'); }}
+            placeholder="yourname@gmail.com" autoComplete="email"
+            aria-invalid={!!errors.email} disabled={loading} />
+          {errors.email && <p className="edge-auth-error">{errors.email}</p>}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="req-department">Department</Label>
+          <Input id="req-department" value={department}
+            onChange={(e) => setDepartment(e.target.value)}
+            placeholder="College of Computer Studies" disabled={loading} />
+        </div>
+
+        <div className="space-y-2">
+          <Label id="req-role-label">Role <span className="text-destructive">*</span></Label>
+          <div className="edge-role-row" role="group" aria-labelledby="req-role-label">
+            {(['instructor', 'guidance_counselor'] as StaffRole[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => { setRole(r); clearError('role'); }}
+                disabled={loading}
+                aria-pressed={role === r}
+                className={role === r ? 'edge-role is-selected' : 'edge-role'}
+              >
+                {ROLE_LABELS[r]}
+              </button>
+            ))}
           </div>
+          {errors.role && <p className="edge-auth-error">{errors.role}</p>}
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="req-email">Personal Gmail <span className="text-destructive">*</span></Label>
-            <Input id="req-email" type="email" value={email}
-              onChange={(e) => { setEmail(e.target.value); clearError('email'); }}
-              placeholder="yourname@gmail.com" autoComplete="email"
-              aria-invalid={!!errors.email} disabled={loading} />
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="req-remarks">Remarks</Label>
+          <Textarea id="req-remarks" value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            placeholder="Anything the administrator should know"
+            rows={3} className="resize-none" disabled={loading} />
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="req-department">Department</Label>
-            <Input id="req-department" value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              placeholder="e.g. College of Computer Studies" disabled={loading} />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="req-role">Role <span className="text-destructive">*</span></Label>
-            <div className="flex gap-2">
-              {(['instructor', 'guidance_counselor'] as StaffRole[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => { setRole(r); clearError('role'); }}
-                  disabled={loading}
-                  className={[
-                    'flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors',
-                    role === r
-                      ? 'border-primary/60 bg-primary/10 text-primary'
-                      : 'border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground',
-                    errors.role ? 'border-destructive/60' : '',
-                  ].join(' ')}
-                >
-                  {ROLE_LABELS[r]}
-                </button>
-              ))}
-            </div>
-            {errors.role && <p className="text-xs text-destructive">{errors.role}</p>}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="req-remarks">Remarks</Label>
-            <Textarea id="req-remarks" value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Any additional information for the administrator (optional)"
-              rows={3} className="resize-none" disabled={loading} />
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Fields marked <span className="text-destructive">*</span> are required.
-          </p>
-
-          <div className="flex flex-col gap-2 pt-1 sm:flex-row-reverse">
-            <Button type="submit" className="w-full sm:flex-1" disabled={loading}>
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting…</> : 'Submit Request'}
-            </Button>
-            <Button type="button" variant="outline" className="w-full sm:flex-1"
-              disabled={loading} onClick={() => navigate('/login')}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Cancel
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting…</> : 'Submit request'}
+        </Button>
+      </form>
+      <p className="edge-auth-switch">
+        <button type="button" onClick={() => navigate('/login')}>Back to sign in</button>
+      </p>
+    </>
   );
 }
 
@@ -398,12 +368,10 @@ function InvitationForm({ token }: { token: string }) {
 
   if (state.phase === 'loading') {
     return (
-      <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-        <CardContent className="flex flex-col items-center gap-4 px-6 py-12 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Validating invitation…</p>
-        </CardContent>
-      </Card>
+      <div className="edge-auth-status">
+        <Loader2 className="animate-spin" aria-hidden />
+        <p className="edge-auth-lead">Validating invitation…</p>
+      </div>
     );
   }
 
@@ -411,20 +379,14 @@ function InvitationForm({ token }: { token: string }) {
 
   if (state.phase === 'invalid') {
     return (
-      <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-        <CardContent className="flex flex-col items-center gap-5 px-6 py-10 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/15 ring-1 ring-destructive/30">
-            <XCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-display font-bold text-foreground">Invitation Invalid</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">{state.reason}</p>
-          </div>
-          <Button variant="outline" className="w-full" onClick={() => navigate('/login')}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Sign In
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="edge-auth-status">
+        <XCircle aria-hidden />
+        <h2>Invitation invalid</h2>
+        <p className="edge-auth-lead">{state.reason}</p>
+        <Button type="button" className="w-full" onClick={() => navigate('/login')}>
+          Back to sign in
+        </Button>
+      </div>
     );
   }
 
@@ -432,23 +394,16 @@ function InvitationForm({ token }: { token: string }) {
 
   if (state.phase === 'success') {
     return (
-      <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-        <CardContent className="flex flex-col items-center gap-5 px-6 py-10 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/15 ring-1 ring-green-500/30">
-            <CheckCircle2 className="h-8 w-8 text-green-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-display font-bold text-foreground">Account Created</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Your EDGE staff account has been created and activated. You can now sign in with{' '}
-              <span className="font-medium text-foreground">{state.email}</span>.
-            </p>
-          </div>
-          <Button className="w-full" onClick={() => navigate('/login')}>
-            Sign In to EDGE
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="edge-auth-status">
+        <CheckCircle2 aria-hidden />
+        <h2>Account created</h2>
+        <p className="edge-auth-lead">
+          Your staff account is active. Sign in with {state.email}.
+        </p>
+        <Button type="button" className="w-full" onClick={() => navigate('/login')}>
+          Sign in to EDGE
+        </Button>
+      </div>
     );
   }
 
@@ -459,26 +414,15 @@ function InvitationForm({ token }: { token: string }) {
   const hasPrefilledName = !!invitation.full_name;
 
   return (
-    <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
-      <CardHeader className="border-b border-border/60 pb-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Lock className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <CardTitle className="text-base">Complete Staff Registration</CardTitle>
-            <CardDescription className="text-xs mt-0.5">
-              You have been invited to create a <strong>{roleLabel}</strong> account on EDGE.
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="pt-5">
-        {/* Expiry notice */}
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-          <p className="text-xs text-amber-600 dark:text-amber-400">
+    <>
+      <h2>Complete registration</h2>
+      <p className="edge-auth-lead">
+        You were invited to create a {roleLabel} account.
+      </p>
+      <form onSubmit={handleRegister} noValidate className="edge-auth-fields">
+        <div className="edge-auth-notice">
+          <AlertTriangle aria-hidden />
+          <p>
             This invitation expires on{' '}
             <strong>
               {new Date(invitation.expires_at).toLocaleDateString('en-PH', {
@@ -489,13 +433,8 @@ function InvitationForm({ token }: { token: string }) {
           </p>
         </div>
 
-        <form onSubmit={handleRegister} noValidate className="space-y-4">
-
-          {/* ── Read-only fields ─────────────────────────────────── */}
-          <fieldset className="space-y-3 rounded-lg border border-border/50 bg-muted/20 p-4">
-            <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Account Details — locked by invitation
-            </legend>
+          <fieldset className="edge-auth-locked">
+            <legend>Locked by invitation</legend>
 
             <ReadonlyField label="Email"      value={invitation.email} />
             <ReadonlyField label="Role"       value={roleLabel} />
@@ -575,18 +514,16 @@ function InvitationForm({ token }: { token: string }) {
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Fields marked <span className="text-destructive">*</span> are required.
-          </p>
-
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting
               ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating account…</>
-              : 'Create Account'}
+              : 'Create account'}
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      <p className="edge-auth-switch">
+        <button type="button" onClick={() => navigate('/login')}>Back to sign in</button>
+      </p>
+    </>
   );
 }
 

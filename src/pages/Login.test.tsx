@@ -29,9 +29,7 @@ describe('Login signup form', () => {
       </MemoryRouter>,
     );
 
-    const signupTab = screen.getByRole('tab', { name: /sign up/i });
-    fireEvent.mouseDown(signupTab);
-    fireEvent.click(signupTab);
+    fireEvent.click(screen.getAllByRole('button', { name: /switch to sign up/i })[0]);
 
     expect(await screen.findByLabelText(/student no\./i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/parent gmail/i)).not.toBeInTheDocument();
@@ -45,9 +43,7 @@ describe('Login signup form', () => {
       </MemoryRouter>,
     );
 
-    const signupTab = screen.getByRole('tab', { name: /sign up/i });
-    fireEvent.mouseDown(signupTab);
-    fireEvent.click(signupTab);
+    fireEvent.click(screen.getAllByRole('button', { name: /switch to sign up/i })[0]);
 
     fireEvent.click(document.getElementById('signup-role')!);
     fireEvent.click(screen.getByRole('option', { name: /parent \/ guardian/i }));

@@ -304,6 +304,412 @@
   }
 }
 
+.edge-auth {
+  min-height: 100dvh;
+  background: #07080d;
+  color: #f4f6fb;
+  transition: opacity 420ms cubic-bezier(0.4, 0, 0.2, 1), transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.edge-auth.is-leaving {
+  opacity: 0;
+  transform: translateY(-12px) scale(0.99);
+}
+
+.edge-auth-layout {
+  display: grid;
+  min-height: 100dvh;
+  gap: 1.25rem;
+  padding: 1rem;
+}
+
+.edge-auth-panel {
+  border-radius: 28px;
+  background: linear-gradient(180deg, #8b97ff 0%, #5b6cff 22%, #30398a 52%, #15192c 78%, #0b0d14 100%);
+  padding: 1.75rem 1.25rem 1.5rem;
+  color: #fff;
+}
+
+.edge-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.edge-auth-mark {
+  display: flex;
+  height: 2.4rem;
+  width: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.edge-auth-headline {
+  margin-top: 1.75rem;
+  font-size: 1.85rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.edge-auth-sub {
+  margin-top: 0.55rem;
+  max-width: 26rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+}
+
+.edge-auth-steps {
+  display: none;
+  margin-top: 2rem;
+  list-style: none;
+  padding: 0;
+}
+
+.edge-auth-step {
+  display: grid;
+  grid-template-columns: 1rem 1fr;
+  gap: 0.9rem;
+}
+
+.edge-auth-step + .edge-auth-step {
+  margin-top: 0.85rem;
+}
+
+.edge-auth-rail {
+  position: relative;
+}
+
+.edge-auth-rail::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1.35rem;
+  bottom: -1.15rem;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.edge-auth-step:last-child .edge-auth-rail::before {
+  display: none;
+}
+
+.edge-auth-dot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin-top: 1.15rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: transparent;
+}
+
+.edge-auth-panel-copy {
+  width: min(100%, 28rem);
+  max-width: 28rem;
+}
+
+.edge-auth-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(8, 10, 18, 0.42);
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+
+.edge-auth-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.edge-auth-card-body {
+  display: block;
+  width: 100%;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.edge-auth-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 0.5rem 2rem;
+}
+
+.edge-auth-form-inner {
+  position: relative;
+  width: min(100%, 26rem);
+}
+
+.edge-auth-view {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1), transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.edge-auth-view.is-active {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  position: relative;
+}
+
+.edge-auth h2 {
+  text-align: center;
+  font-size: 1.85rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: #f7f8fc;
+}
+
+.edge-auth-lead {
+  margin-top: 0.4rem;
+  text-align: center;
+  color: #9aa3b8;
+  font-size: 0.92rem;
+}
+
+.edge-auth-fields {
+  margin-top: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.edge-auth label {
+  color: #e7ebf5;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.edge-auth input,
+.edge-auth textarea,
+.edge-auth [role="combobox"] {
+  height: 3rem;
+  border-radius: 12px;
+  border-color: #2a3040;
+  background: #14161e;
+  color: #f5f7fb;
+}
+
+.edge-auth textarea {
+  height: auto;
+  min-height: 6.5rem;
+  padding-top: 0.75rem;
+}
+
+.edge-auth input::placeholder,
+.edge-auth textarea::placeholder {
+  color: #8b93a7;
+}
+
+.edge-auth button[type="submit"] {
+  height: 3rem;
+  border-radius: 12px;
+  background: #5b6cff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.edge-auth button[type="submit"]:hover {
+  background: #4d5ef5;
+}
+
+.edge-auth-switch {
+  margin-top: 1.25rem;
+  text-align: center;
+  color: #9aa3b8;
+  font-size: 0.9rem;
+}
+
+.edge-auth-switch button {
+  color: #8b97ff;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.edge-auth-switch button:focus-visible {
+  outline: 2px solid #8b97ff;
+  outline-offset: 3px;
+}
+
+.edge-auth-note {
+  margin-top: 0.85rem;
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+.edge-auth-note a {
+  color: #b7becc;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.edge-auth .text-muted-foreground {
+  color: #9aa3b8;
+}
+
+.edge-auth-staff .edge-auth-form {
+  align-items: center;
+  justify-content: safe center;
+  overflow-y: auto;
+  max-height: 100dvh;
+}
+
+.edge-auth-staff .edge-auth-form-inner {
+  width: min(100%, 26rem);
+  padding: 1.5rem 0 2rem;
+}
+
+.edge-role-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.edge-role {
+  min-height: 2.75rem;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  background: #14161e;
+  color: #d5dbe8;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edge-role.is-selected {
+  border-color: #8b97ff;
+  background: rgba(91, 108, 255, 0.18);
+  color: #f4f6ff;
+}
+
+.edge-role:focus-visible {
+  outline: 2px solid #8b97ff;
+  outline-offset: 2px;
+}
+
+.edge-auth-error {
+  color: #ff8b9a;
+  font-size: 0.78rem;
+}
+
+.edge-auth-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  text-align: center;
+}
+
+.edge-auth-status svg {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: #8b97ff;
+}
+
+.edge-auth-status .edge-auth-lead {
+  margin-top: 0;
+}
+
+.edge-auth-status button {
+  height: 3rem;
+  width: 100%;
+  margin-top: 0.4rem;
+  border-radius: 12px;
+  background: #5b6cff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.edge-auth-notice {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 196, 120, 0.35);
+  background: rgba(183, 121, 31, 0.14);
+  color: #f6ddb0;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.edge-auth-notice svg {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+}
+
+.edge-auth-locked {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0;
+  border: 1px solid #2a3040;
+  border-radius: 14px;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.edge-auth-locked legend {
+  padding: 0 0.3rem;
+  color: #9aa3b8;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 900px) {
+  .edge-auth-layout {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    align-items: stretch;
+    gap: 0;
+    padding: 1.25rem;
+  }
+
+  .edge-auth-panel {
+    padding: 3rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .edge-auth-headline {
+    font-size: 2.35rem;
+  }
+
+  .edge-auth-steps {
+    display: block;
+  }
+
+  .edge-auth-form {
+    padding: 2rem 2.5rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

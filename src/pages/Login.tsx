@@ -5,12 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { BookOpen, Users } from 'lucide-react';
-import { AuthSplit } from '@/components/shell/AuthSplit';
+import { AuthSlider } from '@/components/shell/AuthSlider';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { parentLinkErrorMessage } from '@/lib/parent-link-status';
@@ -42,6 +40,7 @@ export default function Login() {
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<'login' | 'signup'>('login');
 
   const [loginEmail, setLoginEmail] = useState('');
@@ -93,7 +92,12 @@ export default function Login() {
     setLoading(true);
     try {
       await signIn(loginEmail, loginPassword);
-      navigate('/dashboard');
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduceMotion) {
+        setLeaving(true);
+        await new Promise((resolve) => window.setTimeout(resolve, 420));
+      }
+      navigate("/dashboard");
     } catch (err: unknown) {
       toast.error(loginErrorMessage(err));
     } finally {
@@ -202,24 +206,15 @@ export default function Login() {
   };
 
   return (
-    <AuthSplit>
-        <div className="animate-fade-in">
-          <div className="mb-6 lg:hidden">
-            <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Student Risk Analysis and AI Coaching System</p>
-          </div>
-          <Card className="border-border bg-card">
-            <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
-              <CardHeader className="pb-4 border-b border-border/60">
-                <TabsList className="grid w-full grid-cols-2 h-11">
-                  <TabsTrigger value="login">Sign In</TabsTrigger>
-                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
-                </TabsList>
-              </CardHeader>
-
-              <CardContent>
-                <TabsContent value="login" className="mt-0">
-                  <form onSubmit={handleLogin} className="space-y-4">
+    <AuthSlider
+      mode={tab}
+      onModeChange={setTab}
+      leaving={leaving}
+      login={
+        <>
+          <h2>Sign in to EDGE</h2>
+          <p className="edge-auth-lead">Enter your university email to open your workspace.</p>
+          <form onSubmit={handleLogin} className="edge-auth-fields">
                     <div className="space-y-2">
                       <Label htmlFor="login-email">Email</Label>
                       <Input id="login-email" type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required placeholder="you@university.edu" />
@@ -240,31 +235,22 @@ export default function Login() {
                     </Button>
                   </form>
 
-                  <div className="mt-6">
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t border-border/60" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Staff Access</span>
-                      </div>
-                    </div>
-                    <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4 text-center space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Are you an Instructor or Guidance Counselor?
-                      </p>
-                      <Button variant="outline" className="w-full" asChild>
-                        <Link to="/request-staff-account">
-                          <Users className="w-4 h-4 mr-2" />
-                          Request Staff Account
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="signup" className="mt-0">
-                  <form onSubmit={handleSignup} className="space-y-4">
+          <p className="edge-auth-switch">
+            New to EDGE?{" "}
+            <button type="button" aria-label="Switch to sign up" onClick={() => setTab("signup")}>
+              Create account
+            </button>
+          </p>
+          <p className="edge-auth-note">
+            <Link to="/request-staff-account">Instructor or counselor? Request a staff account</Link>
+          </p>
+        </>
+      }
+      signup={
+        <>
+          <h2>Create your EDGE account</h2>
+          <p className="edge-auth-lead">Students and parents can request access. Staff use a separate request.</p>
+          <form onSubmit={handleSignup} className="edge-auth-fields">
                     <div className="space-y-2">
                       <Label htmlFor="signup-name">Full Name</Label>
                       <Input id="signup-name" value={signupName} onChange={e => setSignupName(e.target.value)} required placeholder="Juan Dela Cruz" />
@@ -393,11 +379,14 @@ export default function Login() {
                       {loading ? 'Creating account...' : 'Create Account'}
                     </Button>
                   </form>
-                </TabsContent>
-              </CardContent>
-            </Tabs>
-          </Card>
-        </div>
-    </AuthSplit>
+          <p className="edge-auth-switch">
+            Already have an account?{" "}
+            <button type="button" aria-label="Switch to sign in" onClick={() => setTab("login")}>
+              Sign in
+            </button>
+          </p>
+        </>
+      }
+    />
   );
 }
