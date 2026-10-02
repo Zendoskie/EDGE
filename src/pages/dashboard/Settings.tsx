@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
 import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 export default function Settings() {
   const { user, role } = useAuth();
@@ -140,14 +141,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <div>
-            <h1 className="text-2xl font-display font-bold">Settings</h1>
-            <p className="text-sm text-muted-foreground mt-1">Control account profile and app appearance preferences.</p>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="Settings" description="Control account profile and app appearance preferences." />
 
       <Card className="bg-card/90 w-full min-w-0">
         <CardHeader>
@@ -155,7 +149,7 @@ export default function Settings() {
             <SettingsIcon className="h-5 w-5" />
             Appearance
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Choose light or dark. New visitors default to dark mode.</p>
+          <p className="text-muted-foreground text-sm">Choose light or dark. New visitors start in light mode.</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-w-md">

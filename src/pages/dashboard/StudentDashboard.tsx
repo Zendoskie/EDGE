@@ -31,6 +31,8 @@ import { StudentEngagementCard } from '@/components/StudentEngagementCard';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { useStudentEnrolledSubjectIds } from '@/hooks/useStudentEnrolledSubjectIds';
+import { KpiCard } from '@/components/shell/KpiCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -437,13 +439,11 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-card via-card to-primary/5">
-          <div className="min-w-0">
-            <h1 className="text-xl font-display font-bold sm:text-2xl">Student Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Academic overview, grades, and engagement</p>
-          </div>
-          {(programCode || yearSectionLabel) && (
+      <PageHeader
+        title="Student Dashboard"
+        description="Academic overview, grades, and engagement"
+        actions={
+          (programCode || yearSectionLabel) ? (
             <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
               {programCode && !studentProgram?.is_irregular && (
                 <Badge variant="outline" className="font-normal">
@@ -457,30 +457,28 @@ export default function StudentDashboard() {
                 </Badge>
               )}
             </div>
-          )}
-        </div>
-      </section>
+          ) : null
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {statsLoading
           ? Array.from({ length: 4 }).map((_, index) => (
-              <Card key={`stats-skeleton-${index}`} className="bg-card/90">
-                <CardContent className="p-3 sm:p-4">
-                  <Skeleton className="h-3 w-2/3 mb-2" />
+              <Card key={`stats-skeleton-${index}`}>
+                <CardContent className="p-4">
+                  <Skeleton className="mb-2 h-3 w-2/3" />
                   <Skeleton className="h-7 w-16" />
                 </CardContent>
               </Card>
             ))
-          : statCards.map((stat) => (
-              <Card key={stat.title} className="bg-card/90 interactive-lift">
-                <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground truncate">{stat.title}</p>
-                    <p className="text-xl sm:text-2xl font-bold truncate">{stat.value}</p>
-                  </div>
-                  <stat.icon className={`h-4 w-4 sm:h-5 sm:w-5 shrink-0 ${stat.color}`} />
-                </CardContent>
-              </Card>
+          : statCards.map((stat, index) => (
+              <KpiCard
+                key={stat.title}
+                label={stat.title}
+                value={stat.value}
+                icon={stat.icon}
+                accent={index === 0}
+              />
             ))}
       </div>
 

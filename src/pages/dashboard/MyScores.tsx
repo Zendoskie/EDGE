@@ -13,6 +13,7 @@ import {
   isProjectAssessmentType,
 } from '@/lib/assessment-types';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { trackStudentActivity } from '@/lib/track-activity';
 
 function formatDue(due: string | null): string {
@@ -207,14 +208,7 @@ export default function MyScores() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header ">
-          <div>
-            <h1 className="text-2xl font-display font-bold">My Scores</h1>
-            <p className="text-sm text-muted-foreground mt-1">Track graded activity results and averages by subject.</p>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="My Scores" description="Track graded activity results and averages by subject." />
 
       <Card className="bg-card/90">
         <CardHeader>

@@ -17,6 +17,8 @@ import {
   RefreshCw, ArrowRight, Activity,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { KpiCard } from '@/components/shell/KpiCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -541,22 +543,27 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-4 p-3 md:p-5 min-w-0">
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold sm:text-2xl">Admin Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            System overview — updated {lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Admin Dashboard"
+        description={`System overview — updated ${lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`}
+        actions={
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-        {statCards.map(c => (
-          <StatCard key={c.label} {...c} loading={loading} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statCards.slice(0, 4).map((card, index) => (
+          <Link key={card.label} to={card.href}>
+            <KpiCard label={card.label} value={loading ? '—' : card.value} icon={card.icon} accent={index === 0} />
+          </Link>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statCards.slice(4).map((card) => (
+          <StatCard key={card.label} {...card} loading={loading} />
         ))}
       </div>
 

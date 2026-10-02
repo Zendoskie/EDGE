@@ -16,6 +16,8 @@ import { toast } from 'sonner';
 import { RiskBadge } from '@/components/RiskBadge';
 import { formatFeedbackStatus, formatLastLogin } from '@/lib/engagement-format';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
+import { KpiCard } from '@/components/shell/KpiCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { sendReferralNotification } from '@/lib/referral-notifications';
 import {
   Dialog,
@@ -216,36 +218,12 @@ export default function GuidanceReferrals() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <div>
-            <h1 className="text-xl font-display font-bold sm:text-2xl">Counselor Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Review and manage counseling referrals
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="Counselor Dashboard" description="Review and manage counseling referrals" />
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <Card className="bg-card/90">
-          <CardContent className="p-3 sm:p-4">
-            <p className="text-xs text-muted-foreground">Pending</p>
-            <p className="text-2xl font-bold">{pendingCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/90">
-          <CardContent className="p-3 sm:p-4">
-            <p className="text-xs text-muted-foreground">Approved</p>
-            <p className="text-2xl font-bold">{approvedCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/90">
-          <CardContent className="p-3 sm:p-4">
-            <p className="text-xs text-muted-foreground">Rejected</p>
-            <p className="text-2xl font-bold">{rejectedCount}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <KpiCard label="Open referrals" value={pendingCount} accent />
+        <KpiCard label="Approved" value={approvedCount} />
+        <KpiCard label="Rejected" value={rejectedCount} />
       </div>
 
       <Card className="bg-card/90 w-full min-w-0">

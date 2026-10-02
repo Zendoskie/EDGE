@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
-  RefreshCw, ClipboardList, Search, UserCheck, UserX, Eye,
+  RefreshCw, Search, UserCheck, UserX, Eye,
   Link2, Copy, X, AlertTriangle,
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
@@ -325,21 +326,10 @@ export default function AdminStaffRequests() {
       )}
 
       {/* Page header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-            <ClipboardList className="h-3.5 w-3.5 shrink-0 text-primary" />
-            Admin
-          </div>
-          <h1 className="mt-3 text-xl font-display font-bold tracking-tight text-foreground sm:text-2xl">
-            Staff Registration Requests
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Review account requests submitted by Instructors and Guidance Counselors through the
-            public registration form.
-          </p>
-        </div>
-        <Button
+      <PageHeader
+        title="Staff Registration Requests"
+        description="Review account requests submitted by Instructors and Guidance Counselors through the public registration form."
+        actions={<Button
           type="button"
           variant="outline"
           size="sm"
@@ -349,8 +339,8 @@ export default function AdminStaffRequests() {
         >
           <RefreshCw className={`mr-2 h-4 w-4 shrink-0 ${loading ? 'animate-spin' : ''}`} />
           Refresh
-        </Button>
-      </div>
+        </Button>}
+      />
 
       {/* Toolbar: tabs + search + sort */}
       <div className="flex flex-col gap-3">

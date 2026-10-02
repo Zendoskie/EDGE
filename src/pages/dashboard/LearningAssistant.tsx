@@ -3,24 +3,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import AIRecommendations from '@/components/AIRecommendations';
 import { Brain, Target, Calendar, TrendingUp } from 'lucide-react';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 export default function LearningAssistant() {
   const [activeTab, setActiveTab] = useState('assistant');
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header ">
-        <div>
-          <h1 className="text-2xl font-display font-bold">Learning Assistant</h1>
-          <p className="text-muted-foreground">Your AI-powered academic companion</p>
-        </div>
-        <Badge className="flex items-center gap-2">
-          <Brain className="h-4 w-4" />
-          AI Enhanced
-        </Badge>
-        </div>
-      </section>
+      <PageHeader
+        title="Learning Assistant"
+        description="Your AI-powered academic companion"
+        actions={
+          <Badge className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            AI Enhanced
+          </Badge>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-12">

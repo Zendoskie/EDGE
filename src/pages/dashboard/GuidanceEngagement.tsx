@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { FilterBar } from '@/components/shell/FilterBar';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,16 +79,10 @@ export default function GuidanceEngagement() {
 
   return (
     <div className="space-y-6">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header">
-          <div>
-            <h1 className="text-xl font-display font-bold sm:text-2xl">Student Engagement</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Campus engagement view. Open a counseling referral from a student record when support is needed.
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        title="Student Engagement"
+        description="Campus engagement view. Open a counseling referral from a student record when support is needed."
+      />
 
       {error ? (
         <p className="text-sm text-destructive">Could not load engagement data. {error.message}</p>
@@ -95,7 +91,7 @@ export default function GuidanceEngagement() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">All Students</CardTitle>
-          <div className="relative max-w-sm mt-2">
+          <FilterBar className="relative mt-2 max-w-sm border-0 bg-transparent p-0">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-8"
@@ -103,7 +99,7 @@ export default function GuidanceEngagement() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
+          </FilterBar>
         </CardHeader>
         <CardContent>
           {isLoading ? (

@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { UserCheck, UserX, RefreshCw, Shield } from 'lucide-react';
+import { UserCheck, UserX, RefreshCw } from 'lucide-react';
 import type { AppRole } from '@/hooks/useAuth';
 import { sendAccountStatusEmailBestEffort } from '@/lib/invoke-account-status-email';
 import ParentGuardianRequestsCard from '@/components/ParentGuardianRequestsCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 type PendingRow = {
   user_id: string;
@@ -116,19 +117,10 @@ export default function AdminApprovals() {
 
   return (
     <div className="mx-auto min-w-0 max-w-full space-y-5 sm:space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-            <Shield className="h-3.5 w-3.5 shrink-0 text-primary" />
-            Admin
-          </div>
-          <h1 className="mt-3 text-xl font-display font-bold tracking-tight text-foreground sm:text-2xl">User approvals</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Review new student, instructor, and guidance counselor accounts, and parent/guardian requests the student has approved. Only approved
-            users can sign in. Passwords are never shown here; authentication stays with Supabase Auth.
-          </p>
-        </div>
-        <Button
+      <PageHeader
+        title="User approvals"
+        description="Review new student, instructor, and guidance counselor accounts, and parent/guardian requests the student has approved. Only approved users can sign in. Passwords are never shown here; authentication stays with Supabase Auth."
+        actions={<Button
           type="button"
           variant="outline"
           size="sm"
@@ -138,8 +130,8 @@ export default function AdminApprovals() {
         >
           <RefreshCw className={`mr-2 h-4 w-4 shrink-0 ${loading ? 'animate-spin' : ''}`} />
           Refresh
-        </Button>
-      </div>
+        </Button>}
+      />
 
       <Card className="min-w-0 border-border/60 bg-card/90 shadow-sm">
         <CardHeader className="space-y-1 border-b border-border/50 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">

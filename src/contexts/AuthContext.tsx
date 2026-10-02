@@ -189,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) {
       const em = (error.message || '').toLowerCase();
+      const status = (error as { status?: number }).status;
       if (em.includes('email not confirmed') || em.includes('confirm your email')) {
         throw new Error('Please confirm your email before signing in.');
       }
@@ -199,7 +200,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ) {
         throw new Error('Invalid credentials');
       }
-      throw new Error('Invalid credentials');
+      if (
+        status === 500 ||
+        status === 504 ||
+        em.includes('timeout') ||
+        em.includes('deadline') ||
+        em.includes('failed to fetch') ||
+        em.includes('network') ||
+        em.includes('fetch')
+      ) {
+        throw new Error('Sign-in could not reach the account service. Please try again in a moment.');
+      }
+      throw new Error('Sign-in could not be completed. Please try again.');
     }
 
     const uid = data.user?.id;

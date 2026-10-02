@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { BookOpen, ChevronRight, KeyRound, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
+import { PageHeader } from '@/components/shell/PageHeader';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -293,14 +294,7 @@ export default function MySubjects() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header ">
-          <div>
-            <h1 className="text-2xl font-display font-bold">My Subjects</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage your active enrollments and course requests.</p>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="My Subjects" description="Manage your active enrollments and course requests." />
 
       {role === 'student' && user?.id && studentProgram === null && (
         <Card className="border-warning/40 bg-warning/15">

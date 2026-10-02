@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Shield, Users, CheckCircle2, ArrowLeft, Loader2,
+  Users, CheckCircle2, ArrowLeft, Loader2,
   Lock, AlertTriangle, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
+import { AuthSplit } from '@/components/shell/AuthSplit';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -31,20 +32,15 @@ const ROLE_LABELS: Record<StaffRole, string> = {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-shell-bg flex min-h-dvh w-full flex-col items-center justify-center px-4 py-12">
-      <div className="mx-auto w-full max-w-lg animate-fade-in">
-        <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-md bg-primary">
-            <Shield className="h-6 w-6 text-primary-foreground" />
-          </div>
+    <AuthSplit>
+      <div className="animate-fade-in">
+        <div className="mb-6 lg:hidden">
           <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Student Risk Analysis and AI Coaching System
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Student Risk Analysis and AI Coaching System</p>
         </div>
         {children}
       </div>
-    </div>
+    </AuthSplit>
   );
 }
 

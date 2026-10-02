@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Shield, BookOpen, Users } from 'lucide-react';
+import { BookOpen, Users } from 'lucide-react';
+import { AuthSplit } from '@/components/shell/AuthSplit';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { parentLinkErrorMessage } from '@/lib/parent-link-status';
@@ -201,20 +202,13 @@ export default function Login() {
   };
 
   return (
-    <div className="app-shell-bg flex h-dvh max-h-dvh min-h-0 w-full flex-col overflow-hidden sm:h-auto sm:max-h-none sm:min-h-app sm:overflow-visible sm:flex sm:flex-col sm:items-center sm:justify-center sm:py-12 sm:pb-[max(2.5rem,env(safe-area-inset-bottom,0px))]">
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-4 py-8 pb-[max(8rem,env(safe-area-inset-bottom,0px))] sm:flex-none sm:min-h-0 sm:w-full sm:overflow-visible sm:py-0 sm:pb-0">
-        <div className="mx-auto w-full max-w-md shrink-0 animate-fade-in sm:my-0">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-500 shadow-lg shadow-primary/25 mb-4">
-              <Shield className="w-8 h-8 text-primary-foreground" />
-            </div>
+    <AuthSplit>
+        <div className="animate-fade-in">
+          <div className="mb-6 lg:hidden">
             <h1 className="text-3xl font-display font-bold text-foreground">EDGE</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              Student Risk Analysis and AI Coaching System
-            </p>
+            <p className="mt-2 text-sm text-muted-foreground">Student Risk Analysis and AI Coaching System</p>
           </div>
-
-          <Card className="shadow-xl border-border/60 bg-card/92 backdrop-blur-md">
+          <Card className="border-border bg-card">
             <Tabs value={tab} onValueChange={v => setTab(v as 'login' | 'signup')}>
               <CardHeader className="pb-4 border-b border-border/60">
                 <TabsList className="grid w-full grid-cols-2 h-11">
@@ -404,7 +398,6 @@ export default function Login() {
             </Tabs>
           </Card>
         </div>
-      </div>
-    </div>
+    </AuthSplit>
   );
 }

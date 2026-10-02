@@ -40,10 +40,10 @@ export function riskBadgeClassName(level: CanonicalRiskLevel): string {
 
 /** Chart fill colors aligned with badge semantics. */
 export function riskChartColor(level: CanonicalRiskLevel): string {
-  if (level === "critical") return "hsl(0 72% 51%)";
-  if (level === "at_risk") return "hsl(38 92% 50%)";
-  if (level === "stable") return "hsl(142 76% 36%)";
-  return "hsl(221 76% 48%)";
+  if (level === "critical") return "hsl(0 58% 58%)";
+  if (level === "at_risk") return "hsl(36 72% 52%)";
+  if (level === "stable") return "hsl(152 28% 48%)";
+  return "hsl(43 70% 62%)";
 }
 
 /** Ordered from lowest academic risk to highest academic risk. */

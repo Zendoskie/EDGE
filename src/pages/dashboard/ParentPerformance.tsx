@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
-import { BookOpen, Calendar, FileText, Brain, Activity, ChevronDown } from 'lucide-react';
+import { BookOpen, Calendar, FileText, Activity, ChevronDown } from 'lucide-react';
+import { KpiCard } from '@/components/shell/KpiCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -709,57 +711,30 @@ export default function ParentPerformance() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-card via-card to-primary/5">
-          <div className="min-w-0">
-            <h1 className="text-xl font-display font-bold sm:text-2xl">Student Performance</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Read-only view for your approved student
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-background/70 px-3 py-2 text-sm">
-            <p className="font-medium truncate">{studentProfile?.full_name || 'Student'}</p>
-            <p className="text-xs text-muted-foreground">
-              ID: {studentProfile?.student_id ?? approvedLink.student_id_no}
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        title="Student Performance"
+        description="Read-only view for your approved student"
+      />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
-        <Card className="bg-card/90">
-          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Attendance</p>
-              <p className="text-xl sm:text-2xl font-bold">{attendanceRate.toFixed(1)}%</p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground">{attendance.length} records</p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard
+          label="Linked student"
+          value={studentProfile?.full_name || 'Student'}
+          hint={`ID: ${studentProfile?.student_id ?? approvedLink.student_id_no}`}
+          accent
+        />
+        <KpiCard label="Attendance" value={`${attendanceRate.toFixed(1)}%`} hint={`${attendance.length} records`} icon={Calendar} />
+        <KpiCard label="Average" value={`${averageScore.toFixed(1)}%`} hint={`${submissions.length} submissions`} icon={FileText} />
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-[13px] font-medium text-muted-foreground">Risk</p>
+            <div className="mt-3">
+              {latestPrediction ? (
+                <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No predictions yet</p>
+              )}
             </div>
-            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/90">
-          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Average score</p>
-              <p className="text-xl sm:text-2xl font-bold">{averageScore.toFixed(1)}%</p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground">{submissions.length} submissions</p>
-            </div>
-            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/90 col-span-2 lg:col-span-1">
-          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Risk status</p>
-              <div className="mt-1">
-                {latestPrediction ? (
-                  <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">No predictions yet</p>
-                )}
-              </div>
-            </div>
-            <Brain className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
         </Card>
       </div>

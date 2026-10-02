@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Navigate, useOutlet } from "react-router-dom";
+import { Navigate, useNavigate, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppSidebar, navItemsForRole } from "@/components/AppSidebar";
+import { MobileTabBar } from "@/components/shell/MobileTabBar";
 import { useAuth } from "@/hooks/useAuth";
 import { useEdgeRealtimeNotifications } from "@/hooks/useEdgeRealtimeNotifications";
 import { useStudentInboxPoll } from "@/hooks/useStudentInboxPoll";
@@ -21,6 +22,7 @@ import { useDurableInboxNotifications } from "@/hooks/useAccountApprovalNotifica
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { GraduationCap } from "lucide-react";
 import type { AppRole } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -64,17 +66,21 @@ function AnimatedDashboardOutlet() {
 function DashboardHeader() {
   const { state } = useSidebar();
   const isSidebarOpen = state === "expanded";
+  const { role, user } = useAuth();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const initials = (user?.email ?? "E").slice(0, 1).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-14 items-center gap-2 overflow-hidden border-b border-border/70 bg-card/80 px-3 py-2 shadow-sm backdrop-blur-md sm:h-16 sm:min-h-0 sm:gap-3 sm:px-4 md:px-6">
+    <header className="sticky top-0 z-30 mx-3 mt-3 flex h-[60px] items-center gap-2 overflow-hidden rounded-[22px] border border-border bg-card px-3 shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)] sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
         <div className="flex shrink-0 md:hidden">
           <SidebarTrigger aria-label="Open navigation" />
         </div>
         {!isSidebarOpen && (
           <>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-violet-500 shadow-sm">
-              <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-primary">
+              <GraduationCap className="h-4 w-4 text-primary-foreground" />
             </div>
             <div className="min-w-0 flex-1 pr-1">
               <h2
@@ -93,15 +99,31 @@ function DashboardHeader() {
           </>
         )}
       </div>
+      <form
+        className="hidden min-w-0 flex-1 md:block"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const needle = query.trim().toLowerCase();
+          if (!needle) return;
+          const match = navItemsForRole(role).find((item) => item.title.toLowerCase().includes(needle));
+          if (match) navigate(match.url);
+        }}
+      >
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search pages"
+          aria-label="Search pages"
+          className="h-9 bg-muted/50"
+        />
+      </form>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
         {/* Slot for the AI Coach trigger so it stays in the header (not covering content) */}
         <div id="ai-coach-header-slot" className="inline-flex shrink-0 items-center" />
         <NotificationInboxTrigger />
-        <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background/65 px-2 py-0.5 sm:gap-2 sm:px-2.5 sm:py-1">
-          <div className="status-dot shrink-0 bg-green-500 animate-pulse-glow" />
-          <span className="hidden text-sm text-muted-foreground sm:inline sm:text-base">System Active</span>
-        </div>
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-primary" aria-hidden>
+          {initials}
+        </span>
       </div>
     </header>
   );
@@ -201,7 +223,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="min-h-app h-[100dvh] flex w-full overflow-hidden app-shell-bg">
+      <div className="peoplo-canvas flex h-[100dvh] min-h-app w-full overflow-hidden">
         <AppSidebar />
         <div className="flex-1 min-h-0 flex flex-col">
           <DashboardHeader />
@@ -216,11 +238,12 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
               variant="compact"
             />
           ) : null}
-          <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6">
+          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 md:p-5 md:pb-5">
             <div className="content-grid">
               <AnimatedDashboardOutlet />
             </div>
           </main>
+          <MobileTabBar items={navItemsForRole(role)} />
         </div>
       </div>
     </SidebarProvider>

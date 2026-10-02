@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { CalendarCheck } from 'lucide-react';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   present: 'default',
@@ -100,16 +101,10 @@ export default function MyAttendance() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header ">
-          <div>
-            <h1 className="text-2xl font-display font-bold">My Attendance</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Sessions are listed newest first. Each row shows the class date and your status.
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        title="My Attendance"
+        description="Sessions are listed newest first. Each row shows the class date and your status."
+      />
 
       <Card className="bg-card/90">
         <CardHeader>

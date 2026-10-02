@@ -20,6 +20,8 @@ import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
+import { KpiCard } from '@/components/shell/KpiCard';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 const getYearFromSubject = (subject: any) => {
   const code = subject.code || '';
@@ -718,26 +720,11 @@ export default function InstructorDashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <div>
-            <h1 className="text-xl font-display font-bold sm:text-2xl">Instructor Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Courses, students, and risk monitoring</p>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="Instructor Dashboard" description="Courses, students, and risk monitoring" />
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5 min-w-0">
-        {statCards.map((stat) => (
-          <Card key={stat.title} className="bg-card/90 interactive-lift">
-            <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">{stat.title}</p>
-                <p className="text-xl sm:text-2xl font-bold">{stat.value}</p>
-              </div>
-              <stat.icon className={`h-4 w-4 sm:h-5 sm:w-5 shrink-0 ${stat.color}`} />
-            </CardContent>
-          </Card>
+      <div className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
+        {statCards.map((stat, index) => (
+          <KpiCard key={stat.title} label={stat.title} value={stat.value} icon={stat.icon} accent={index === 0} />
         ))}
       </div>
 

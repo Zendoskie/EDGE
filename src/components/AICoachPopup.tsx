@@ -425,7 +425,7 @@ export function AICoachPopup(props: {
                   </span>
                   <div
                     className={cn(
-                      "max-w-[90%] rounded-2xl px-4 py-3 text-sm shadow-sm break-words",
+                      "max-w-[90%] rounded-[15px] px-4 py-3 text-sm break-words",
                       m.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md"
                         : "bg-muted/80 text-foreground border border-border/80 rounded-bl-md",

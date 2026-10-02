@@ -20,11 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { AI_COACH_MODEL_LABEL, AI_COACH_MODEL_SHORT } from "@/lib/ai-model";
-import { ShinyText } from "@/components/landing/ShinyText";
 import { AcademicDisclaimer } from "@/components/AcademicDisclaimer";
-
-const LANDING_HERO_VIDEO_URL =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_105406_16f4600d-7a92-4292-b96e-b19156c7830a.mp4";
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -73,7 +69,7 @@ function AmbientBackground() {
 function HeroVisualMock() {
   return (
     <div className="relative mx-auto w-full max-w-lg lg:mx-0">
-      <div className="relative space-y-4 rounded-lg border border-border bg-card p-5 md:p-6">
+      <div className="relative space-y-4 rounded-[20px] border border-border bg-card p-5 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-3 sm:px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <Brain className="h-5 w-5 shrink-0 text-primary" aria-hidden />
@@ -143,25 +139,14 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const navLinkClass =
-    "text-sm text-white/80 transition-colors hover:text-white duration-300 whitespace-nowrap";
+    "text-sm text-muted-foreground transition-colors hover:text-foreground duration-200 whitespace-nowrap";
   const closeMobileAnd = (fn: () => void) => () => {
     setMobileNavOpen(false);
     fn();
   };
 
   return (
-    <section id="landing-hero" className="relative flex min-h-screen flex-col bg-black font-sans text-white">
-      <video
-        className="absolute inset-0 h-full w-full object-cover"
-        autoPlay
-        muted
-        loop
-        playsInline
-        aria-hidden
-      >
-        <source src={LANDING_HERO_VIDEO_URL} type="video/mp4" />
-      </video>
-      <div className="absolute inset-0 bg-black/65" aria-hidden />
+    <section id="landing-hero" className="relative flex min-h-screen flex-col bg-background font-sans text-foreground">
       <div className="relative z-10 flex min-h-screen flex-col">
         <header className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
@@ -171,36 +156,36 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
               className="shrink-0 text-left transition-opacity hover:opacity-[0.92]"
               aria-label="EDGE home"
             >
-              <span className="font-display text-xl font-semibold tracking-tight text-white sm:text-2xl">
+              <span className="font-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 EDGE
               </span>
             </button>
 
             <nav
               aria-label="Primary"
-              className="hidden items-center gap-1 rounded-full border border-gray-700 bg-black/25 px-2 py-1.5 backdrop-blur-sm lg:flex"
+              className="hidden items-center gap-1 lg:flex"
             >
-              <button type="button" onClick={() => scrollToLandingTop()} className={`rounded-full px-3 py-1.5 ${navLinkClass}`}>
+              <button type="button" onClick={() => scrollToLandingTop()} className={`rounded-[12px] px-3 py-1.5 ${navLinkClass}`}>
                 Home
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection("capabilities")}
-                className={`rounded-full px-3 py-1.5 ${navLinkClass}`}
+                className={`rounded-[12px] px-3 py-1.5 ${navLinkClass}`}
               >
                 Capabilities
               </button>
               <button
                 type="button"
                 onClick={() => scrollToSection("how-it-works")}
-                className={`rounded-full px-3 py-1.5 ${navLinkClass}`}
+                className={`rounded-[12px] px-3 py-1.5 ${navLinkClass}`}
               >
                 How it works
               </button>
               <button
                 type="button"
                 onClick={() => navigate("/login")}
-                className={`group flex items-center gap-1.5 rounded-full px-3 py-1.5 ${navLinkClass}`}
+                className={`group flex items-center gap-1.5 rounded-[12px] px-3 py-1.5 ${navLinkClass}`}
               >
                 Get started
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" aria-hidden />
@@ -209,7 +194,7 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
 
             <button
               type="button"
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 text-white lg:hidden"
+              className="flex h-10 w-10 items-center justify-center rounded-[12px] border border-border text-foreground lg:hidden"
               aria-expanded={mobileNavOpen}
               aria-controls="landing-mobile-nav"
               onClick={() => setMobileNavOpen((v) => !v)}
@@ -221,7 +206,7 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
 
           <div
             id="landing-mobile-nav"
-            className={`mt-4 overflow-hidden rounded-2xl border border-gray-700 bg-black/80 backdrop-blur-md transition-[max-height,opacity] duration-300 lg:hidden ${
+            className={`mt-4 overflow-hidden rounded-[20px] border border-border bg-card transition-[max-height,opacity] duration-300 lg:hidden ${
               mobileNavOpen
                 ? "max-h-[24rem] border-opacity-100 py-4 opacity-100"
                 : "pointer-events-none max-h-0 border-opacity-0 py-0 opacity-0"
@@ -257,74 +242,26 @@ function LandingVideoHero({ navigate }: { navigate: NavigateFunction }) {
           </div>
         </header>
 
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-12 pt-8 sm:px-6 lg:px-8 lg:pb-16 lg:pt-10">
-          <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
-            <div className="group relative max-w-xl lg:max-w-xl xl:max-w-2xl">
-              <div
-                className="pointer-events-none absolute -inset-px rounded-lg border border-border"
-                aria-hidden
-              />
-              <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.07] py-6 pl-6 pr-5 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] backdrop-blur-md before:pointer-events-none before:absolute before:inset-0 before:bg-gradient-to-br before:from-white/[0.06] before:to-transparent before:to-60% md:py-8 md:pl-8 md:pr-7">
-                <div
-                  className="absolute bottom-5 left-5 top-5 w-px bg-border md:left-6"
-                  aria-hidden
-                />
-                <p className="relative ml-2 text-[1.0625rem] leading-[1.72] tracking-[0.01em] text-white/90 md:ml-3 md:text-xl md:leading-[1.68] xl:text-[1.375rem] xl:leading-relaxed">
-                  <span className="block text-balance">
-                    <span className="font-semibold text-white">Large language models and structured analytics</span> flag patterns
-                    early;
-                  </span>
-                  <span className="mt-4 block text-balance md:mt-5">
-                    the in-app coach runs on{" "}
-                    <span className="font-semibold text-white">{AI_COACH_MODEL_LABEL}</span>
-                    —clear, supportive next steps for students and instructors.
-                  </span>
-                </p>
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pb-12 pt-10 sm:px-6 lg:px-8 lg:pb-16 lg:pt-16">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <div className="max-w-xl">
+              <h1 className="text-4xl font-semibold leading-[1.15] text-foreground sm:text-5xl lg:text-[60px] lg:leading-[1.2]">
+                Student Risk Analysis and AI Coaching
+              </h1>
+              <p className="mt-6 max-w-md text-lg leading-8 text-muted-foreground">
+                Structured academic analytics flag patterns early. The in-app coach runs on {AI_COACH_MODEL_LABEL} and gives students and instructors clear next steps.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                <Badge variant="outline">Coach: {AI_COACH_MODEL_SHORT}</Badge>
+                <Badge variant="secondary">Secure institutional access</Badge>
               </div>
+              <Button type="button" size="lg" className="mt-8" onClick={() => navigate("/login")}>
+                Get started
+              </Button>
             </div>
             <div className="lg:flex lg:justify-end">
               <HeroVisualMock />
             </div>
-          </div>
-
-          <div className="mt-auto flex flex-1 flex-col items-center justify-center pt-12 text-center lg:mt-16 lg:flex-[1.1] lg:pt-8">
-            <p className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/80 sm:text-sm">
-              <Brain className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
-              AI-powered risk insight &amp; coaching
-            </p>
-
-            <h1 className="mt-4 max-w-5xl px-2 text-center text-5xl font-medium leading-[0.85] tracking-tighter sm:px-0 sm:text-6xl md:text-7xl xl:text-8xl 2xl:text-9xl">
-              <span className="block text-white">EDGE</span>
-              <span className="mt-1 block text-balance">
-                <span className="text-white">Student Risk Analysis and </span>
-                <ShinyText>AI Coaching</ShinyText>
-                <span className="text-white"> System</span>
-              </span>
-            </h1>
-
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-              <Badge className="border-0 bg-white/15 px-3 py-1 text-xs font-normal text-white hover:bg-white/20 sm:text-sm">
-                Coach: {AI_COACH_MODEL_SHORT}
-              </Badge>
-              <Badge
-                variant="secondary"
-                className="rounded-full border border-white/25 bg-white/10 px-3 py-1 font-normal text-white hover:bg-white/15"
-              >
-                LLM-powered risk insight
-              </Badge>
-              <Badge variant="secondary" className="rounded-full border-0 bg-white/10 px-3 py-1 font-normal text-white/95">
-                Secure access
-              </Badge>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => navigate("/login")}
-              className="group mt-10 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-base font-medium text-white shadow-lg transition-colors hover:bg-gray-900 md:px-8 md:py-4"
-            >
-              Get started
-              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden />
-            </button>
           </div>
         </div>
       </div>
@@ -533,7 +470,7 @@ export default function Landing() {
             className="relative mx-auto mb-20 max-w-4xl scroll-mt-28 rounded-lg border border-border bg-card p-8 md:p-12"
           >
             <div className="relative text-center">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm dark:bg-background/40">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-[12px] border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                 How it flows
               </div>

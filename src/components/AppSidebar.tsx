@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users, Activity,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +12,9 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 
-const instructorItems = [
+export type SidebarNavItem = { title: string; url: string; icon: LucideIcon };
+
+const instructorItems: SidebarNavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
   { title: 'Engagement Monitoring', url: '/dashboard/student-engagement', icon: Activity },
@@ -53,6 +56,14 @@ const adminItems = [
   { title: 'Settings',          url: '/dashboard/settings',                 icon: Settings },
 ];
 
+export function navItemsForRole(role: string | null): SidebarNavItem[] {
+  if (role === 'admin') return adminItems;
+  if (role === 'instructor') return instructorItems;
+  if (role === 'parent') return parentItems;
+  if (role === 'guidance_counselor') return guidanceItems;
+  return studentItems;
+}
+
 export function AppSidebar() {
   const { state, setOpen, isMobile } = useSidebar();
   const collapsed = state === 'collapsed';
@@ -65,21 +76,13 @@ export function AppSidebar() {
     };
   }, []);
 
-  const items =
-    role === 'admin'
-      ? adminItems
-      : role === 'instructor'
-        ? instructorItems
-        : role === 'parent'
-          ? parentItems
-          : role === 'guidance_counselor'
-            ? guidanceItems
-            : studentItems;
+  const items = navItemsForRole(role);
   const showText = !collapsed || isMobile;
 
   return (
     <Sidebar
       collapsible="icon"
+      className="border-0 bg-transparent"
       onMouseEnter={() => {
         if (isMobile) return;
         if (closeTimer.current) window.clearTimeout(closeTimer.current);
@@ -91,10 +94,10 @@ export function AppSidebar() {
         closeTimer.current = window.setTimeout(() => setOpen(false), 140);
       }}
     >
-      <SidebarContent className="border-r border-sidebar-border bg-sidebar">
+      <SidebarContent className="m-3 rounded-[22px] border border-sidebar-border bg-sidebar shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)]">
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center gap-2.5 border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-sidebar-primary">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] bg-sidebar-primary">
               <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
             </div>
             {showText && (
@@ -109,8 +112,8 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard' || item.url.startsWith('/dashboard/admin/')}
-                      className="group flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
-                      activeClassName="bg-sidebar-accent font-medium text-sidebar-primary"
+                      className="group flex items-center gap-3 rounded-[12px] px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
+                      activeClassName="bg-sidebar-accent font-semibold text-sidebar-primary"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       {showText && <span className="text-sm font-medium">{item.title}</span>}
@@ -122,13 +125,13 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border/50 p-4 group-data-[collapsible=icon]:p-2 bg-sidebar/80">
+      <SidebarFooter className="mx-3 mb-3 rounded-b-[22px] border border-t-0 border-sidebar-border bg-sidebar p-4 group-data-[collapsible=icon]:p-2">
         {showText && (
           <div className="mb-3 rounded-md border border-sidebar-border px-2.5 py-2">
-            <p className="text-xs text-sidebar-foreground/80 truncate font-medium">
+            <p className="truncate text-xs font-medium text-sidebar-foreground">
               {user?.email}
             </p>
-            <p className="text-xs text-sidebar-foreground/60 mt-1 capitalize">
+            <p className="mt-1 text-xs capitalize text-muted-foreground">
               {role} Account
             </p>
           </div>
@@ -136,7 +139,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           size={showText ? 'sm' : 'icon'}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 group-data-[collapsible=icon]:justify-center"
+          className="w-full justify-start text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center"
           onClick={signOut}
         >
           <LogOut className="h-4 w-4 shrink-0" />

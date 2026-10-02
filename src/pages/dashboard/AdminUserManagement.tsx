@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -940,18 +941,16 @@ export default function AdminUserManagement() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">User Management</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage all registered users, roles, and account statuses.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="User Management"
+        description="Manage all registered users, roles, and account statuses."
+        actions={
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Stats */}
       <StatsCards stats={stats} loading={loading} />

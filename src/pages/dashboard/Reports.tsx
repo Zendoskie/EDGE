@@ -15,6 +15,7 @@ import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { engagementLabel, canonicalEngagementLevel, formatActivityTypeLabel } from '@/lib/engagement-utils';
+import { PageHeader } from '@/components/shell/PageHeader';
 
 export default function Reports() {
   const { user } = useAuth();
@@ -411,13 +412,10 @@ export default function Reports() {
 
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
-      <section className="page-section overflow-hidden">
-        <div className="page-section-header ">
-          <div>
-            <h1 className="text-2xl font-display font-bold">Summary Reports</h1>
-            <p className="text-sm text-muted-foreground mt-1">Generate clean printable and CSV-ready performance reports.</p>
-          </div>
-        <div className="flex gap-2 print:hidden">
+      <PageHeader
+        title="Summary Reports"
+        description="Generate clean printable and CSV-ready performance reports."
+        actions={<div className="flex gap-2 print:hidden">
           <Button
             variant="outline"
             size="sm"
@@ -440,9 +438,8 @@ export default function Reports() {
             <Download className="mr-2 h-4 w-4" />
             Download CSV
           </Button>
-        </div>
-        </div>
-      </section>
+        </div>}
+      />
 
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="print:hidden h-11">
