@@ -294,7 +294,7 @@ export default function Login() {
                     <div className="space-y-2">
                       <Label>Role</Label>
                       <Select value={signupRole} onValueChange={(v: 'student' | 'parent') => setSignupRole(v)}>
-                        <SelectTrigger>
+                        <SelectTrigger id="signup-role">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

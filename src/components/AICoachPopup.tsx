@@ -47,7 +47,7 @@ function buildContextualStarter(
       "",
       metricsSummary,
       "",
-      "I won't re-evaluate your risk level. I'll use these results to suggest study strategies, weak areas, and improvement actions. What would you like to focus on first?",
+      "I won't re-evaluate your risk level. You can ask me about a specific score, your current grade, or a study plan for the time you have. What would you like to focus on first?",
     ].join("\n");
   } else if (metricsSummary) {
     content = [
@@ -64,6 +64,22 @@ function buildContextualStarter(
   }
 
   return [{ role: "assistant", content, ts: Date.now() }];
+}
+
+const COACH_ERROR_REPLY = "I couldn't get a reply from the AI coach just now. Please try again in a moment.";
+
+const LEGACY_UNSCOPED_KEYS = [
+  "edge_ai_coach_msgs_edge_ai_coach_dismissed_dashboard_header_v1",
+  "edge_ai_coach_msgs_edge_ai_coach_dismissed_v1",
+];
+
+/**
+ * Builds the API payload from real conversation turns only. The locally generated starter
+ * message (first assistant turn) and earlier failure notices are not sent to the server.
+ */
+export function toApiMessages(list: ChatMsg[], nextUserText: string): { role: "user" | "assistant"; content: string }[] {
+  const turns = list.filter((m, idx) => !(idx === 0 && m.role === "assistant") && m.content !== COACH_ERROR_REPLY);
+  return [...turns, { role: "user" as const, content: nextUserText }].map((m) => ({ role: m.role, content: m.content }));
 }
 
 function messagesStorageKey(dismissKey: string) {
@@ -148,14 +164,14 @@ export function AICoachPopup(props: {
     }
   }, [messages, persistKey]);
 
-  const contextHint = useMemo(() => {
-    const bits: string[] = [];
-    bits.push(`Risk classification (system): ${riskLabel(canonical)}`);
-    if (props.metrics) bits.push(formatCoachingMetricsBlock(props.metrics));
-    if (props.subjectLabel) bits.push(`Focus subject: ${props.subjectLabel}`);
-    if (props.atRiskSubjects?.length) bits.push(`Vulnerable subjects: ${props.atRiskSubjects.join(", ")}`);
-    return bits.join("\n");
-  }, [canonical, props.metrics, props.subjectLabel, props.atRiskSubjects]);
+  useEffect(() => {
+    // Chats now contain personal academic data, so unscoped legacy copies must not linger on shared browsers.
+    try {
+      for (const key of LEGACY_UNSCOPED_KEYS) localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     const saved = readStoredMessages(storageKey);
@@ -195,17 +211,11 @@ export function AICoachPopup(props: {
     return () => window.clearTimeout(t);
   }, [open, messages.length]);
 
-  const toApiMessages = (list: ChatMsg[]) => list.map((m) => ({ role: m.role, content: m.content }));
-
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
-      const payloadMessages: { role: "user" | "assistant"; content: string }[] = [
-        ...toApiMessages(messages),
-        { role: "user", content: text },
-        ...(contextHint
-          ? [{ role: "user" as const, content: `Context (do not quote verbatim):\n${contextHint}` }]
-          : []),
-      ];
+      // Only real conversation turns are sent. The server loads the student's records itself
+      // (identity comes from the session), so no client-built context or student id is sent.
+      const payloadMessages = toApiMessages(messages, text);
 
       const data = (await invokeAiCoach({ messages: payloadMessages })) as AICoachResponse;
       if (data?.error) throw new Error(data.error);
@@ -227,7 +237,7 @@ export function AICoachPopup(props: {
         }
         next.push({
           role: "assistant",
-          content: `Could not get a reply: ${error.message}`,
+          content: COACH_ERROR_REPLY,
           ts: Date.now(),
         });
         return next;

@@ -192,7 +192,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
               atRiskSubjects={coachContext?.atRiskSubjects ?? []}
               metrics={coachContext?.metrics ?? null}
               coachingSubjects={coachContext?.coachingSubjects ?? []}
-              storageKey="edge_ai_coach_dismissed_dashboard_header_v1"
+              storageKey={`edge_ai_coach_dismissed_dashboard_header_v1:${userId}`}
               variant="compact"
             />
           ) : null}

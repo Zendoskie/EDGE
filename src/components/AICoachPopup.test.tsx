@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AICoachPopup } from '@/components/AICoachPopup';
+import { AICoachPopup, toApiMessages } from '@/components/AICoachPopup';
 
 vi.mock('@/lib/invoke-ai-coach', () => ({
   invokeAiCoach: vi.fn(),
@@ -10,6 +10,25 @@ vi.mock('@/lib/invoke-ai-coach', () => ({
 vi.mock('@/lib/track-activity', () => ({
   trackStudentActivity: vi.fn(),
 }));
+
+describe('AI Coach request payload', () => {
+  it('sends only real conversation turns: no starter, no client-built context, no student id', () => {
+    const payload = toApiMessages(
+      [
+        { role: 'assistant', content: 'Hi—I loaded your risk analysis. Risk: Excelling' },
+        { role: 'user', content: 'What is my Quiz 1 score in PL101?' },
+        { role: 'assistant', content: 'You scored 82%.' },
+      ],
+      'How can I improve?',
+    );
+    expect(payload).toEqual([
+      { role: 'user', content: 'What is my Quiz 1 score in PL101?' },
+      { role: 'assistant', content: 'You scored 82%.' },
+      { role: 'user', content: 'How can I improve?' },
+    ]);
+    expect(JSON.stringify(payload)).not.toMatch(/Context \(do not quote|student_id/i);
+  });
+});
 
 describe('AICoachPopup', () => {
   beforeEach(() => {

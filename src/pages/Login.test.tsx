@@ -37,4 +37,21 @@ describe('Login signup form', () => {
     expect(screen.queryByLabelText(/parent gmail/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/parent gmail/i)).not.toBeInTheDocument();
   });
+
+  it('parent signup asks for the student Student ID', async () => {
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    const signupTab = screen.getByRole('tab', { name: /sign up/i });
+    fireEvent.mouseDown(signupTab);
+    fireEvent.click(signupTab);
+
+    fireEvent.click(document.getElementById('signup-role')!);
+    fireEvent.click(screen.getByRole('option', { name: /parent \/ guardian/i }));
+
+    expect(await screen.findByLabelText(/^student id$/i)).toBeInTheDocument();
+  });
 });

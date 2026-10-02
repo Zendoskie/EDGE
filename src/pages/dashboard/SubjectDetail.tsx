@@ -13,10 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, ChevronDown, ChevronUp, Save, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
+import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ASSESSMENT_TYPES, formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import { findDuplicateActivityTitle } from '@/lib/gradebook';
+import { GradebookTable } from '@/components/GradebookTable';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
@@ -668,7 +670,6 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', type: 'quiz', max_score: '100' });
-  const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [weights, setWeights] = useState({
     activity_weight: '25',
     project_weight: '25',
@@ -711,10 +712,19 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
 
   const create = useMutation({
     mutationFn: async () => {
+      const title = form.title.trim();
+      const maxScore = Number(form.max_score);
+      if (!title) throw new Error('Enter an assessment title.');
+      if (!Number.isFinite(maxScore) || maxScore <= 0) {
+        throw new Error('Max score must be greater than 0.');
+      }
+      if (findDuplicateActivityTitle(activities, title)) {
+        throw new Error('An assessment with this title already exists for this subject.');
+      }
       const { error } = await supabase.from('activities').insert({
-        title: form.title,
+        title,
         type: form.type,
-        max_score: Number(form.max_score),
+        max_score: maxScore,
         subject_id: subjectId,
         created_by: userId,
       });
@@ -918,237 +928,33 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
         ) : activities.length === 0 ? (
           <div className="p-12 text-center">
             <ClipboardList className="mx-auto h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground text-sm">No activities yet.</p>
+            <p className="text-muted-foreground text-sm">No assessments yet. Add one to open the gradebook.</p>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {activities.map(a => (
-              <div key={a.id}>
-                <div
-                  className="flex items-center px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setExpandedActivity(expandedActivity === a.id ? null : a.id)}
-                >
-                  <div className="flex-1 flex items-center gap-3">
-                    <span className="font-medium">{a.title}</span>
-                    <Badge variant="secondary">{formatAssessmentTypeLabel(a.type)}</Badge>
-                    <span className="text-xs text-muted-foreground">Max score: {a.max_score}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={e => { e.stopPropagation(); remove.mutate(a.id); }}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    {expandedActivity === a.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                  </div>
+          <>
+            <div className="mx-4 mb-3 flex flex-wrap gap-2">
+              {activities.map((activity) => (
+                <div key={activity.id} className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/30 pl-3 pr-1 py-1">
+                  <span className="text-xs font-medium">{activity.title}</span>
+                  <Badge variant="secondary" className="text-[10px]">{formatAssessmentTypeLabel(activity.type)}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive hover:text-destructive"
+                    aria-label={`Delete ${activity.title}`}
+                    onClick={() => remove.mutate(activity.id)}
+                    disabled={remove.isPending}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-                {expandedActivity === a.id && (
-                  <ActivityScoring
-                    activityId={a.id}
-                    activityType={a.type}
-                    subjectId={subjectId}
-                    maxScore={a.max_score}
-                    userId={userId}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <GradebookTable subjectId={subjectId} userId={userId} activities={activities} />
+          </>
         )}
       </CardContent>
     </Card>
-  );
-}
-
-/* ───── Activity Scoring Sub-component ───── */
-function ActivityScoring({
-  activityId,
-  activityType,
-  subjectId,
-  maxScore,
-  userId,
-}: {
-  activityId: string;
-  activityType: string;
-  subjectId: string;
-  maxScore: number;
-  userId?: string;
-}) {
-  const queryClient = useQueryClient();
-  const [scores, setScores] = useState<Record<string, string>>({});
-  const resolvedAssessmentType = activityType || '';
-
-  const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
-    queryKey: ['enrollments', subjectId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('enrollments').select('*').eq('subject_id', subjectId);
-      if (error) throw error;
-      if (!data.length) return [];
-      const studentIds = data.map(e => e.student_id).filter(Boolean) as string[];
-      const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', studentIds);
-      return data.map(e => ({ ...e, profile: profiles?.find(p => p.user_id === e.student_id) })) as EnrollmentListRow[];
-    },
-  });
-
-  const { data: submissions = [], isLoading } = useQuery({
-    queryKey: ['submissions', activityId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('submissions').select('*').eq('activity_id', activityId);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Initialize scores from existing submissions
-  useState(() => {
-    if (submissions.length > 0) {
-      const initial: Record<string, string> = {};
-      submissions.forEach(s => {
-        if (s.student_id) initial[s.student_id] = s.score?.toString() ?? '';
-      });
-      setScores(initial);
-    }
-  });
-
-  // Sync scores when submissions load
-  const prevSubmissions = submissions;
-  if (prevSubmissions.length > 0 && Object.keys(scores).length === 0) {
-    const initial: Record<string, string> = {};
-    prevSubmissions.forEach(s => {
-      if (s.student_id) initial[s.student_id] = s.score?.toString() ?? '';
-    });
-    if (Object.keys(initial).length > 0) setScores(initial);
-  }
-
-  const saveScores = useMutation({
-    mutationFn: async () => {
-      const hasScoresToSave = enrollments.some((e: EnrollmentListRow) => {
-        const scoreVal = scores[e.student_id];
-        if (scoreVal === undefined || scoreVal === '') return false;
-        const numScore = Number(scoreVal);
-        return !isNaN(numScore) && numScore >= 0 && numScore <= maxScore;
-      });
-
-      if (hasScoresToSave && !resolvedAssessmentType) {
-        throw new Error('This activity is missing an Assessment Type. Delete and recreate it, or contact an administrator.');
-      }
-
-      const ops = enrollments.map(async (e: EnrollmentListRow) => {
-        const studentId = e.student_id;
-        const scoreVal = scores[studentId];
-        if (scoreVal === undefined || scoreVal === '') return;
-        const numScore = Number(scoreVal);
-        if (isNaN(numScore) || numScore < 0 || numScore > maxScore) return;
-
-        const existing = submissions.find(s => s.student_id === studentId);
-        const gradePayload = {
-          score: numScore,
-          assessment_type: resolvedAssessmentType,
-          graded_by: userId,
-          graded_at: new Date().toISOString(),
-        };
-        if (existing) {
-          const { error } = await supabase.from('submissions').update(gradePayload).eq('id', existing.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('submissions').insert({
-            activity_id: activityId,
-            student_id: studentId,
-            ...gradePayload,
-          });
-          if (error) throw error;
-          // Assignment submission engagement is recorded by DB trigger on submissions.
-        }
-      });
-      await Promise.all(ops);
-    },
-    onSuccess: async () => {
-      queryClient.invalidateQueries({ queryKey: ['submissions', activityId] });
-      toast.success('Scores saved');
-      const result = await recalculateSubjectRisk(subjectId);
-      if (result.ok) {
-        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
-      }
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  if (isLoading) return <p className="px-4 py-3 text-sm text-muted-foreground">Loading scores...</p>;
-
-  if (enrollments.length === 0) {
-    return <p className="px-4 py-3 text-sm text-muted-foreground">Enroll students first to input scores.</p>;
-  }
-
-  return (
-    <div className="border-t border-border bg-muted/30 px-4 py-3 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Assessment type:{' '}
-        <span className="font-medium text-foreground">{formatAssessmentTypeLabel(resolvedAssessmentType)}</span>
-        <span className="text-xs"> (set when the activity was created)</span>
-      </p>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Student</TableHead>
-            <TableHead className="w-32">Score (/ {maxScore})</TableHead>
-            <TableHead className="w-24">%</TableHead>
-            <TableHead className="w-36">Assessment Type</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {enrollments.map((e: EnrollmentListRow) => {
-            const profile = e.profile;
-            const scoreStr =
-              scores[e.student_id] ??
-              submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
-              '';
-            const numScore = Number(scoreStr);
-            const pct =
-              scoreStr && !isNaN(numScore) ? ((numScore / maxScore) * 100).toFixed(1) : '—';
-            return (
-              <TableRow key={e.student_id}>
-                <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
-                <TableCell>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={maxScore}
-                    placeholder="—"
-                    value={
-                      scores[e.student_id] ??
-                      submissions.find(s => s.student_id === e.student_id)?.score?.toString() ??
-                      ''
-                    }
-                    onChange={ev =>
-                      setScores(prev => ({ ...prev, [e.student_id]: ev.target.value }))
-                    }
-                    className="h-8 w-24"
-                  />
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {pct === '—' ? '—' : `${pct}%`}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {formatAssessmentTypeLabel(
-                    resolvedAssessmentType ||
-                      submissions.find(s => s.student_id === e.student_id)?.assessment_type,
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          onClick={() => saveScores.mutate()}
-          disabled={saveScores.isPending || !resolvedAssessmentType}
-          title={!resolvedAssessmentType ? 'This activity is missing an Assessment Type' : undefined}
-        >
-          <Save className="mr-2 h-4 w-4" />
-          {saveScores.isPending ? 'Saving...' : 'Save Scores'}
-        </Button>
-      </div>
-    </div>
   );
 }
 
