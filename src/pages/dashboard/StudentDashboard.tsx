@@ -69,8 +69,12 @@ export default function StudentDashboard() {
   const [details, setDetails] = useState("");
   const [feedbackSubjectId, setFeedbackSubjectId] = useState<string | null>(null);
 
-  const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals();
-  const { data: enrolledSubjectIds = [] } = useStudentEnrolledSubjectIds(user?.id);
+  const [activeTab, setActiveTab] = useState('activity');
+  const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals({
+    enabled: activeTab === 'support',
+  });
+  const { data: enrolledSubjectIds = [], isFetched: enrollmentsFetched } = useStudentEnrolledSubjectIds(user?.id);
+  const enrollmentsReady = !!user?.id && enrollmentsFetched;
   const enrolledSubjectIdSet = useMemo(() => new Set(enrolledSubjectIds), [enrolledSubjectIds]);
 
   const { data: studentProgram } = useQuery({
@@ -123,19 +127,27 @@ export default function StudentDashboard() {
         };
       }
 
-      const { data: attRecordsRaw } = await supabase
-        .from('attendance')
-        .select('status, subject_id')
-        .eq('student_id', user!.id);
+      const [{ data: attRecordsRaw }, { data: subsRaw }, { data: predsRaw }] = await Promise.all([
+        supabase
+          .from('attendance')
+          .select('status, subject_id')
+          .eq('student_id', user!.id),
+        supabase
+          .from('submissions')
+          .select('score, activities(max_score, subject_id)')
+          .eq('student_id', user!.id),
+        supabase
+          .from('predictions')
+          .select('risk_level, risk_score, recommendation, created_at, subject_id, subjects(code, name)')
+          .eq('student_id', user!.id)
+          .order('created_at', { ascending: false }),
+      ]);
+
       const attRecords = filterAttendanceBySubjectIds(attRecordsRaw ?? [], subjectSet);
       const total = attRecords.length;
       const present = attRecords.filter((a) => a.status === 'present' || a.status === 'late').length;
       const attendanceRateNum = total > 0 ? Math.round((present / total) * 100) : null;
 
-      const { data: subsRaw } = await supabase
-        .from('submissions')
-        .select('score, activities(max_score, subject_id)')
-        .eq('student_id', user!.id);
       const subs = filterSubmissionsByActiveSubjects(subsRaw ?? [], subjectSet);
       let overallAvg: number | null = null;
       if (subs.length) {
@@ -147,12 +159,6 @@ export default function StudentDashboard() {
         });
         overallAvg = weighted.length ? Math.round(weighted.reduce((a, b) => a + b, 0) / weighted.length) : null;
       }
-
-      const { data: predsRaw } = await supabase
-        .from('predictions')
-        .select('risk_level, risk_score, recommendation, created_at, subject_id, subjects(code, name)')
-        .eq('student_id', user!.id)
-        .order('created_at', { ascending: false });
       const predsScoped = filterPredictionsBySubjectIds(predsRaw ?? [], subjectSet);
       const pred = pickLatestPredictionByCreatedAt(predsScoped);
 
@@ -184,7 +190,7 @@ export default function StudentDashboard() {
             : null,
       };
     },
-    enabled: !!user?.id,
+    enabled: enrollmentsReady,
   });
 
   const { data: recentActivity = [], isLoading: activityLoading } = useQuery({
@@ -200,7 +206,7 @@ export default function StudentDashboard() {
         .limit(40);
       return filterSubmissionsByActiveSubjects(subs ?? [], subjectSet).slice(0, 5);
     },
-    enabled: !!user?.id,
+    enabled: enrollmentsReady,
   });
 
   const { data: atRiskSubjects = [] } = useQuery({
@@ -227,7 +233,7 @@ export default function StudentDashboard() {
         (p: any) => p.risk_level === "critical" || p.risk_level === "at_risk",
       );
     },
-    enabled: !!user?.id,
+    enabled: enrollmentsReady,
   });
 
   const { data: latestGradeBySubject = {} } = useQuery<Record<string, string>>({
@@ -255,7 +261,7 @@ export default function StudentDashboard() {
       }
       return latest;
     },
-    enabled: !!user?.id,
+    enabled: enrollmentsReady,
   });
 
   const { data: feedbackHistory = [] } = useQuery({
@@ -586,7 +592,7 @@ export default function StudentDashboard() {
         </Card>
       ) : null}
 
-      <Tabs defaultValue="activity" className="w-full min-w-0">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full min-w-0">
         <TabsList className="grid w-full grid-cols-2 h-auto sm:h-10">
           <TabsTrigger value="activity" className="text-xs sm:text-sm">Activity & engagement</TabsTrigger>
           <TabsTrigger value="support" className="text-xs sm:text-sm">Referrals & help</TabsTrigger>

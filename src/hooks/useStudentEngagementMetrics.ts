@@ -80,22 +80,25 @@ async function aggregateFromLoginHistory(studentId: string): Promise<EngagementM
   };
 }
 
-async function fetchEngagementMetrics(studentId: string): Promise<EngagementMetrics> {
-  const aggregate = await aggregateFromLoginHistory(studentId);
-
-  const { error: recomputeError } = await supabase.rpc('recompute_student_engagement', {
-    p_student_id: studentId,
+function scheduleEngagementRecompute(studentId: string) {
+  void supabase.rpc('recompute_student_engagement', { p_student_id: studentId }).then(({ error }) => {
+    if (error) console.warn('recompute failed:', error.message);
   });
-  if (recomputeError) {
-    console.warn('recompute failed:', recomputeError.message);
-  }
+}
 
-  const { data, error } = await supabase
-    .from('student_engagement_summary')
-    .select('total_login_count, total_time_spent_seconds, last_login_at')
-    .eq('student_id', studentId)
-    .maybeSingle();
+async function fetchEngagementMetrics(studentId: string): Promise<EngagementMetrics> {
+  const [aggregate, summaryRes] = await Promise.all([
+    aggregateFromLoginHistory(studentId),
+    supabase
+      .from('student_engagement_summary')
+      .select('total_login_count, total_time_spent_seconds, last_login_at')
+      .eq('student_id', studentId)
+      .maybeSingle(),
+  ]);
 
+  scheduleEngagementRecompute(studentId);
+
+  const { data, error } = summaryRes;
   if (error) throw error;
 
   if (data) {
@@ -117,7 +120,8 @@ export function useStudentEngagementMetrics(studentId: string | undefined | null
     queryKey: ['student-engagement-metrics', studentId],
     queryFn: () => fetchEngagementMetrics(studentId!),
     enabled: !!studentId,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
     refetchInterval: 30_000,
   });
 

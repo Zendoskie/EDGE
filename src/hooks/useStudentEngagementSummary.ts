@@ -25,13 +25,6 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
   const query = useQuery({
     queryKey: ['student-engagement-summary', studentId],
     queryFn: async (): Promise<StudentEngagementSummaryRow | null> => {
-      const { error: recomputeError } = await supabase.rpc('recompute_student_engagement', {
-        p_student_id: studentId!,
-      });
-      if (recomputeError) {
-        console.warn('recompute failed:', recomputeError.message);
-      }
-
       const { data, error } = await supabase
         .from('student_engagement_summary')
         .select(
@@ -39,6 +32,10 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
         )
         .eq('student_id', studentId!)
         .maybeSingle();
+
+      void supabase.rpc('recompute_student_engagement', { p_student_id: studentId! }).then(({ error: recomputeError }) => {
+        if (recomputeError) console.warn('recompute failed:', recomputeError.message);
+      });
 
       if (error) throw error;
       if (!data) return null;
@@ -59,7 +56,8 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
       };
     },
     enabled: !!studentId,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
     refetchInterval: 30_000,
   });
 

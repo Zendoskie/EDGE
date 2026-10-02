@@ -23,7 +23,10 @@ export function useStudentSessionTracking() {
       await resumeStudentSession();
       if (!cancelled) await updateSessionHeartbeat();
     };
-    void bootstrap();
+    const bootstrapDelayMs = 2_000;
+    const bootstrapTimer = window.setTimeout(() => {
+      void bootstrap();
+    }, bootstrapDelayMs);
 
     const heartbeatId = window.setInterval(() => {
       void updateSessionHeartbeat();
@@ -37,6 +40,7 @@ export function useStudentSessionTracking() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(bootstrapTimer);
       window.clearInterval(heartbeatId);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };

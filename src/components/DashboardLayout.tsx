@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -33,6 +34,7 @@ import {
   formatSubjectLabel,
   type SubjectCoachingMetrics,
 } from "@/lib/coaching-context";
+import { useStudentEnrolledSubjectIds } from "@/hooks/useStudentEnrolledSubjectIds";
 
 type StudentPredictionContext = {
   riskLevel: string | null;
@@ -105,6 +107,32 @@ function DashboardHeader() {
   );
 }
 
+function useDeferredCoachContext(enabled: boolean) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setReady(false);
+      return;
+    }
+
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (win.requestIdleCallback) {
+      const id = win.requestIdleCallback(() => setReady(true), { timeout: 2_500 });
+      return () => win.cancelIdleCallback?.(id);
+    }
+
+    const timer = window.setTimeout(() => setReady(true), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [enabled]);
+
+  return ready;
+}
+
 function DashboardShell({ userId, role }: { userId: string; role: AppRole | null }) {
   useEdgeRealtimeNotifications(userId, role ?? undefined);
   useStudentInboxPoll(userId, role ?? undefined);
@@ -121,22 +149,16 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   useAdminStaffRequestsPoll(userId, role ?? undefined);
   useDurableInboxNotifications(userId, role ?? undefined);
 
+  const coachContextReady = useDeferredCoachContext(role === "student" && !!userId);
+  const { data: enrolledSubjectIds = [], isFetched: enrollmentsFetched } = useStudentEnrolledSubjectIds(
+    role === "student" ? userId : undefined,
+  );
+
   const { data: coachContext } = useQuery<StudentPredictionContext>({
-    queryKey: ["ai-coach-student-context", userId, role],
-    enabled: role === "student" && !!userId,
+    queryKey: ["ai-coach-student-context", userId, enrolledSubjectIds],
+    enabled: role === "student" && !!userId && coachContextReady && enrollmentsFetched,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data: enrollments, error: enrollmentError } = await supabase
-        .from("enrollments")
-        .select("subject_id")
-        .eq("student_id", userId)
-        .eq("status", "active");
-      if (enrollmentError) throw enrollmentError;
-
-      const enrolledSubjectIds = (enrollments ?? [])
-        .map((row: any) => row?.subject_id as string | null)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-
       if (enrolledSubjectIds.length === 0) {
         return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
       }
