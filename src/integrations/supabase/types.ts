@@ -961,6 +961,8 @@ export type Database = {
       }
       parent_student_links: {
         Row: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
           decided_at: string | null
           decided_by: string | null
           id: string
@@ -971,6 +973,8 @@ export type Database = {
           student_user_id: string
         }
         Insert: {
+          admin_decided_at?: string | null
+          admin_decided_by?: string | null
           decided_at?: string | null
           decided_by?: string | null
           id?: string
@@ -981,6 +985,8 @@ export type Database = {
           student_user_id: string
         }
         Update: {
+          admin_decided_at?: string | null
+          admin_decided_by?: string | null
           decided_at?: string | null
           decided_by?: string | null
           id?: string
@@ -1912,6 +1918,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_decide_parent_request: {
+        Args: { p_decision: string; p_link_id: string }
+        Returns: string
+      }
       admin_delete_user: {
         Args: { p_target_user_id: string }
         Returns: undefined
@@ -2041,6 +2051,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      parent_has_active_link: {
+        Args: { p_student_id: string }
+        Returns: boolean
+      }
       parent_request_student_link: {
         Args: { p_student_id_no: string }
         Returns: string
@@ -2066,12 +2080,16 @@ export type Database = {
       }
       scan_engagement_inactivity_alerts: { Args: never; Returns: number }
       scan_due_intervention_followups: { Args: never; Returns: number }
+      student_decide_parent_request: {
+        Args: { p_decision: string; p_link_id: string }
+        Returns: string
+      }
       validate_parent_signup: {
         Args: { p_parent_email: string; p_student_id_no: string }
         Returns: undefined
       }
       validate_student_signup: {
-        Args: { p_parent_email: string; p_student_id_no: string }
+        Args: { p_parent_email?: string; p_student_id_no: string }
         Returns: undefined
       }
     }

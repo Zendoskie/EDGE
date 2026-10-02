@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, BookOpen, Brain, AlertTriangle, AlertOctagon, GraduationCap, Calendar, TrendingUp } from 'lucide-react';
+import { Users, BookOpen, Brain, AlertTriangle, AlertOctagon, GraduationCap, Calendar, TrendingUp, ChevronDown } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -716,59 +717,66 @@ export default function InstructorDashboard() {
   const chartConfig = { count: { label: 'Students' }, level: { label: 'Risk Level' } };
 
   return (
-    <div className="space-y-6 animate-fade-in min-w-0">
+    <div className="space-y-4 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div>
-            <h1 className="text-2xl font-display font-bold">Instructor Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-1">Manage your courses organized by program and year level</p>
+            <h1 className="text-xl font-display font-bold sm:text-2xl">Instructor Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">Courses, students, and risk monitoring</p>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 min-w-0">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5 min-w-0">
         {statCards.map((stat) => (
           <Card key={stat.title} className="bg-card/90 interactive-lift">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-              <stat.icon className={`h-5 w-5 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{stat.value}</p>
+            <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">{stat.title}</p>
+                <p className="text-xl sm:text-2xl font-bold">{stat.value}</p>
+              </div>
+              <stat.icon className={`h-4 w-4 sm:h-5 sm:w-5 shrink-0 ${stat.color}`} />
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <CounselingReferralsCard
-        referrals={counselingReferrals}
-        loading={referralsLoading}
-        compact
-        showStudent
-        linkSubjects
-        title={`Counseling referrals${pendingReferralCount > 0 ? ` (${pendingReferralCount} pending)` : ""}`}
-        description="Recent guidance counseling referrals and their approval status."
-      />
-
-      <Card className="bg-card/90 border-border/70">
-        <CardHeader>
-          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>
-            Student percentages are based on <span className="font-medium text-foreground">(score / max score) x 100</span> for each activity.
-          </p>
-          <p>
-            For each subject you own, you can define a 100% grading system:
-            Activity %, Project %, Attendance %, and Exam % (midterm + finals combined).
-            The system applies these weights when computing weighted course performance.
-          </p>
-          <p>
-            Prediction risk levels use attendance, grade behavior, and completion signals.
-            Low weighted performance across these components raises intervention priority.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <CounselingReferralsCard
+            referrals={counselingReferrals}
+            loading={referralsLoading}
+            compact
+            showStudent
+            linkSubjects
+            title={`Counseling referrals${pendingReferralCount > 0 ? ` (${pendingReferralCount} pending)` : ""}`}
+            description="Recent guidance counseling referrals and their approval status."
+          />
+        </div>
+        <Collapsible>
+          <Card className="bg-card/90 border-border/70 h-full">
+            <CollapsibleTrigger asChild>
+              <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-lg">
+                <span className="text-sm font-medium">Scoring & risk guide</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
+                <p>
+                  Student percentages use <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                </p>
+                <p>
+                  Configure Activity, Project, Attendance, and Exam weights per subject (total 100%).
+                </p>
+                <p>
+                  Risk levels use attendance, grades, and completion signals from predictions.
+                </p>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      </div>
 
       <Tabs defaultValue="overview" className="w-full min-w-0">
         <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1 h-auto sm:h-12 py-1">
@@ -777,8 +785,8 @@ export default function InstructorDashboard() {
           <TabsTrigger value="analytics" className="text-xs sm:text-sm">Analytics</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+        <TabsContent value="overview" className="mt-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             <Card className="bg-card/90 interactive-lift">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">

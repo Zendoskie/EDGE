@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { UserCheck, UserX, RefreshCw, Shield } from 'lucide-react';
 import type { AppRole } from '@/hooks/useAuth';
 import { sendAccountStatusEmailBestEffort } from '@/lib/invoke-account-status-email';
+import ParentGuardianRequestsCard from '@/components/ParentGuardianRequestsCard';
 
 type PendingRow = {
   user_id: string;
@@ -61,16 +62,19 @@ export default function AdminApprovals() {
         roleByUser.set(uid, next);
       }
       setRows(
-        list.map((p) => {
-          const resolvedRole = roleByUser.get(p.user_id) ?? 'student';
-          return {
-            user_id: p.user_id,
-            full_name: p.full_name ?? '',
-            email: p.email ?? '',
-            student_id: typeof p.student_id === 'string' && p.student_id.trim() ? p.student_id.trim() : null,
-            role: resolvedRole,
-          };
-        })
+        list
+          .map((p) => {
+            const resolvedRole = roleByUser.get(p.user_id) ?? 'student';
+            return {
+              user_id: p.user_id,
+              full_name: p.full_name ?? '',
+              email: p.email ?? '',
+              student_id: typeof p.student_id === 'string' && p.student_id.trim() ? p.student_id.trim() : null,
+              role: resolvedRole,
+            };
+          })
+          // Parents are activated through their Parent/Guardian request after the student approves it.
+          .filter((r) => r.role !== 'parent')
       );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to load pending users');
@@ -120,8 +124,8 @@ export default function AdminApprovals() {
           </div>
           <h1 className="mt-3 text-xl font-display font-bold tracking-tight text-foreground sm:text-2xl">User approvals</h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Review new student, instructor, parent, and guidance counselor accounts. Only approved users can sign in. Passwords are never shown here;
-            authentication stays with Supabase Auth.
+            Review new student, instructor, and guidance counselor accounts, and parent/guardian requests the student has approved. Only approved
+            users can sign in. Passwords are never shown here; authentication stays with Supabase Auth.
           </p>
         </div>
         <Button
@@ -259,6 +263,8 @@ export default function AdminApprovals() {
           )}
         </CardContent>
       </Card>
+
+      <ParentGuardianRequestsCard />
     </div>
   );
 }

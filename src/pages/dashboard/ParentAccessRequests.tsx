@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import { studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
 
 type ParentRequestRow = {
   id: string;
@@ -22,7 +23,7 @@ type ParentRequestRow = {
 type HistoryRow = {
   id: string;
   status: string;
-  requested_at: string;
+  created_at: string;
   decided_at: string | null;
   decided_by: string | null;
   note: string | null;
@@ -81,9 +82,9 @@ export default function ParentAccessRequests() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('parent_link_request_history')
-        .select('id, status, requested_at, decided_at, decided_by, note')
+        .select('id, status, created_at, decided_at, decided_by, note')
         .eq('student_user_id', user!.id)
-        .order('requested_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return (data ?? []) as HistoryRow[];
@@ -91,33 +92,21 @@ export default function ParentAccessRequests() {
   });
 
   const decideParentRequest = useMutation({
-    mutationFn: async ({ linkId, status }: { linkId: string; status: 'approved' | 'rejected' }) => {
-      const { error } = await supabase
-        .from('parent_student_links')
-        .update({
-          status,
-          decided_at: new Date().toISOString(),
-          decided_by: user!.id,
-        })
-        .eq('id', linkId)
-        .eq('student_user_id', user!.id)
-        .select('parent_user_id, student_id_no')
-        .maybeSingle();
-      if (error) throw error;
-      sendParentLinkEmailBestEffort({
-        type: status,
-        link_id: linkId,
-      });
-    },
+    mutationFn: ({ linkId, decision }: { linkId: string; decision: ParentLinkDecision }) =>
+      studentDecideParentRequest(linkId, decision),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['student-parent-request-history', user?.id] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-latest-link'] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-approved-link'] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-my-links'] });
-      toast.success(vars.status === 'approved' ? 'Parent request approved' : 'Parent request rejected');
+      toast.success(
+        vars.decision === 'approve'
+          ? 'Request approved. An administrator will review it next.'
+          : 'Parent request rejected'
+      );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      toast.error(e.message);
+      void queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
+    },
   });
 
   if (role !== 'student') {
@@ -147,7 +136,7 @@ export default function ParentAccessRequests() {
           <div>
             <h1 className="text-2xl font-display font-bold">Parent Access Requests</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Parents register using your Student ID/No. and the Parent Gmail on your profile. You control whether they can view your performance.
+              Parents register using your Student ID/No. Review the parent&apos;s name and email before deciding. After you approve, an administrator must also approve before the parent can view your performance.
             </p>
           </div>
         </div>
@@ -163,7 +152,7 @@ export default function ParentAccessRequests() {
             ) : null}
           </CardTitle>
           <p className="text-muted-foreground text-sm">
-            Approve a parent to grant read access to your academic records, or reject the request.
+            Approve only a parent/guardian you recognize. Approved requests go to an administrator for final approval.
           </p>
         </CardHeader>
         <CardContent>
@@ -183,14 +172,15 @@ export default function ParentAccessRequests() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">ID used: {r.student_id_no}</span>
-                      <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">
-                        {r.status}
+                      <Badge variant={parentLinkStatusBadgeVariant(r.status)}>
+                        {parentLinkStatusLabel(r.status)}
                       </Badge>
                     </div>
+                    <span className="block text-xs text-muted-foreground">Requested {formatDate(r.requested_at)}</span>
                     {r.status === 'pending' ? (
                       <div className="flex flex-col gap-2">
-                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                        <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                        <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">Decided {formatDate(r.decided_at)}</span>
@@ -219,13 +209,13 @@ export default function ParentAccessRequests() {
                         <TableCell>{r.student_id_no}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(r.requested_at)}</TableCell>
                         <TableCell>
-                          <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">{r.status}</Badge>
+                          <Badge variant={parentLinkStatusBadgeVariant(r.status)}>{parentLinkStatusLabel(r.status)}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
                             <div className="flex justify-end gap-2 flex-wrap">
-                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">Decided {formatDate(r.decided_at)}</span>
@@ -269,10 +259,10 @@ export default function ParentAccessRequests() {
                 <TableBody>
                   {history.map((h) => (
                     <TableRow key={h.id}>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(h.requested_at)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(h.created_at)}</TableCell>
                       <TableCell>
-                        <Badge variant={h.status === 'approved' ? 'default' : h.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">
-                          {h.status}
+                        <Badge variant={parentLinkStatusBadgeVariant(h.status)}>
+                          {parentLinkStatusLabel(h.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{h.note || '—'}</TableCell>

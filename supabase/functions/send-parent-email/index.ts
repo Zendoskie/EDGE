@@ -7,7 +7,34 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-type ParentEmailType = "invitation" | "request_received" | "approved" | "rejected";
+type DecisionEmailType = "student_approved" | "student_rejected" | "admin_approved" | "admin_rejected";
+type ParentEmailType = "invitation" | "request_received" | DecisionEmailType;
+
+const ACCEPTED_TYPES = [
+  "invitation",
+  "request_received",
+  "student_approved",
+  "student_rejected",
+  "admin_approved",
+  "admin_rejected",
+  // Legacy aliases for the student decision.
+  "approved",
+  "rejected",
+];
+
+function canonicalType(raw: string): ParentEmailType {
+  if (raw === "approved") return "student_approved";
+  if (raw === "rejected") return "student_rejected";
+  return raw as ParentEmailType;
+}
+
+/** The link must already be in the state the email describes. */
+const REQUIRED_LINK_STATUS: Record<DecisionEmailType, string> = {
+  student_approved: "pending_admin",
+  student_rejected: "rejected",
+  admin_approved: "approved",
+  admin_rejected: "admin_rejected",
+};
 
 function safeString(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
@@ -94,14 +121,38 @@ ${idLine}
   <li>Go to <strong>Parent Access Requests</strong> in the sidebar.</li>
   <li>Review and approve or reject the request.</li>
 </ol>
-<p>No academic information will be shared until you approve.</p>
+<p>No academic information will be shared unless you approve and an administrator also approves.</p>
 <p>– The EDGE Team</p>`,
       };
-    case "approved":
+    case "student_approved":
       return {
-        subject: "EDGE: Access request approved",
+        subject: "EDGE: Student approved your request",
         html: `<p>Hi ${parentName},</p>
-<p>Your request to access <strong>${studentName}</strong>'s academic records has been <strong>approved</strong>.</p>
+<p><strong>${studentName}</strong> has <strong>approved</strong> your parent/guardian request.</p>
+<p>Your request is now waiting for <strong>administrator approval</strong>. You will be able to sign in and view academic information once an administrator approves it. We will email you when that happens.</p>
+<p>– The EDGE Team</p>`,
+      };
+    case "student_rejected":
+      return {
+        subject: "EDGE: Access request rejected",
+        html: `<p>Hi ${parentName},</p>
+<p>Your request to access <strong>${studentName}</strong>'s academic records was <strong>rejected</strong> by the student.</p>
+<p>Your parent/guardian access is not active. If you believe this was a mistake, please contact the student or the school administrator.</p>
+<p>– The EDGE Team</p>`,
+      };
+    case "admin_rejected":
+      return {
+        subject: "EDGE: Access request not approved",
+        html: `<p>Hi ${parentName},</p>
+<p>An administrator did <strong>not approve</strong> your request to access <strong>${studentName}</strong>'s academic records.</p>
+<p>Your parent/guardian access is not active. If you believe this was a mistake, please contact the school administrator.</p>
+<p>– The EDGE Team</p>`,
+      };
+    case "admin_approved":
+      return {
+        subject: "EDGE: Parent/guardian access approved",
+        html: `<p>Hi ${parentName},</p>
+<p>Your request to access <strong>${studentName}</strong>'s academic records has been approved by the student and by an administrator. Your parent account is now <strong>active</strong>.</p>
 <p>You can now view the following from the <strong>Student Performance</strong> page:</p>
 <ul>
   <li>Student Profile</li>
@@ -111,20 +162,6 @@ ${idLine}
   <li>AI Coaching Recommendations</li>
 </ul>
 <p>Log in and go to <strong>Student Performance</strong> to view academic information: <a href="${appUrl}">${appUrl}</a></p>
-<p>– The EDGE Team</p>`,
-      };
-    case "rejected":
-      return {
-        subject: "EDGE: Access request rejected",
-        html: `<p>Hi ${parentName},</p>
-<p>Your request to access <strong>${studentName}</strong>'s academic records was <strong>rejected</strong> by the student.</p>
-<p>If you believe this was a mistake, you can submit a new request:</p>
-<ol>
-  <li>Log in to EDGE: <a href="${appUrl}">${appUrl}</a></li>
-  <li>Go to <strong>Student Performance</strong> in the sidebar.</li>
-  <li>Click <strong>Request Again</strong> to re-submit your access request.</li>
-</ol>
-<p>The student will be notified and can approve or reject the new request.</p>
 <p>– The EDGE Team</p>`,
       };
   }
@@ -146,10 +183,11 @@ serve(async (req) => {
     if (authError || !user) throw new Error("Unauthorized");
 
     const body = await req.json();
-    const type = safeString(body?.type) as ParentEmailType | null;
-    if (!type || !["invitation", "request_received", "approved", "rejected"].includes(type)) {
-      throw new Error("type must be one of invitation, request_received, approved, rejected");
+    const rawType = safeString(body?.type);
+    if (!rawType || !ACCEPTED_TYPES.includes(rawType)) {
+      throw new Error(`type must be one of ${ACCEPTED_TYPES.join(", ")}`);
     }
+    const type = canonicalType(rawType);
 
     const to = normalizeEmail(body?.to);
     const linkId = safeString(body?.link_id);
@@ -214,8 +252,23 @@ serve(async (req) => {
         .then(() => new Response(JSON.stringify({ success: true, type }), { headers: { ...corsHeaders, "Content-Type": "application/json" } }));
     }
 
-    // approved / rejected: caller must be the student on the link; recipient is the parent (resolved server-side).
-    if (link.student_user_id !== user.id) throw new Error("Forbidden");
+    // Decision emails go to the parent (resolved server-side). Student decisions must be sent by
+    // the link's student; admin decisions by an administrator.
+    const decisionType = type as DecisionEmailType;
+    if (decisionType === "admin_approved" || decisionType === "admin_rejected") {
+      const { data: adminRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!adminRole) throw new Error("Forbidden");
+    } else if (link.student_user_id !== user.id) {
+      throw new Error("Forbidden");
+    }
+    if (link.status !== REQUIRED_LINK_STATUS[decisionType]) {
+      throw new Error("Link status does not match this notification");
+    }
     const { data: pProf2 } = await supabase
       .from("profiles")
       .select("email, full_name")
@@ -230,9 +283,9 @@ serve(async (req) => {
 
     return sendBrevoEmail({
       to: pProf2.email,
-      ...buildEmail(type as "approved" | "rejected", {
-        parentName: parentName || pProf2.full_name || null,
-        studentName: studentName || sProf2?.full_name || null,
+      ...buildEmail(decisionType, {
+        parentName: pProf2.full_name || parentName,
+        studentName: sProf2?.full_name || studentName,
       }),
     })
       .then(() => new Response(JSON.stringify({ success: true, type }), { headers: { ...corsHeaders, "Content-Type": "application/json" } }));

@@ -14,14 +14,14 @@ import { useTheme } from 'next-themes';
 import StudentProfileSetup from '@/components/StudentProfileSetup';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import { studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
 
 export default function Settings() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
-  const [parentEmail, setParentEmail] = useState('');
   const { theme, setTheme } = useTheme();
 
   const { data: profile, isLoading } = useQuery({
@@ -39,19 +39,15 @@ export default function Settings() {
     if (profile) {
       setFullName(profile.full_name ?? '');
       setStudentId(profile.student_id ?? '');
-      setParentEmail(profile.parent_email ?? '');
     }
   }, [profile]);
 
   const updateProfile = useMutation({
     mutationFn: async () => {
-      const updates: { full_name: string; student_id: string | null; parent_email?: string | null } = {
+      const updates: { full_name: string; student_id: string | null } = {
         full_name: fullName,
         student_id: studentId || null,
       };
-      if (role === 'student') {
-        updates.parent_email = parentEmail.trim() || null;
-      }
       const { error } = await supabase
         .from('profiles')
         .update(updates)
@@ -125,31 +121,21 @@ export default function Settings() {
   });
 
   const decideParentRequest = useMutation({
-    mutationFn: async ({ linkId, status }: { linkId: string; status: 'approved' | 'rejected' }) => {
-      const { error } = await supabase
-        .from('parent_student_links')
-        .update({
-          status,
-          decided_at: new Date().toISOString(),
-          decided_by: user!.id,
-        })
-        .eq('id', linkId)
-        .eq('student_user_id', user!.id);
-      if (error) throw error;
-      sendParentLinkEmailBestEffort({
-        type: status,
-        link_id: linkId,
-      });
-    },
+    mutationFn: ({ linkId, decision }: { linkId: string; decision: ParentLinkDecision }) =>
+      studentDecideParentRequest(linkId, decision),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['student-parent-request-history', user?.id] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-latest-link'] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-approved-link'] });
-      void queryClient.invalidateQueries({ queryKey: ['parent-my-links'] });
-      toast.success(vars.status === 'approved' ? 'Parent request approved' : 'Parent request rejected');
+      toast.success(
+        vars.decision === 'approve'
+          ? 'Request approved. An administrator will review it next.'
+          : 'Parent request rejected'
+      );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      toast.error(e.message);
+      void queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
+    },
   });
 
   return (
@@ -229,21 +215,6 @@ export default function Settings() {
                   </p>
                 </div>
               )}
-              {role === 'student' && (
-                <div className="space-y-2">
-                  <Label htmlFor="parent_email">Parent Gmail</Label>
-                  <Input
-                    id="parent_email"
-                    type="email"
-                    placeholder="parent@gmail.com"
-                    value={parentEmail}
-                    onChange={e => setParentEmail(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your parent/guardian must create their account using this email. Add or update it so they can link to your records.
-                  </p>
-                </div>
-              )}
               <Button type="submit" disabled={updateProfile.isPending}>
                 {updateProfile.isPending ? 'Saving...' : 'Save changes'}
               </Button>
@@ -264,7 +235,7 @@ export default function Settings() {
               Parent/Guardian approvals
             </CardTitle>
             <p className="text-muted-foreground text-sm">
-              Parents register using your Student ID/No. You control whether they can view your performance.
+              Parents register using your Student ID/No. After you approve, an administrator must also approve before they can view your performance.
             </p>
             <p className="text-sm">
               <Link to="/dashboard/parent-access" className="text-primary underline underline-offset-4">
@@ -289,14 +260,14 @@ export default function Settings() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-muted-foreground">ID used: {r.student_id_no}</span>
-                        <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">
-                          {r.status}
+                        <Badge variant={parentLinkStatusBadgeVariant(r.status)}>
+                          {parentLinkStatusLabel(r.status)}
                         </Badge>
                       </div>
                       {r.status === 'pending' ? (
                         <div className="flex flex-col gap-2">
-                          <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                          <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                          <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                          <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">No action needed</span>
@@ -323,13 +294,13 @@ export default function Settings() {
                         </TableCell>
                         <TableCell>{r.student_id_no}</TableCell>
                         <TableCell>
-                          <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'} className="capitalize">{r.status}</Badge>
+                          <Badge variant={parentLinkStatusBadgeVariant(r.status)}>{parentLinkStatusLabel(r.status)}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
                             <div className="flex justify-end gap-2 flex-wrap">
-                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'approved' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, status: 'rejected' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">No action needed</span>
@@ -354,7 +325,7 @@ export default function Settings() {
               Student link status
             </CardTitle>
             <p className="text-muted-foreground text-sm">
-              Your request must be approved by the student before you can view performance.
+              Each request must be approved by the student and then by an administrator before you can view performance.
             </p>
           </CardHeader>
           <CardContent>
@@ -368,7 +339,7 @@ export default function Settings() {
                   <div key={link.id} className="rounded-lg border p-3">
                     <p className="font-medium">{link.student_name}</p>
                     <p className="text-xs text-muted-foreground">Student ID/No.: {link.student_id}</p>
-                    <p className="text-xs text-muted-foreground capitalize mt-1">Status: {link.status}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Status: {parentLinkStatusLabel(link.status)}</p>
                   </div>
                 ))}
               </div>

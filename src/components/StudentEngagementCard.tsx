@@ -20,7 +20,7 @@ type FeedbackRow = {
   created_at: string;
 };
 
-export function StudentEngagementCard() {
+export function StudentEngagementCard({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth();
   const { metrics, isLoading, error } = useStudentEngagementMetrics(user?.id);
   const { summary } = useStudentEngagementSummary(user?.id);
@@ -44,13 +44,13 @@ export function StudentEngagementCard() {
 
   return (
     <Card className="bg-card/90 border-border/70">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className="h-5 w-5" />
+      <CardHeader className={compact ? "pb-2 pt-4 px-4" : "pb-2"}>
+        <CardTitle className={`flex items-center gap-2 ${compact ? "text-base" : "text-lg"}`}>
+          <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
           Student Engagement
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className={compact ? "space-y-3 px-4 pb-4" : "space-y-5"}>
         {isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-8 w-32" />
@@ -74,15 +74,15 @@ export function StudentEngagementCard() {
                 </span>
               </span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 text-sm">
-            <div className="rounded-lg border p-3">
+            <div className={`grid gap-2 text-sm ${compact ? "grid-cols-3" : "gap-3 sm:grid-cols-3"}`}>
+            <div className={`rounded-lg border ${compact ? "p-2" : "p-3"}`}>
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                 <LogIn className="h-3.5 w-3.5" />
                 Total Logins
               </div>
-              <p className="font-semibold tabular-nums text-lg">{metrics?.total_login_count ?? 0}</p>
+              <p className={`font-semibold tabular-nums ${compact ? "text-base" : "text-lg"}`}>{metrics?.total_login_count ?? 0}</p>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className={`rounded-lg border ${compact ? "p-2" : "p-3"}`}>
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                 <Clock className="h-3.5 w-3.5" />
                 Total Time Spent
@@ -91,7 +91,7 @@ export function StudentEngagementCard() {
                 {formatTimeSpent(metrics?.total_time_spent_seconds)}
               </p>
             </div>
-            <div className="rounded-lg border p-3 sm:col-span-1">
+            <div className={`rounded-lg border sm:col-span-1 ${compact ? "p-2" : "p-3"}`}>
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                 <LogIn className="h-3.5 w-3.5" />
                 Last Login
@@ -102,7 +102,7 @@ export function StudentEngagementCard() {
           </div>
         )}
 
-        <div className="rounded-lg border border-border/60 p-3 space-y-2">
+        <div className={`rounded-lg border border-border/60 space-y-2 ${compact ? "p-2" : "p-3"}`}>
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-primary" />
             <p className="text-sm font-medium">Latest Feedback</p>
@@ -110,7 +110,7 @@ export function StudentEngagementCard() {
           {latestFeedback ? (
             <>
               <p className="text-sm font-medium">{latestFeedback.subject?.trim() || 'General Feedback'}</p>
-              <p className="text-sm text-muted-foreground line-clamp-3">&ldquo;{latestFeedback.message}&rdquo;</p>
+              <p className={`text-sm text-muted-foreground ${compact ? "line-clamp-2" : "line-clamp-3"}`}>&ldquo;{latestFeedback.message}&rdquo;</p>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline">{formatFeedbackStatus(latestFeedback.status)}</Badge>
                 <span>{formatLastLogin(latestFeedback.created_at)}</span>

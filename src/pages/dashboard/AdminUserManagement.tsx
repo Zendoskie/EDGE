@@ -29,6 +29,7 @@ import {
   Eye, Pencil, Trash2, Download, ChevronDown, GraduationCap,
   Users2, ShieldCheck, BookOpen, UserCog,
 } from 'lucide-react';
+import { parentLinkErrorMessage, parentLinkStatusLabel } from '@/lib/parent-link-status';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -283,12 +284,20 @@ function ProfileViewerDialog({
       if (user.role === 'parent') {
         const linkRes = await db
           .from('parent_student_links')
-          .select('student_id, status, profiles!parent_student_links_student_id_fkey(full_name, email)')
-          .eq('parent_id', user.userId);
-        result.linkedStudents = (linkRes.data ?? []).map((l: any) => ({
-          userId: l.student_id,
-          fullName: l.profiles?.full_name ?? 'Unknown',
-          email: l.profiles?.email ?? '—',
+          .select('student_user_id, status')
+          .eq('parent_user_id', user.userId);
+        const links: { student_user_id: string; status: string }[] = linkRes.data ?? [];
+        const studentIds = links.map((l) => l.student_user_id);
+        const studentRes = studentIds.length
+          ? await db.from('profiles').select('user_id, full_name, email').in('user_id', studentIds)
+          : { data: [] };
+        const studentMap = new Map<string, { full_name: string | null; email: string | null }>(
+          (studentRes.data ?? []).map((p: any) => [p.user_id, p]),
+        );
+        result.linkedStudents = links.map((l) => ({
+          userId: l.student_user_id,
+          fullName: studentMap.get(l.student_user_id)?.full_name ?? 'Unknown',
+          email: studentMap.get(l.student_user_id)?.email ?? '—',
           status: l.status,
         }));
       }
@@ -452,7 +461,7 @@ function ProfileViewerDialog({
                               <p className="text-sm font-medium">{s.fullName}</p>
                               <p className="text-xs text-muted-foreground">{s.email}</p>
                             </div>
-                            <span className="text-xs capitalize text-muted-foreground">{s.status}</span>
+                            <span className="text-xs text-muted-foreground">{parentLinkStatusLabel(s.status)}</span>
                           </div>
                         ))}
                       </div>
@@ -568,7 +577,7 @@ function EditUserDialog({
           p_target_user_id: user!.userId,
           p_status: status,
         });
-        if (error) throw error;
+        if (error) throw new Error(parentLinkErrorMessage(error.message));
       }
       toast.success('User updated.');
       onSaved(user!.userId, name.trim(), status);
@@ -920,7 +929,7 @@ export default function AdminUserManagement() {
       p_target_user_id: userId,
       p_status: newStatus,
     });
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(parentLinkErrorMessage(error.message)); return; }
     toast.success(`Account ${newStatus}.`);
     setAllRows(prev => prev.map(r =>
       r.userId === userId ? { ...r, accountStatus: newStatus } : r

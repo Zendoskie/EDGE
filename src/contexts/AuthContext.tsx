@@ -7,11 +7,9 @@ import {
   trackStudentLoginOnSignIn,
   trackStudentLogoutOnSignOut,
 } from '@/lib/auth-tracking';
-import {
-  notifyParentOnRegistrationBestEffort,
-  notifyStudentOnParentRegistrationBestEffort,
-} from '@/lib/invoke-parent-email';
+import { notifyStudentOnParentRegistrationBestEffort } from '@/lib/invoke-parent-email';
 import { getPublicAppUrl } from '@/lib/app-url';
+import { parentLinkErrorMessage, parentLoginBlockedMessage } from '@/lib/parent-link-status';
 
 export type AppRole = 'student' | 'instructor' | 'admin' | 'parent' | 'guidance_counselor';
 
@@ -32,7 +30,6 @@ interface AuthContextType {
       studentNumber?: string;
       isIrregular?: boolean;
       guardianStudentId?: string;
-      parentEmail?: string;
     }
   ) => Promise<{ user: User | null; session: Session | null }>;
   signOut: () => Promise<void>;
@@ -49,6 +46,23 @@ async function loadRole(userId: string): Promise<AppRole | null> {
   if (roles.includes('parent')) return 'parent';
   if (roles.includes('instructor')) return 'instructor';
   return 'student';
+}
+
+/**
+ * Parents need both the student's and an administrator's approval. Returns the reason a
+ * parent cannot sign in yet, or null when they have an active (admin-approved) link.
+ */
+async function getParentLoginBlock(userId: string, accountStatus: string | null | undefined): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('parent_student_links')
+    .select('status')
+    .eq('parent_user_id', userId)
+    .order('requested_at', { ascending: false });
+  if (error) {
+    console.error('parent link lookup at sign-in:', error);
+    return 'Could not verify your parent/guardian request status. Please try again.';
+  }
+  return parentLoginBlockedMessage(accountStatus, (data ?? []).map((l) => l.status));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -91,9 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const r = await loadRole(next.user.id);
+      if (r === 'parent' && (await getParentLoginBlock(next.user.id, prof.account_status))) {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        return;
+      }
+
       setSession(next);
       setUser(next.user);
-      const r = await loadRole(next.user.id);
       if (!cancelled) setRole(r);
 
       if (!cancelled && r === 'student' && next) {
@@ -184,6 +206,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'No profile row for this login. Sign up through the app first, or in Supabase run the bootstrap SQL after the user exists in Authentication.'
       );
     }
+
+    const r = await loadRole(uid);
+    if (r === 'parent') {
+      const blocked = await getParentLoginBlock(uid, prof.account_status);
+      if (blocked) {
+        await supabase.auth.signOut();
+        throw new Error(blocked);
+      }
+    }
+
     if (prof.account_status === 'pending') {
       await supabase.auth.signOut();
       throw new Error('Account pending approval');
@@ -197,7 +229,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Invalid credentials');
     }
 
-    const r = await loadRole(uid);
     setSession(data.session);
     setUser(data.user);
     setRole(r);
@@ -219,10 +250,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       studentNumber?: string;
       isIrregular?: boolean;
       guardianStudentId?: string;
-      parentEmail?: string;
     }
   ) => {
-    const { course, yearLevel, studentNumber, isIrregular, guardianStudentId, parentEmail } = extras || {};
+    const { course, yearLevel, studentNumber, isIrregular, guardianStudentId } = extras || {};
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -236,7 +266,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           student_number: studentNumber,
           is_irregular: isIrregular ?? false,
           guardian_student_id: guardianStudentId,
-          parent_email: parentEmail,
         },
         emailRedirectTo: getPublicAppUrl() || window.location.origin,
       },
@@ -254,30 +283,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'This email already has an account. If you registered before, please sign in. Contact an administrator if you need help accessing your account.'
         );
       }
-      // For parent registration, surface one generic message for all credential-mismatch errors.
-      if (signupRole === 'parent' && (
-        msg.includes('student_not_found_for_guardian_link') ||
-        msg.includes('guardian_student_id_required') ||
-        msg.includes('parent_email_not_set') ||
-        msg.includes('parent_email_mismatch')
-      )) {
-        throw new Error('Student ID or Parent Gmail does not match our records.');
+      if (signupRole === 'parent') {
+        if (
+          msg.includes('student_not_found_for_guardian_link') ||
+          msg.includes('guardian_student_id_required')
+        ) {
+          throw new Error(parentLinkErrorMessage(msg));
+        }
+        // GoTrue hides trigger errors behind a generic message.
+        if (msg.includes('database error saving new user')) {
+          throw new Error('We could not create your parent account. Check the Student ID and try again.');
+        }
       }
       throw error;
     }
 
-    // Send parent invitation email to parent immediately after successful student registration.
-    if (signupRole === 'student' && parentEmail?.trim()) {
-      notifyParentOnRegistrationBestEffort({
-        student_email: email,
-        parent_email: parentEmail.trim(),
-        student_name: fullName || undefined,
-        student_id_no: studentNumber?.trim() || undefined,
-      });
-    }
-
-    // Notify the student by email when a parent registers against their account.
-    // The in-app notification is handled automatically by Supabase Realtime (useParentLinkRealtime).
+    // Email the student about the new parent request. The in-app notification is written
+    // to the student's durable inbox by the database when the request is created.
     if (signupRole === 'parent' && email?.trim()) {
       notifyStudentOnParentRegistrationBestEffort({ parent_email: email.trim() });
     }

@@ -3,7 +3,20 @@ import { supabase } from "@/integrations/supabase/client";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
-export type ParentEmailType = "invitation" | "request_received" | "approved" | "rejected";
+/**
+ * `student_approved` / `student_rejected` are sent by the student (step 1);
+ * `admin_approved` / `admin_rejected` by an administrator (step 2).
+ * `approved` / `rejected` are accepted as aliases of the student types.
+ */
+export type ParentEmailType =
+  | "invitation"
+  | "request_received"
+  | "student_approved"
+  | "student_rejected"
+  | "admin_approved"
+  | "admin_rejected"
+  | "approved"
+  | "rejected";
 
 export type SendParentEmailInput = {
   type: ParentEmailType;
@@ -71,63 +84,6 @@ export async function sendParentLinkEmail(input: SendParentEmailInput): Promise<
 export function sendParentLinkEmailBestEffort(input: SendParentEmailInput): void {
   sendParentLinkEmail(input).catch((e: Error) => {
     console.warn("send-parent-email (best effort):", e?.message ?? e);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Registration-time parent invitation (no user session required)
-// ---------------------------------------------------------------------------
-
-export type NotifyParentOnRegistrationInput = {
-  /** The student's own email address (used to look up and verify the profile). */
-  student_email: string;
-  /** The parent Gmail entered during student registration. */
-  parent_email: string;
-  student_name?: string;
-  student_id_no?: string;
-};
-
-/**
- * Sends the registration invitation email to the parent via the
- * `notify-parent-on-registration` Edge Function.
- *
- * Unlike `sendParentLinkEmail`, this does NOT require an active user session.
- * The Edge Function verifies the parent email against the database before sending.
- */
-export async function notifyParentOnRegistration(
-  input: NotifyParentOnRegistrationInput,
-): Promise<void> {
-  if (!SUPABASE_URL || !ANON_KEY) {
-    throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY.");
-  }
-
-  const base = SUPABASE_URL.replace(/\/$/, "");
-  const res = await fetch(`${base}/functions/v1/notify-parent-on-registration`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: ANON_KEY,
-    },
-    body: JSON.stringify(input),
-  });
-
-  const json = (await res.json().catch(() => ({}))) as { error?: unknown };
-  if (!res.ok) {
-    const err = json.error;
-    const msg =
-      typeof err === "string"
-        ? err
-        : JSON.stringify(json || {});
-    throw new Error(msg || `Registration invitation failed (${res.status})`);
-  }
-}
-
-/** Fire-and-forget wrapper for the registration invitation. */
-export function notifyParentOnRegistrationBestEffort(
-  input: NotifyParentOnRegistrationInput,
-): void {
-  notifyParentOnRegistration(input).catch((e: Error) => {
-    console.warn("notify-parent-on-registration (best effort):", e?.message ?? e);
   });
 }
 

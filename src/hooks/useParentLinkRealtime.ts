@@ -5,7 +5,6 @@ import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import {
   normalizeParentLinkStatus,
   parentLinkDecisionNotification,
-  studentParentRequestNotification,
 } from "@/lib/parent-link-notifications";
 
 function invalidateParentLinkQueries(
@@ -33,7 +32,9 @@ async function fetchProfileName(userId: string): Promise<string> {
 }
 
 /**
- * Realtime parent_student_links: inbox alerts + React Query invalidation for students and parents.
+ * Realtime parent_student_links: React Query invalidation for students and parents, plus
+ * in-app alerts for signed-in parents when a student decides. Request-received and admin
+ * decision alerts come from the durable inbox (user_inbox_notifications) written by the DB.
  */
 export function useParentLinkRealtime(userId: string | undefined, role: string | undefined) {
   const queryClient = useQueryClient();
@@ -45,23 +46,18 @@ export function useParentLinkRealtime(userId: string | undefined, role: string |
     if (!userId || !role) return;
     if (role !== "student" && role !== "parent") return;
 
-    const handleInsertForStudent = async (row: Record<string, unknown> | undefined) => {
-      if (!row || role !== "student") return;
-      const status = normalizeParentLinkStatus(row.status);
-      if (status !== "pending") return;
-
-      const linkId = String(row.id ?? "");
-      const parentUserId = String(row.parent_user_id ?? "");
-      const parentName = parentUserId ? await fetchProfileName(parentUserId) : "A parent/guardian";
-      const msg = studentParentRequestNotification({ linkId, parentName });
-      addRef.current(msg);
+    const handleChangeForStudent = () => {
+      if (role !== "student") return;
       invalidateParentLinkQueries(queryClient, userId, role);
     };
 
     const handleUpdateForParent = async (row: Record<string, unknown> | undefined) => {
       if (!row || role !== "parent") return;
       const status = normalizeParentLinkStatus(row.status);
-      if (status === "pending") return;
+      if (status !== "pending_admin" && status !== "rejected") {
+        invalidateParentLinkQueries(queryClient, userId, role);
+        return;
+      }
 
       const linkId = String(row.id ?? "");
       const studentUserId = String(row.student_user_id ?? "");
@@ -84,9 +80,7 @@ export function useParentLinkRealtime(userId: string | undefined, role: string |
           table: "parent_student_links",
           filter: `student_user_id=eq.${userId}`,
         },
-        (payload) => {
-          void handleInsertForStudent(payload.new as Record<string, unknown> | undefined);
-        },
+        handleChangeForStudent,
       );
       channel = channel.on(
         "postgres_changes",
@@ -96,16 +90,7 @@ export function useParentLinkRealtime(userId: string | undefined, role: string |
           table: "parent_student_links",
           filter: `student_user_id=eq.${userId}`,
         },
-        (payload) => {
-          const row = payload.new as Record<string, unknown> | undefined;
-          // Supabase default REPLICA IDENTITY only sends PK in the old payload,
-          // so prevStatus is unreliable. Fire whenever the new status is 'pending' —
-          // initial creation is an INSERT (handled above), so any UPDATE to 'pending'
-          // must be a re-request after rejection.
-          if (normalizeParentLinkStatus(row?.status) === "pending") {
-            void handleInsertForStudent(row);
-          }
-        },
+        handleChangeForStudent,
       );
     } else {
       channel = channel.on(

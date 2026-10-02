@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
-import { BookOpen, Calendar, FileText, Brain, Activity } from 'lucide-react';
+import { BookOpen, Calendar, FileText, Brain, Activity, ChevronDown } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
 import {
   formatAssessmentTypeLabel,
@@ -22,6 +24,7 @@ import {
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import { parentLinkErrorMessage, parentLinkStatusLabel } from '@/lib/parent-link-status';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
 import { canonicalEngagementLevel } from '@/lib/engagement-utils';
@@ -98,7 +101,7 @@ function RequestStudentAccessForm({
           required
         />
         <p className="text-xs text-muted-foreground">
-          Enter the student&apos;s ID number. The student must approve your request in Settings.
+          Enter the student&apos;s ID number. The student must approve your request, then an administrator.
         </p>
       </div>
       <Button type="submit" disabled={isPending || !studentIdNo.trim()}>
@@ -112,7 +115,7 @@ export default function ParentPerformance() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: latestLink, isLoading: linkLoading } = useQuery({
+  const { data: links = [], isLoading: linkLoading } = useQuery({
     queryKey: ['parent-latest-link', user?.id],
     enabled: role === 'parent' && !!user?.id,
     queryFn: async () => {
@@ -121,14 +124,15 @@ export default function ParentPerformance() {
         .select('id, student_user_id, student_id_no, status, requested_at')
         .eq('parent_user_id', user!.id)
         .order('requested_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(20);
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
-  const approvedLink = latestLink?.status === 'approved' ? latestLink : null;
+  const latestLink = links[0] ?? null;
+  // Only a link approved by both the student and an administrator grants access.
+  const approvedLink = links.find((l) => l.status === 'approved') ?? null;
   const studentId = approvedLink?.student_user_id ?? null;
 
   const requestAccess = useMutation({
@@ -140,28 +144,7 @@ export default function ParentPerformance() {
       const { data: linkId, error } = await supabase.rpc('parent_request_student_link', {
         p_student_id_no: trimmed,
       });
-      if (error) {
-        const msg = (error.message || '').toLowerCase();
-        if (msg.includes('student_not_found_for_guardian_link')) {
-          throw new Error('No student account matches that Student ID/No. Please check and try again.');
-        }
-        if (msg.includes('pending_request_exists')) {
-          throw new Error('You already have a pending request for this student.');
-        }
-        if (msg.includes('already_approved')) {
-          throw new Error('You already have approved access to this student.');
-        }
-        if (msg.includes('student_id_required')) {
-          throw new Error('Student ID is required.');
-        }
-        if (msg.includes('parent_email_not_set')) {
-          throw new Error('This student has not registered a parent email yet. Ask the student to add one in Settings first.');
-        }
-        if (msg.includes('parent_email_mismatch')) {
-          throw new Error('Your email does not match the parent email registered on the student\'s account.');
-        }
-        throw error;
-      }
+      if (error) throw new Error(parentLinkErrorMessage(error.message));
 
       if (typeof linkId === 'string' && linkId) {
         sendParentLinkEmailBestEffort({
@@ -176,7 +159,7 @@ export default function ParentPerformance() {
       void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-approved-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-my-links', user?.id] });
-      toast.success('Access request submitted. Waiting for student approval.');
+      toast.success('Access request submitted. The student must approve it, then an administrator.');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -607,7 +590,35 @@ export default function ParentPerformance() {
     );
   }
 
-  if (latestLink.status === 'pending') {
+  if (!approvedLink && latestLink.status === 'pending_admin') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <div>
+              <h1 className="text-2xl font-display font-bold">Student Performance</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                The student approved your request.
+              </p>
+            </div>
+          </div>
+        </section>
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="text-lg">Pending Administrator Approval</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Badge variant="outline">{parentLinkStatusLabel(latestLink.status)}</Badge>
+            <p className="text-sm text-muted-foreground">
+              An administrator must approve your request before any academic information is available.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!approvedLink && latestLink.status === 'pending') {
     return (
       <div className="space-y-6 animate-fade-in">
         <section className="page-section overflow-hidden">
@@ -638,7 +649,7 @@ export default function ParentPerformance() {
     );
   }
 
-  if (latestLink.status === 'rejected') {
+  if (!approvedLink && (latestLink.status === 'rejected' || latestLink.status === 'admin_rejected')) {
     return (
       <div className="space-y-6 animate-fade-in">
         <section className="page-section overflow-hidden">
@@ -656,12 +667,12 @@ export default function ParentPerformance() {
             <CardTitle className="text-lg">Access Request Rejected</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Badge variant="destructive" className="capitalize">rejected</Badge>
+            <Badge variant="destructive">{parentLinkStatusLabel(latestLink.status)}</Badge>
             <p className="text-sm text-muted-foreground">
               Student ID/No.: {latestLink.student_id_no}
             </p>
             <p className="text-sm text-muted-foreground">
-              You can submit a new request if you would like the student to review it again.
+              You can submit a new request. It will need the student&apos;s approval and then an administrator&apos;s approval again.
             </p>
             <RequestStudentAccessForm
               initialStudentId={latestLink.student_id_no}
@@ -697,291 +708,293 @@ export default function ParentPerformance() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
-        <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
-          <div>
-            <h1 className="text-2xl font-display font-bold">Student Performance</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Read-only academic performance for your approved student.
+        <div className="page-section-header flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-card via-card to-primary/5">
+          <div className="min-w-0">
+            <h1 className="text-xl font-display font-bold sm:text-2xl">Student Performance</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Read-only view for your approved student
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/70 bg-background/70 px-3 py-2 text-sm">
+            <p className="font-medium truncate">{studentProfile?.full_name || 'Student'}</p>
+            <p className="text-xs text-muted-foreground">
+              ID: {studentProfile?.student_id ?? approvedLink.student_id_no}
             </p>
           </div>
         </div>
       </section>
 
-      <Card className="bg-card/90">
-        <CardHeader>
-          <CardTitle className="text-lg">Linked student</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="font-medium">{studentProfile?.full_name || 'Student'}</p>
-          <p className="text-sm text-muted-foreground">
-            Student ID/No.: {studentProfile?.student_id ?? approvedLink.student_id_no}
-          </p>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
         <Card className="bg-card/90">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Attendance</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{attendanceRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">Based on {attendance.length} records</p>
+          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Attendance</p>
+              <p className="text-xl sm:text-2xl font-bold">{attendanceRate.toFixed(1)}%</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">{attendance.length} records</p>
+            </div>
+            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
         </Card>
         <Card className="bg-card/90">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average score</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{averageScore.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">Based on {submissions.length} submissions</p>
+          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Average score</p>
+              <p className="text-xl sm:text-2xl font-bold">{averageScore.toFixed(1)}%</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">{submissions.length} submissions</p>
+            </div>
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
         </Card>
-        <Card className="bg-card/90">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Latest risk status</CardTitle>
-            <Brain className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {latestPrediction ? (
-              <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
-            ) : (
-              <p className="text-sm text-muted-foreground">No predictions yet</p>
-            )}
+        <Card className="bg-card/90 col-span-2 lg:col-span-1">
+          <CardContent className="flex items-center justify-between gap-2 p-3 sm:p-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Risk status</p>
+              <div className="mt-1">
+                {latestPrediction ? (
+                  <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No predictions yet</p>
+                )}
+              </div>
+            </div>
+            <Brain className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
         </Card>
       </div>
 
-      <Card className="bg-card/90 border-border/70">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            Platform engagement
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Read-only view of how often your linked student uses EDGE (logins, time, level).
-          </p>
-        </CardHeader>
-        <CardContent>
-          {!engagementSummary ? (
+      {!engagementSummary ? (
+        <Card className="bg-card/90 border-border/70">
+          <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">No engagement summary yet for this student.</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Engagement level</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-card/90 border-border/70">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              Platform engagement
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 text-sm">
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Level</p>
                 <EngagementBadge level={canonicalEngagementLevel(engagementSummary.engagement_level)} />
               </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Score</p>
-                <p className="text-xl font-semibold tabular-nums">
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Score</p>
+                <p className="text-lg font-semibold tabular-nums">
                   {Math.round(Number(engagementSummary.engagement_score ?? 0) * 10) / 10}
                 </p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Logins</p>
-                <p className="text-xl font-semibold tabular-nums">
-                  {engagementSummary.total_login_count ?? 0}
-                </p>
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Logins</p>
+                <p className="text-lg font-semibold tabular-nums">{engagementSummary.total_login_count ?? 0}</p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Time on platform</p>
-                <p className="text-sm font-medium">
-                  {formatTimeSpent(engagementSummary.total_time_spent_seconds)}
-                </p>
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Time</p>
+                <p className="text-xs font-medium leading-snug">{formatTimeSpent(engagementSummary.total_time_spent_seconds)}</p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1 sm:col-span-2">
-                <p className="text-xs text-muted-foreground">Last login</p>
-                <p className="text-sm font-medium">{formatLastLogin(engagementSummary.last_login_at)}</p>
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Last login</p>
+                <p className="text-xs font-medium">{formatLastLogin(engagementSummary.last_login_at)}</p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1 sm:col-span-2">
-                <p className="text-xs text-muted-foreground">Assignments submitted</p>
-                <p className="text-xl font-semibold tabular-nums">
-                  {engagementSummary.assignments_submitted ?? 0}
-                </p>
+              <div className="rounded-lg border p-2 space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Submitted</p>
+                <p className="text-lg font-semibold tabular-nums">{engagementSummary.assignments_submitted ?? 0}</p>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="bg-card/90 border-border/70">
-        <CardHeader>
-          <CardTitle className="text-lg">How scores and risk are calculated</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>
-            Each activity uses percentage scoring: <span className="font-medium text-foreground">(score / max score) x 100</span>.
-          </p>
-          <p>
-            Per subject, the instructor may define a 100% grading system using Activity, Project, Attendance, and Exam (midterm + finals) weights.
-            The weighted score follows those configured percentages.
-          </p>
-          <p>
-            Risk statuses are based on attendance trends, score performance, and generated risk predictions.
-            Lower weighted results across multiple components increase the chance of Vulnerable or Crucial classification.
-          </p>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="predictions" className="w-full min-w-0">
+        <TabsList className="grid w-full grid-cols-3 h-auto sm:h-10">
+          <TabsTrigger value="predictions" className="text-xs sm:text-sm">Predictions</TabsTrigger>
+          <TabsTrigger value="attendance" className="text-xs sm:text-sm">Attendance</TabsTrigger>
+          <TabsTrigger value="grades" className="text-xs sm:text-sm">Grades</TabsTrigger>
+        </TabsList>
 
-      <Card className="bg-card/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BookOpen className="h-5 w-5" />
-            Recent predictions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AcademicDisclaimer variant="reminder" className="mb-3" />
-          {predictionsResolved.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No predictions available yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {predictionsResolved.map((p: any) => (
-                <div key={p.id} className="rounded-lg border p-3 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      {p.resolvedSubject.code} — {p.resolvedSubject.name}
-                    </p>
-                    <RiskBadge level={p.risk_level} score={p.risk_score} />
-                  </div>
-                  {p.recommendation ? <p className="text-sm text-muted-foreground">{p.recommendation}</p> : null}
-                  <p className="text-xs text-muted-foreground">
-                    {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="h-5 w-5" />
-            Attendance by subject
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {attendanceBySubject.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No attendance records available yet.</p>
-          ) : (
-            <div className="space-y-6">
-              {attendanceBySubject.map((s) => (
-                <section key={s.id} className="space-y-3 rounded-xl border border-border/60 p-4">
-                  <div className="flex flex-col gap-1">
-                    <p className="font-semibold">{s.code} — {s.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {s.present} present / late out of {s.total} records
-                      {s.rate != null ? ` · ${s.rate}%` : ''}
-                    </p>
-                  </div>
-                  {s.rate != null && <Progress value={s.rate} className="h-2" />}
-                  {s.records.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No attendance yet for this subject.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {s.records.map((r: any) => (
-                        <li key={`${s.id}-${r.date}-${r.status}`} className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0">
-                          <span className="text-sm">{formatSessionDate(r.date)}</span>
-                          <Badge variant={attendanceBadgeVariant[r.status] ?? 'outline'} className="capitalize">
-                            {r.status}
-                          </Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText className="h-5 w-5" />
-            Grades and activities
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-5 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">How to read exact grades and averages</p>
-            <p>
-              Each activity percentage is computed as <span className="font-medium text-foreground">(score / max score) x 100</span>. Example:
-              if score is <span className="font-medium text-foreground">42</span> out of <span className="font-medium text-foreground">50</span>, that activity contributes
-              <span className="font-medium text-foreground"> 84%</span>.
-            </p>
-            <p>
-              The subject average shown on each row is the arithmetic mean of all graded activity percentages in that subject:
-              <span className="font-medium text-foreground"> (sum of activity percentages) / (number of graded activities)</span>.
-              Ungraded activities are listed but are not included in the average yet.
-            </p>
-            <p>
-              If an instructor grading system exists, the weighted result follows:
-              <span className="font-medium text-foreground"> (Activity x w1 + Project x w2 + Attendance x w3 + Exam x w4) / (w1 + w2 + w3 + w4)</span>.
-              Exam category includes both midterm and finals records entered as exam activities.
-            </p>
-            <p>
-              Struggle areas are identified when repeated low percentages appear in the list, especially when paired with low attendance and
-              risk outputs (Vulnerable/Crucial). This means the same underlying records in this table are the basis of the overall performance indicators.
-            </p>
-          </div>
-          {gradesBySubject.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activities available yet.</p>
-          ) : (
-            <div className="space-y-6">
-              {gradesBySubject.map((s) => (
-                <section key={s.id} className="space-y-3 rounded-xl border border-border/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{s.code} — {s.name}</p>
-                    <div className="flex items-center gap-2">
-                      {s.average != null ? (
-                        <Badge variant="outline">
-                          Activity Avg: {s.average}%
-                        </Badge>
-                      ) : null}
-                      {s.gradingSystem && s.weightedAverage != null ? (
-                        <Badge variant="secondary">
-                          Weighted: {Math.round(s.weightedAverage)}%
-                        </Badge>
-                      ) : null}
+        <TabsContent value="predictions" className="mt-3">
+          <Card className="bg-card/90">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BookOpen className="h-4 w-4" />
+                Recent predictions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <AcademicDisclaimer variant="reminder" className="mb-3" />
+              {predictionsResolved.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No predictions available yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {predictionsResolved.map((p: any) => (
+                    <div key={p.id} className="rounded-lg border p-3 space-y-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {p.resolvedSubject.code} — {p.resolvedSubject.name}
+                        </p>
+                        <RiskBadge level={p.risk_level} score={p.risk_score} />
+                      </div>
+                      {p.recommendation ? <p className="text-sm text-muted-foreground line-clamp-2">{p.recommendation}</p> : null}
+                      <p className="text-xs text-muted-foreground">
+                        {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
+                      </p>
                     </div>
-                  </div>
-                  {s.items.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No activities yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {s.items.map((a) => (
-                        <li key={a.id} className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0 text-sm">
-                          <div>
-                            <p className="font-medium">{a.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatAssessmentTypeLabel(a.assessmentType || a.type)}
-                              {a.due_date ? ` · Due ${new Date(a.due_date).toLocaleDateString()}` : ''}
-                            </p>
-                          </div>
-                          <span className={a.score != null ? 'font-medium' : 'text-muted-foreground'}>
-                            {a.score != null
-                              ? `${a.score} / ${a.max_score} (${a.pct}%)`
-                              : 'Not graded'}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="attendance" className="mt-3">
+          <Card className="bg-card/90">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Calendar className="h-4 w-4" />
+                Attendance by subject
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {attendanceBySubject.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No attendance records available yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+                  {attendanceBySubject.map((s) => (
+                    <section key={s.id} className="space-y-2 rounded-lg border border-border/60 p-3">
+                      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="font-medium text-sm">{s.code} — {s.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.present}/{s.total}{s.rate != null ? ` · ${s.rate}%` : ''}
+                        </p>
+                      </div>
+                      {s.rate != null && <Progress value={s.rate} className="h-1.5" />}
+                      {s.records.length > 0 && (
+                        <ul className="space-y-1 max-h-32 overflow-y-auto">
+                          {s.records.map((r: any) => (
+                            <li key={`${s.id}-${r.date}-${r.status}`} className="flex items-center justify-between text-xs border-b border-border/40 pb-1 last:border-0">
+                              <span>{formatSessionDate(r.date)}</span>
+                              <Badge variant={attendanceBadgeVariant[r.status] ?? 'outline'} className="capitalize text-[10px]">
+                                {r.status}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="grades" className="mt-3 space-y-3">
+          <Collapsible>
+            <Card className="bg-card/90 border-border/70">
+              <CollapsibleTrigger asChild>
+                <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-lg">
+                  <span className="text-sm font-medium">How to read grades and averages</span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
+                  <p>
+                    Each activity percentage is computed as <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                  </p>
+                  <p>
+                    Subject averages are the mean of graded activity percentages. Weighted scores follow instructor-configured category weights.
+                  </p>
+                  <p>
+                    Risk statuses combine attendance trends, score performance, and predictions.
+                  </p>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
+          <Card className="bg-card/90">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4" />
+                Grades and activities
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {gradesBySubject.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activities available yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+                  {gradesBySubject.map((s) => (
+                    <section key={s.id} className="space-y-2 rounded-lg border border-border/60 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-sm">{s.code} — {s.name}</p>
+                        <div className="flex flex-wrap items-center gap-1">
+                          {s.average != null ? (
+                            <Badge variant="outline" className="text-xs">Avg: {s.average}%</Badge>
+                          ) : null}
+                          {s.gradingSystem && s.weightedAverage != null ? (
+                            <Badge variant="secondary" className="text-xs">Weighted: {Math.round(s.weightedAverage)}%</Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      {s.items.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No activities yet.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {s.items.map((a) => (
+                            <li key={a.id} className="flex items-center justify-between gap-2 border-b border-border/40 pb-1 last:border-0 text-xs sm:text-sm">
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{a.title}</p>
+                                <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                                  {formatAssessmentTypeLabel(a.assessmentType || a.type)}
+                                </p>
+                              </div>
+                              <span className={`shrink-0 ${a.score != null ? 'font-medium' : 'text-muted-foreground'}`}>
+                                {a.score != null ? `${a.pct}%` : '—'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Collapsible>
+        <Card className="bg-card/90 border-border/70">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-lg">
+              <span className="text-sm font-medium">How scores and risk are calculated</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
+              <p>
+                Each activity uses percentage scoring: <span className="font-medium text-foreground">(score / max score) x 100</span>.
+              </p>
+              <p>
+                Per subject, the instructor may define a 100% grading system using Activity, Project, Attendance, and Exam weights.
+              </p>
+              <p>
+                Risk statuses are based on attendance trends, score performance, and generated risk predictions.
+              </p>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }

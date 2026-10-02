@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function GuidanceReferrals() {
   const { user, role } = useAuth();
@@ -86,6 +87,31 @@ export default function GuidanceReferrals() {
     [referrals],
   );
 
+  const approvedCount = useMemo(
+    () => referrals.filter((r) => normalizeReferralStatus(r.status) === 'approved').length,
+    [referrals],
+  );
+
+  const rejectedCount = useMemo(
+    () => referrals.filter((r) => normalizeReferralStatus(r.status) === 'rejected').length,
+    [referrals],
+  );
+
+  const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'reviewed'>('pending');
+
+  const filteredReferrals = useMemo(() => {
+    if (filterTab === 'pending') {
+      return referrals.filter((r) => normalizeReferralStatus(r.status) === 'pending');
+    }
+    if (filterTab === 'reviewed') {
+      return referrals.filter((r) => {
+        const s = normalizeReferralStatus(r.status);
+        return s === 'approved' || s === 'rejected';
+      });
+    }
+    return referrals;
+  }, [referrals, filterTab]);
+
   const openReview = (id: string, status: 'approved' | 'rejected') => {
     setReviewTarget({ id, status });
     setCounselorRemarks('');
@@ -104,143 +130,147 @@ export default function GuidanceReferrals() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  const renderReferral = (r: CounselingReferralRow) => (
+    <div key={r.id} className="rounded-lg border border-border/60 p-3 space-y-2 min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-sm">
+            {r.subject?.code ?? r.subject_id} — {r.subject?.name ?? 'Subject name unavailable'}
+          </p>
+          <p className="text-xs text-muted-foreground truncate">
+            Student: {r.student?.full_name ?? r.student?.email ?? r.student_id} ({r.student?.student_id ?? 'Student no. unavailable'})
+          </p>
+          <p className="text-xs text-muted-foreground truncate">
+            Referred by: {r.instructor?.full_name ?? r.instructor?.email ?? '—'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+          {r.prediction?.risk_level ? <RiskBadge level={r.prediction.risk_level} /> : null}
+          <ReferralStatusBadge status={r.status} />
+        </div>
+      </div>
+
+      {r.prediction?.risk_score != null ? (
+        <p className="text-xs text-muted-foreground">
+          Risk score: <span className="font-medium text-foreground">{Number(r.prediction.risk_score).toFixed(1)}/100</span>
+        </p>
+      ) : null}
+
+      {r.recommendation_message ? (
+        <div>
+          <p className="text-xs font-medium text-foreground">Instructor remarks</p>
+          <p className="text-sm text-muted-foreground line-clamp-2">{r.recommendation_message}</p>
+        </div>
+      ) : null}
+
+      {r.latest_engagement_feedback ? (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 space-y-1">
+          <p className="text-xs font-medium text-foreground">Student feedback</p>
+          <p className="text-sm text-muted-foreground line-clamp-2">{r.latest_engagement_feedback.message}</p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">{formatFeedbackStatus(r.latest_engagement_feedback.status)}</Badge>
+            <span>{formatLastLogin(r.latest_engagement_feedback.created_at)}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {r.latest_feedback ? (
+        <div className="rounded-lg border border-border/50 bg-muted/30 p-2 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium text-foreground">Risk-related feedback</p>
+            {r.latest_feedback.risk_level ? <RiskBadge level={r.latest_feedback.risk_level} /> : null}
+          </div>
+          {r.latest_feedback.details ? (
+            <p className="text-sm text-muted-foreground line-clamp-2">{r.latest_feedback.details}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {r.counselor_remarks ? (
+        <p className="text-xs text-muted-foreground line-clamp-2">{r.counselor_remarks}</p>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground">
+        Requested: {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
+        {r.reviewed_at ? ` · Reviewed ${new Date(r.reviewed_at).toLocaleString()}` : ''}
+      </p>
+
+      {normalizeReferralStatus(r.status) === 'pending' ? (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button size="sm" onClick={() => openReview(r.id, 'approved')} disabled={reviewMutation.isPending}>
+            Approve
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => openReview(r.id, 'rejected')} disabled={reviewMutation.isPending}>
+            Reject
+          </Button>
+        </div>
+      ) : normalizeReferralStatus(r.status) === 'approved' ? (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button size="sm" variant="outline" onClick={() => setInterventionTarget(r)}>
+            Track counseling outcome
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in min-w-0">
+    <div className="space-y-4 animate-fade-in min-w-0">
       <section className="page-section overflow-hidden">
         <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
           <div>
-            <h1 className="text-2xl font-display font-bold">Counseling Referrals</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Review instructor counseling requests. Counseling interventions can proceed only after approval.
+            <h1 className="text-xl font-display font-bold sm:text-2xl">Counselor Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Review and manage counseling referrals
             </p>
           </div>
         </div>
       </section>
 
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Card className="bg-card/90">
+          <CardContent className="p-3 sm:p-4">
+            <p className="text-xs text-muted-foreground">Pending</p>
+            <p className="text-2xl font-bold">{pendingCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/90">
+          <CardContent className="p-3 sm:p-4">
+            <p className="text-xs text-muted-foreground">Approved</p>
+            <p className="text-2xl font-bold">{approvedCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/90">
+          <CardContent className="p-3 sm:p-4">
+            <p className="text-xs text-muted-foreground">Rejected</p>
+            <p className="text-2xl font-bold">{rejectedCount}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="bg-card/90 w-full min-w-0">
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Pending referrals: {pendingCount}
-          </CardTitle>
+        <CardHeader className="pb-2 pt-4 px-4 space-y-3">
+          <CardTitle className="text-base">Referrals</CardTitle>
+          <Tabs value={filterTab} onValueChange={(v) => setFilterTab(v as typeof filterTab)}>
+            <TabsList className="grid w-full grid-cols-3 h-auto sm:h-9">
+              <TabsTrigger value="pending" className="text-xs sm:text-sm">Pending ({pendingCount})</TabsTrigger>
+              <TabsTrigger value="reviewed" className="text-xs sm:text-sm">Reviewed</TabsTrigger>
+              <TabsTrigger value="all" className="text-xs sm:text-sm">All ({referrals.length})</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
-        <CardContent className="min-w-0">
+        <CardContent className="min-w-0 px-4 pb-4">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading referrals…</p>
           ) : referralsError ? (
             <p className="text-sm text-destructive">
               Could not load referrals. {referralsError instanceof Error ? referralsError.message : 'Please try again.'}
             </p>
-          ) : referrals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No referrals yet.</p>
+          ) : filteredReferrals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No referrals in this view.</p>
           ) : (
-            <div className="space-y-3">
-              {referrals.map((r) => (
-                <div key={r.id} className="rounded-xl border border-border/60 p-3 sm:p-4 space-y-2 min-w-0">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium">
-                        {r.subject?.code ?? r.subject_id} — {r.subject?.name ?? 'Subject name unavailable'}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        Student: {r.student?.full_name ?? r.student?.email ?? r.student_id} ({r.student?.student_id ?? 'Student no. unavailable'})
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        Referred by: {r.instructor?.full_name ?? r.instructor?.email ?? '—'}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
-                      {r.prediction?.risk_level ? <RiskBadge level={r.prediction.risk_level} /> : null}
-                      <ReferralStatusBadge status={r.status} />
-                    </div>
-                  </div>
-
-                  {r.prediction?.risk_score != null ? (
-                    <p className="text-sm text-muted-foreground">
-                      Risk score: <span className="font-medium text-foreground">{Number(r.prediction.risk_score).toFixed(1)}/100</span>
-                    </p>
-                  ) : null}
-
-                  {r.recommendation_message ? (
-                    <div>
-                      <p className="text-xs font-medium text-foreground">Instructor remarks</p>
-                      <p className="text-sm text-muted-foreground">{r.recommendation_message}</p>
-                    </div>
-                  ) : null}
-
-                  {r.latest_engagement_feedback ? (
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
-                      <p className="text-xs font-medium text-foreground">Student feedback</p>
-                      <p className="text-sm font-medium">
-                        {r.latest_engagement_feedback.subject?.trim() || 'General Feedback'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{r.latest_engagement_feedback.message}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="outline">{formatFeedbackStatus(r.latest_engagement_feedback.status)}</Badge>
-                        <span>{formatLastLogin(r.latest_engagement_feedback.created_at)}</span>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {r.latest_feedback ? (
-                    <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-medium text-foreground">Risk-related feedback</p>
-                        {r.latest_feedback.risk_level ? <RiskBadge level={r.latest_feedback.risk_level} /> : null}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {(r.latest_feedback.reasons ?? []).slice(0, 8).map((reason) => (
-                          <Badge key={reason} variant="outline" className="text-xs">{reason}</Badge>
-                        ))}
-                      </div>
-                      {r.latest_feedback.details ? (
-                        <p className="text-sm text-muted-foreground">{r.latest_feedback.details}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {r.counselor_remarks ? (
-                    <div>
-                      <p className="text-xs font-medium text-foreground">Counselor remarks</p>
-                      <p className="text-sm text-muted-foreground">{r.counselor_remarks}</p>
-                    </div>
-                  ) : null}
-
-                  <p className="text-xs text-muted-foreground">
-                    Requested: {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
-                    {r.reviewed_at ? ` · Reviewed ${new Date(r.reviewed_at).toLocaleString()}` : ''}
-                  </p>
-
-                  {normalizeReferralStatus(r.status) === 'pending' ? (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        onClick={() => openReview(r.id, 'approved')}
-                        disabled={reviewMutation.isPending}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openReview(r.id, 'rejected')}
-                        disabled={reviewMutation.isPending}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  ) : normalizeReferralStatus(r.status) === 'approved' ? (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setInterventionTarget(r)}
-                      >
-                        Track counseling outcome
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+            <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+              {filteredReferrals.map(renderReferral)}
             </div>
           )}
         </CardContent>

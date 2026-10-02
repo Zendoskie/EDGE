@@ -71,7 +71,7 @@ serve(async (req) => {
     // Look up the parent's profile using the service role.
     const { data: parentProf, error: parentProfErr } = await db
       .from("profiles")
-      .select("user_id, full_name")
+      .select("user_id, full_name, email")
       .eq("email", parentEmail)
       .maybeSingle();
 
@@ -91,6 +91,8 @@ serve(async (req) => {
       .select("id, student_user_id")
       .eq("parent_user_id", parentProf.user_id)
       .eq("status", "pending")
+      // Unauthenticated endpoint: only notify for a request created moments ago at signup.
+      .gte("requested_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
       .order("requested_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -117,20 +119,20 @@ serve(async (req) => {
       return jsonError("Could not retrieve student profile", 500);
     }
 
-    const parentName = parentProf.full_name?.trim() || "Your registered parent";
+    const parentName = parentProf.full_name?.trim() || "A parent/guardian";
+    const parentEmailDisplay = parentProf.email?.trim() || parentEmail;
     const studentName = studentProf.full_name?.trim() || "Student";
 
     const subject = "EDGE: A parent/guardian is requesting access to your academic records";
     const html = `<p>Hi ${studentName},</p>
-<p>Your registered parent/guardian <strong>${parentName}</strong> has created an account on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong> and is requesting access to your academic records.</p>
-<p>Your registered parent is requesting access to your academic records.</p>
+<p><strong>${parentName}</strong> (${parentEmailDisplay}) has created a parent/guardian account on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong> using your Student ID and is requesting access to your academic records.</p>
 <p><strong>To approve or reject this request:</strong></p>
 <ol>
   <li>Log in to the EDGE platform: <a href="${appUrl}">${appUrl}</a></li>
   <li>Go to <strong>Parent Access Requests</strong> in your dashboard.</li>
   <li>Review and approve or reject the request.</li>
 </ol>
-<p>Until you approve, your parent cannot view any of your academic information.</p>
+<p>Check that you recognize this person's name and email before approving. After you approve, an administrator must also approve before they can view any of your academic information.</p>
 <p>– The EDGE Team</p>`;
 
     await sendBrevoEmail({ to: studentProf.email, subject, html });

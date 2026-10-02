@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Shield, BookOpen, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { parentLinkErrorMessage } from '@/lib/parent-link-status';
 
 const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
   {
@@ -52,7 +53,6 @@ export default function Login() {
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
-  const [signupParentEmail, setSignupParentEmail] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -120,19 +120,11 @@ export default function Login() {
           return;
         }
 
-        const parentEmail = signupParentEmail.trim();
-        const parentEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!parentEmailRegex.test(parentEmail)) {
-          toast.error('Please enter a valid Parent Gmail address.');
-          return;
-        }
-
         // Prevent duplicate Student ID before creating auth user.
         // Runs via a SECURITY DEFINER RPC because anon cannot SELECT profiles (RLS),
         // and GoTrue hides the DB trigger's duplicate error behind a generic message.
         const { error: studentIdCheckError } = await supabase.rpc('validate_student_signup', {
           p_student_id_no: studentNo,
-          p_parent_email: parentEmail,
         });
         if (studentIdCheckError) {
           const checkMsg = (studentIdCheckError.message || '').toLowerCase();
@@ -140,39 +132,26 @@ export default function Login() {
             toast.error('This Student No. is already registered. Use a unique Student No.');
             return;
           }
-          if (checkMsg.includes('parent_email_required')) {
-            toast.error('Please enter a valid Parent Gmail address.');
-            return;
-          }
           // Unexpected error: let the signup attempt proceed; the DB trigger still enforces the check.
         }
       }
       if (signupRole === 'parent') {
         if (!signupGuardianStudentId.trim()) {
-          toast.error('Student ID or Parent Gmail does not match our records.');
+          toast.error("Please enter the student's Student ID.");
           return;
         }
         if (signupPassword !== signupConfirmPassword) {
           toast.error('Passwords do not match.');
           return;
         }
-        // Pre-validate the parent Gmail against the student's stored parent email.
-        // The DB trigger enforces this anyway, but GoTrue hides its message behind
-        // a generic "Database error saving new user", so we surface it here.
-        // Also detects whether the email is already registered (zombie or other role).
+        // The Student ID only locates the student and creates a request; it grants no access.
+        // GoTrue hides trigger errors behind a generic message, so surface them here first.
         const { error: parentCheckError } = await supabase.rpc('validate_parent_signup', {
           p_student_id_no: signupGuardianStudentId.trim(),
           p_parent_email: signupEmail.trim(),
         });
         if (parentCheckError) {
-          const pMsg = (parentCheckError.message || '').toLowerCase();
-          if (pMsg.includes('parent_email_already_registered')) {
-            toast.error(
-              'This email already has an account. If you have a parent account, please sign in. Otherwise contact an administrator.'
-            );
-            return;
-          }
-          toast.error('Student ID or Parent Gmail does not match our records.');
+          toast.error(parentLinkErrorMessage(parentCheckError.message));
           return;
         }
       }
@@ -190,7 +169,6 @@ export default function Login() {
               yearLevel: yearLevelForDb || undefined,
               studentNumber: signupStudentNumber.trim() || undefined,
               isIrregular: isIrregular,
-              parentEmail: signupParentEmail.trim() || undefined,
             }
           : signupRole === 'parent'
             ? {
@@ -204,7 +182,11 @@ export default function Login() {
       setLoginEmail(signupEmail);
       setLoginPassword('');
 
-      if (result.user) {
+      if (result.user && signupRole === 'parent') {
+        toast.success(
+          'Request submitted. The student must approve it first, then an administrator. You can sign in after both approvals.'
+        );
+      } else if (result.user) {
         toast.success(
           'Account submitted. An administrator must approve it before you can sign in. Confirm your email if your organization requires it.'
         );
@@ -382,20 +364,6 @@ export default function Login() {
                             />
                           </div>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-parent-email">Parent Gmail</Label>
-                          <Input
-                            id="signup-parent-email"
-                            type="email"
-                            value={signupParentEmail}
-                            onChange={e => setSignupParentEmail(e.target.value)}
-                            required
-                            placeholder="parent@gmail.com"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Your parent/guardian will use this Gmail to create a linked parent account.
-                          </p>
-                        </div>
                       </>
                     )}
                     {signupRole === 'parent' && (
@@ -422,7 +390,7 @@ export default function Login() {
                             placeholder="e.g. 22-1-7-0008"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Enter your child&apos;s Student ID. Your Gmail must match the email the student registered as their Parent Gmail.
+                            Enter your child&apos;s Student ID. The student must approve your request first, then an administrator. You can sign in only after both approvals.
                           </p>
                         </div>
                       </>

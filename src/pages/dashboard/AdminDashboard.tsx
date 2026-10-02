@@ -13,9 +13,10 @@ import {
 } from 'recharts';
 import {
   Users, GraduationCap, Users2, BookOpen, UserCog, ShieldCheck,
-  Clock, ShieldOff, Mail, ClipboardList, UserPlus, BarChart3,
-  RefreshCw, ArrowRight, CalendarCheck, Bell, Activity,
+  ShieldOff, Mail, ClipboardList, UserPlus, BarChart3,
+  RefreshCw, ArrowRight, Activity,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -538,14 +539,13 @@ export default function AdminDashboard() {
   ], [stats]);
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-3 md:p-5 min-w-0">
 
-      {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            System overview — last updated {lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+            System overview — updated {lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -554,15 +554,41 @@ export default function AdminDashboard() {
         </Button>
       </div>
 
-      {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         {statCards.map(c => (
           <StatCard key={c.label} {...c} loading={loading} />
         ))}
       </div>
 
-      {/* ── Charts Row 1: Role Pie + Status Bar ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 h-auto sm:h-10 max-w-lg">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-xs sm:text-sm">Analytics</TabsTrigger>
+          <TabsTrigger value="activity" className="text-xs sm:text-sm">Recent activity</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-3 space-y-4">
+      <div>
+        <h2 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Quick Actions
+        </h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {QUICK_ACTIONS.map(action => (
+            <Link key={action.label} to={action.href}>
+              <Card className={`group cursor-pointer border transition-colors ${action.border} ${action.bg}`}>
+                <CardContent className="flex flex-col items-center gap-1.5 p-3 text-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-background/50">
+                    <action.icon className={`h-4 w-4 ${action.color}`} />
+                  </div>
+                  <p className="text-xs sm:text-sm font-medium">{action.label}</p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card className="border-border/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Users by Role</CardTitle>
@@ -570,7 +596,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {loading || roleChartData.length === 0 ? (
-              <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
                 {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'No data'}
               </div>
             ) : (
@@ -586,7 +612,43 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              </div>
+            ) : (
+              <StatusBarChart data={statusChartData} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-3 space-y-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Users by Role</CardTitle>
+            <CardDescription className="text-xs">Distribution across all roles</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading || roleChartData.length === 0 ? (
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
+                {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'No data'}
+              </div>
+            ) : (
+              <RolePieChart data={roleChartData} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Users by Status</CardTitle>
+            <CardDescription className="text-xs">Account status breakdown</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
               </div>
             ) : (
@@ -596,8 +658,7 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* ── Charts Row 2: Monthly Registrations + Recent Logins ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card className="border-border/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Monthly Registrations</CardTitle>
@@ -605,7 +666,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
               </div>
             ) : (
@@ -621,7 +682,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+              <div className="flex h-[180px] items-center justify-center text-xs text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
               </div>
             ) : (
@@ -630,31 +691,10 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
 
-      {/* ── Quick Actions ── */}
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Quick Actions
-        </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {QUICK_ACTIONS.map(action => (
-            <Link key={action.label} to={action.href}>
-              <Card className={`group cursor-pointer border transition-colors ${action.border} ${action.bg}`}>
-                <CardContent className="flex flex-col items-center gap-2 p-4 text-center">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-background/50`}>
-                    <action.icon className={`h-5 w-5 ${action.color}`} />
-                  </div>
-                  <p className="text-sm font-medium">{action.label}</p>
-                  <p className="text-[11px] text-muted-foreground leading-tight">{action.description}</p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Activity Tables ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <TabsContent value="activity" className="mt-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
 
         {/* Latest Registrations */}
         <Card className="border-border/50">
@@ -791,6 +831,8 @@ export default function AdminDashboard() {
         </Card>
 
       </div>
+        </TabsContent>
+      </Tabs>
 
     </div>
   );

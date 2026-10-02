@@ -1,4 +1,6 @@
-export type ParentLinkStatus = "pending" | "approved" | "rejected";
+import { normalizeParentLinkStatus, type ParentLinkStatus } from "@/lib/parent-link-status";
+
+export { normalizeParentLinkStatus, type ParentLinkStatus };
 
 export type ParentLinkNotification = {
   title: string;
@@ -19,6 +21,10 @@ export function studentParentRequestNotification(opts: {
   };
 }
 
+/**
+ * In-app notice for a parent who is already signed in (an active parent requesting
+ * another student). Admin decisions are delivered through the durable inbox instead.
+ */
 export function parentLinkDecisionNotification(opts: {
   linkId: string;
   status: ParentLinkStatus;
@@ -29,11 +35,11 @@ export function parentLinkDecisionNotification(opts: {
   const studentName = opts.studentName.trim() || "the student";
   const cycle = opts.requestedAt ?? "";
 
-  if (opts.status === "approved") {
+  if (opts.status === "pending_admin") {
     return {
-      title: "Access request approved",
-      body: `Your request to access ${studentName}'s academic information has been approved. You can now view their academic records.`,
-      dedupeKey: `parent-link-approved:${opts.linkId}:${cycle}`,
+      title: "Student approved your request",
+      body: `${studentName} approved your request. It is now waiting for administrator approval before you can view their academic records.`,
+      dedupeKey: `parent-link-student-approved:${opts.linkId}:${cycle}`,
       sourceName: studentName,
     };
   }
@@ -41,18 +47,11 @@ export function parentLinkDecisionNotification(opts: {
   if (opts.status === "rejected") {
     return {
       title: "Access request rejected",
-      body: `Your request to access ${studentName}'s academic information has been rejected. You may submit a new request from your dashboard.`,
+      body: `${studentName} rejected your request to access their academic information.`,
       dedupeKey: `parent-link-rejected:${opts.linkId}:${cycle}`,
       sourceName: studentName,
     };
   }
 
   return null;
-}
-export function normalizeParentLinkStatus(status: unknown): ParentLinkStatus {
-  if (typeof status !== "string") return "pending";
-  const s = status.trim().toLowerCase();
-  if (s === "approved") return "approved";
-  if (s === "rejected") return "rejected";
-  return "pending";
 }
