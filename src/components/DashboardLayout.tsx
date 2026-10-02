@@ -1,5 +1,5 @@
-import { Navigate, useLocation, useOutlet } from "react-router-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Navigate, useOutlet } from "react-router-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,22 +43,19 @@ type StudentPredictionContext = {
 };
 
 function AnimatedDashboardOutlet() {
-  const location = useLocation();
   const outlet = useOutlet();
   const reduceMotion = useReducedMotion();
 
+  // Keep the outlet mounted across routes so React Query caches survive navigation.
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={location.pathname}
-        initial={reduceMotion ? false : { opacity: 0, y: 8, filter: "blur(3px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        exit={reduceMotion ? undefined : { opacity: 0, y: -4, filter: "blur(2px)" }}
-        transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <ErrorBoundary>{outlet}</ErrorBoundary>
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key="dashboard-outlet"
+      initial={false}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <ErrorBoundary>{outlet}</ErrorBoundary>
+    </motion.div>
   );
 }
 
@@ -127,6 +124,7 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   const { data: coachContext } = useQuery<StudentPredictionContext>({
     queryKey: ["ai-coach-student-context", userId, role],
     enabled: role === "student" && !!userId,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data: enrollments, error: enrollmentError } = await supabase
         .from("enrollments")

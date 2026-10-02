@@ -19,7 +19,6 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  fetchActiveEnrolledSubjectIds,
   filterAttendanceBySubjectIds,
   filterPredictionsBySubjectIds,
   filterSubmissionsByActiveSubjects,
@@ -31,6 +30,7 @@ import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
 import { StudentEngagementCard } from '@/components/StudentEngagementCard';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
+import { useStudentEnrolledSubjectIds } from '@/hooks/useStudentEnrolledSubjectIds';
 
 interface StudentStats {
   enrolledSubjects: number;
@@ -70,6 +70,8 @@ export default function StudentDashboard() {
   const [feedbackSubjectId, setFeedbackSubjectId] = useState<string | null>(null);
 
   const { data: counselingReferrals = [], isLoading: referralsLoading } = useCounselingReferrals();
+  const { data: enrolledSubjectIds = [] } = useStudentEnrolledSubjectIds(user?.id);
+  const enrolledSubjectIdSet = useMemo(() => new Set(enrolledSubjectIds), [enrolledSubjectIds]);
 
   const { data: studentProgram } = useQuery({
     queryKey: ['student-program', user?.id],
@@ -101,11 +103,11 @@ export default function StudentDashboard() {
         : undefined;
 
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['student-dashboard-stats', user?.id],
+    queryKey: ['student-dashboard-stats', user?.id, enrolledSubjectIds],
     queryFn: async () => {
-      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user!.id);
+      const subjectIds = enrolledSubjectIds;
       const enrolledCount = subjectIds.length;
-      const subjectSet = new Set(subjectIds);
+      const subjectSet = enrolledSubjectIdSet;
 
       if (enrolledCount === 0) {
         return {
@@ -186,11 +188,10 @@ export default function StudentDashboard() {
   });
 
   const { data: recentActivity = [], isLoading: activityLoading } = useQuery({
-    queryKey: ['student-recent-activity', user?.id],
+    queryKey: ['student-recent-activity', user?.id, enrolledSubjectIds],
     queryFn: async () => {
-      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user!.id);
-      if (subjectIds.length === 0) return [];
-      const subjectSet = new Set(subjectIds);
+      if (enrolledSubjectIds.length === 0) return [];
+      const subjectSet = enrolledSubjectIdSet;
       const { data: subs } = await supabase
         .from('submissions')
         .select('score, graded_at, activity_id, assessment_type, activities(id, title, type, max_score, subject_id, subjects(code, name))')
@@ -203,12 +204,12 @@ export default function StudentDashboard() {
   });
 
   const { data: atRiskSubjects = [] } = useQuery({
-    queryKey: ["student-at-risk-subjects", user?.id],
+    queryKey: ["student-at-risk-subjects", user?.id, enrolledSubjectIds],
     queryFn: async () => {
       if (!user?.id) return [];
-      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user.id);
+      const subjectIds = enrolledSubjectIds;
       if (subjectIds.length === 0) return [];
-      const subjectSet = new Set(subjectIds);
+      const subjectSet = enrolledSubjectIdSet;
       const { data, error } = await supabase
         .from("predictions")
         .select("id, subject_id, risk_level, created_at, subjects(code, name)")
@@ -230,11 +231,10 @@ export default function StudentDashboard() {
   });
 
   const { data: latestGradeBySubject = {} } = useQuery<Record<string, string>>({
-    queryKey: ["student-latest-grade-by-subject", user?.id],
+    queryKey: ["student-latest-grade-by-subject", user?.id, enrolledSubjectIds],
     queryFn: async () => {
       if (!user?.id) return {};
-      const subjectIds = await fetchActiveEnrolledSubjectIds(supabase, user.id);
-      const subjectSet = new Set(subjectIds);
+      const subjectSet = enrolledSubjectIdSet;
       if (subjectSet.size === 0) return {};
       const { data, error } = await supabase
         .from("submissions")

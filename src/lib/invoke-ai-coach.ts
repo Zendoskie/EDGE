@@ -17,14 +17,20 @@ export async function invokeAiCoach(body: Record<string, unknown>): Promise<Reco
     throw new Error("Sign in required to use AI features.");
   }
 
-  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+  // Refresh only when the access token is expired or about to expire.
+  // Refreshing on every message rotates the refresh token and races with
+  // auto-refresh, which makes the next follow-up fail with a dead session.
   const nowSec = Math.floor(Date.now() / 1000);
-  const initialExpired = !initial.expires_at || initial.expires_at <= nowSec;
-  const session = refreshed.session ?? (refreshError || initialExpired ? null : initial);
-  if (!session?.access_token) {
-    throw new Error(
-      refreshError?.message || "Session expired. Please sign out and sign in again.",
-    );
+  const expiresSoon = !initial.expires_at || initial.expires_at <= nowSec + 60;
+  let session = initial;
+  if (expiresSoon) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    session = refreshed.session ?? session;
+    if (!session?.access_token) {
+      throw new Error(
+        refreshError?.message || "Session expired. Please sign out and sign in again.",
+      );
+    }
   }
 
   const base = SUPABASE_URL.replace(/\/$/, "");

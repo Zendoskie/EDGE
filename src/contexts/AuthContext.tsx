@@ -1,8 +1,7 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User, Session, type AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  bootstrapStudentSession,
   finalizeStudentSessionOnSignOut,
   trackStudentLoginOnSignIn,
   trackStudentLogoutOnSignOut,
@@ -70,74 +69,98 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const signInHandledUserIdRef = useRef<string | null>(null);
+  const syncedUserIdRef = useRef<string | null>(null);
+  const roleRef = useRef<AppRole | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function syncFromSession(next: Session | null, authEvent?: AuthChangeEvent) {
       if (!next?.user) {
+        syncedUserIdRef.current = null;
+        signInHandledUserIdRef.current = null;
         setSession(null);
         setUser(null);
         setRole(null);
+        roleRef.current = null;
         return;
       }
 
-      const { data: prof, error: profErr } = await supabase
-        .from('profiles')
-        .select('account_status')
-        .eq('user_id', next.user.id)
-        .maybeSingle();
+      // Token refresh only updates the session — no profile/role round-trips.
+      if (authEvent === 'TOKEN_REFRESHED') {
+        setSession(next);
+        setUser(next.user);
+        return;
+      }
+
+      const userId = next.user.id;
+
+      // signIn() already validated and set state; avoid duplicate DB work on SIGNED_IN.
+      if (authEvent === 'SIGNED_IN' && signInHandledUserIdRef.current === userId) {
+        signInHandledUserIdRef.current = null;
+        setSession(next);
+        setUser(next.user);
+        syncedUserIdRef.current = userId;
+        return;
+      }
+
+      // Already synced for this user (e.g. spurious SIGNED_IN during navigation).
+      if (syncedUserIdRef.current === userId && roleRef.current !== null) {
+        setSession(next);
+        setUser(next.user);
+        return;
+      }
+
+      const [{ data: prof, error: profErr }, r] = await Promise.all([
+        supabase.from('profiles').select('account_status').eq('user_id', userId).maybeSingle(),
+        loadRole(userId),
+      ]);
 
       if (profErr) {
         console.error('profiles lookup after session:', profErr);
         await supabase.auth.signOut();
+        syncedUserIdRef.current = null;
         setSession(null);
         setUser(null);
         setRole(null);
+        roleRef.current = null;
         return;
       }
 
       if (prof?.account_status !== 'approved') {
         await supabase.auth.signOut();
+        syncedUserIdRef.current = null;
         setSession(null);
         setUser(null);
         setRole(null);
+        roleRef.current = null;
         return;
       }
 
-      const r = await loadRole(next.user.id);
-      if (r === 'parent' && (await getParentLoginBlock(next.user.id, prof.account_status))) {
+      if (r === 'parent' && (await getParentLoginBlock(userId, prof.account_status))) {
         await supabase.auth.signOut();
+        syncedUserIdRef.current = null;
         setSession(null);
         setUser(null);
         setRole(null);
+        roleRef.current = null;
         return;
       }
 
       setSession(next);
       setUser(next.user);
-      if (!cancelled) setRole(r);
-
-      if (!cancelled && r === 'student' && next) {
-        if (authEvent === 'SIGNED_IN') {
-          await trackStudentLoginOnSignIn(next);
-        } else if (authEvent === 'INITIAL_SESSION') {
-          await bootstrapStudentSession(next);
-        }
-      }
-    }
-
-    async function init() {
-      const {
-        data: { session: initial },
-      } = await supabase.auth.getSession();
       if (!cancelled) {
-        await syncFromSession(initial, initial ? 'INITIAL_SESSION' : undefined);
+        setRole(r);
+        roleRef.current = r;
       }
-      if (!cancelled) setLoading(false);
-    }
+      syncedUserIdRef.current = userId;
 
-    void init();
+      // Student login tracking only on explicit sign-in; session resume is handled in DashboardLayout.
+      if (!cancelled && r === 'student' && authEvent === 'SIGNED_IN') {
+        void trackStudentLoginOnSignIn(next);
+      }
+    }
 
     const {
       data: { subscription },
@@ -182,11 +205,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uid = data.user?.id;
     if (!uid) throw new Error('Invalid credentials');
 
-    const { data: prof, error: profErr } = await supabase
-      .from('profiles')
-      .select('account_status')
-      .eq('user_id', uid)
-      .maybeSingle();
+    const [{ data: prof, error: profErr }, r] = await Promise.all([
+      supabase.from('profiles').select('account_status').eq('user_id', uid).maybeSingle(),
+      loadRole(uid),
+    ]);
 
     if (profErr) {
       console.error('profiles lookup at sign-in:', profErr);
@@ -207,7 +229,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    const r = await loadRole(uid);
     if (r === 'parent') {
       const blocked = await getParentLoginBlock(uid, prof.account_status);
       if (blocked) {
@@ -229,13 +250,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Invalid credentials');
     }
 
+    signInHandledUserIdRef.current = uid;
+    syncedUserIdRef.current = uid;
     setSession(data.session);
     setUser(data.user);
     setRole(r);
+    roleRef.current = r;
     setLoading(false);
 
     if (r === 'student' && data.session) {
-      await trackStudentLoginOnSignIn(data.session);
+      void trackStudentLoginOnSignIn(data.session);
     }
   };
 

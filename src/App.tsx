@@ -43,7 +43,14 @@ import StudentEngagementMonitoring from "./pages/dashboard/StudentEngagementMoni
 import NotFound from "./pages/NotFound";
 import RequestStaffAccount from "./pages/RequestStaffAccount";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
