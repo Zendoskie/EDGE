@@ -6,7 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { UserCheck, UserX } from 'lucide-react';
-import { adminDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { adminDecideParentRequest, adminReviewParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
+import { getPublicAppUrl } from '@/lib/app-url';
 import {
   adminApprovalState,
   approvalStepLabel,
@@ -24,6 +26,8 @@ type RequestRow = {
   parent_name: string;
   parent_email: string;
   student_name: string;
+  source: 'registration' | 'link';
+  completed: boolean;
 };
 
 type Filter = 'awaiting' | 'all';
@@ -49,18 +53,30 @@ export default function ParentGuardianRequestsCard() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('awaiting');
+  const [inviteLinks, setInviteLinks] = useState<Array<{ id: string; email: string; url: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const visibleStatuses = filter === 'awaiting'
+        ? ['pending_admin']
+        : ['pending_admin', 'admin_rejected', 'approved'];
       let query = supabase
         .from('parent_student_links')
         .select('id, status, requested_at, student_id_no, parent_user_id, student_user_id')
+        .in('status', visibleStatuses)
         .order('requested_at', { ascending: false })
         .limit(200);
-      if (filter === 'awaiting') query = query.eq('status', 'pending_admin');
       const { data: links, error } = await query;
       if (error) throw error;
+
+      const { data: registrations, error: registrationError } = await (supabase as any)
+        .from('parent_registration_requests')
+        .select('id, status, submitted_at, student_id, full_name, email, student_name, completed_at')
+        .in('status', visibleStatuses)
+        .order('submitted_at', { ascending: false })
+        .limit(200);
+      if (registrationError) throw registrationError;
 
       const ids = Array.from(new Set((links ?? []).flatMap((l) => [l.parent_user_id, l.student_user_id])));
       const { data: profiles, error: pErr } = ids.length
@@ -69,16 +85,32 @@ export default function ParentGuardianRequestsCard() {
       if (pErr) throw pErr;
       const byId = new Map((profiles ?? []).map((p) => [p.user_id, p]));
 
+      const linkRows: RequestRow[] = (links ?? []).map((l) => ({
+        id: l.id,
+        status: l.status,
+        requested_at: l.requested_at,
+        student_id_no: l.student_id_no,
+        parent_name: byId.get(l.parent_user_id)?.full_name || '—',
+        parent_email: byId.get(l.parent_user_id)?.email || '—',
+        student_name: byId.get(l.student_user_id)?.full_name || '—',
+        source: 'link',
+        completed: l.status === 'approved',
+      }));
+      const registrationRows: RequestRow[] = (registrations ?? []).map((r: any) => ({
+        id: r.id,
+        status: r.status,
+        requested_at: r.submitted_at,
+        student_id_no: r.student_id,
+        parent_name: r.full_name || '—',
+        parent_email: r.email || '—',
+        student_name: r.student_name || '—',
+        source: 'registration',
+        completed: Boolean(r.completed_at),
+      }));
       setRows(
-        (links ?? []).map((l) => ({
-          id: l.id,
-          status: l.status,
-          requested_at: l.requested_at,
-          student_id_no: l.student_id_no,
-          parent_name: byId.get(l.parent_user_id)?.full_name || '—',
-          parent_email: byId.get(l.parent_user_id)?.email || '—',
-          student_name: byId.get(l.student_user_id)?.full_name || '—',
-        })),
+        [...registrationRows, ...linkRows].sort(
+          (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
+        ),
       );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to load parent/guardian requests');
@@ -92,11 +124,39 @@ export default function ParentGuardianRequestsCard() {
     void load();
   }, [load]);
 
-  const decide = async (linkId: string, decision: ParentLinkDecision) => {
-    setBusyId(linkId);
+  const decide = async (row: RequestRow, decision: ParentLinkDecision) => {
+    setBusyId(row.id);
     try {
-      await adminDecideParentRequest(linkId, decision);
-      toast.success(decision === 'approve' ? 'Parent/guardian approved. Their account is now active.' : 'Parent/guardian request rejected');
+      if (row.source === 'registration') {
+        const invitationId = await adminReviewParentRequest(row.id, decision);
+        if (decision === 'reject') {
+          toast.success('Parent request rejected. No invitation was sent.');
+        } else if (invitationId) {
+          try {
+            await sendStaffInvitation(invitationId);
+            toast.success(`Registration email sent to ${row.parent_email}.`);
+          } catch (emailErr: unknown) {
+            const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+            const { data: inv } = await (supabase as any)
+              .from('staff_invitations')
+              .select('token')
+              .eq('id', invitationId)
+              .maybeSingle();
+            const inviteUrl = inv?.token
+              ? `${getPublicAppUrl()}/complete-parent-registration?token=${inv.token}`
+              : null;
+            toast.warning(`Approved, but the email failed: ${msg}`, { duration: 8000 });
+            if (inviteUrl) {
+              setInviteLinks((prev) => prev.some((l) => l.id === invitationId)
+                ? prev
+                : [...prev, { id: invitationId, email: row.parent_email, url: inviteUrl }]);
+            }
+          }
+        }
+      } else {
+        await adminDecideParentRequest(row.id, decision);
+        toast.success(decision === 'approve' ? 'Parent/guardian approved. Their account is now active.' : 'Parent/guardian request rejected. No invitation was sent.');
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -105,20 +165,25 @@ export default function ParentGuardianRequestsCard() {
     }
   };
 
+  const statusText = (r: RequestRow) =>
+    r.source === 'registration' && r.status === 'approved' && !r.completed
+      ? 'Invitation sent'
+      : parentLinkStatusLabel(r.status);
+
   const actions = (r: RequestRow, fullWidth: boolean) =>
     r.status === 'pending_admin' ? (
       <div className={fullWidth ? 'flex flex-col gap-2 pt-1' : 'flex flex-wrap justify-end gap-2'}>
-        <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r.id, 'approve')}>
+        <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r, 'approve')}>
           <UserCheck className="h-4 w-4 shrink-0" />
           Approve
         </Button>
-        <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r.id, 'reject')}>
+        <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r, 'reject')}>
           <UserX className="h-4 w-4 shrink-0" />
           Reject
         </Button>
       </div>
     ) : (
-      <Badge variant={parentLinkStatusBadgeVariant(r.status)}>{parentLinkStatusLabel(r.status)}</Badge>
+      <Badge variant={parentLinkStatusBadgeVariant(r.status)}>{statusText(r)}</Badge>
     );
 
   return (
@@ -128,7 +193,7 @@ export default function ParentGuardianRequestsCard() {
           <div className="min-w-0 space-y-1">
             <CardTitle className="text-base sm:text-lg">Parent / Guardian requests</CardTitle>
             <CardDescription className="text-pretty">
-              Requests the student has already approved. Approving activates the parent account and grants read access to that student only.
+              Only requests the student has already approved appear here. Approving emails the parent a one-time link to create a password. Rejecting sends no invitation.
             </CardDescription>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -142,6 +207,15 @@ export default function ParentGuardianRequestsCard() {
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-6">
+        {inviteLinks.length > 0 && (
+          <div className="mb-4 space-y-2 rounded-lg border border-border/60 p-3 text-sm">
+            {inviteLinks.map((link) => (
+              <p key={link.id} className="break-all">
+                Email failed for {link.email}. Complete registration: {link.url}
+              </p>
+            ))}
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (

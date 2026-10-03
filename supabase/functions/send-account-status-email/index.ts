@@ -50,6 +50,7 @@ async function sendBrevoEmail(opts: { to: string; subject: string; html: string 
 function roleLabel(role: string | null | undefined): string {
   if (role === "guidance_counselor") return "Guidance Counselor";
   if (role === "instructor") return "Instructor";
+  if (role === "student") return "Student";
   return "User";
 }
 
@@ -108,7 +109,6 @@ serve(async (req) => {
     const body = await req.json();
     const userId = safeString(body?.user_id);
     const status = safeString(body?.status) as AccountStatusType | null;
-    const appUrl = resolveAppUrl(body?.app_url);
 
     if (!userId) throw new Error("user_id is required");
     if (!status || !["approved", "rejected"].includes(status)) {
@@ -124,13 +124,22 @@ serve(async (req) => {
     if (profErr) throw new Error("Could not look up user profile");
     if (!profile?.email) throw new Error("User has no email on file");
 
-    // Look up their role (instructor or guidance_counselor only).
     const { data: roleRow } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
-      .in("role", ["instructor", "guidance_counselor"])
+      .in("role", ["student", "instructor", "guidance_counselor"])
       .maybeSingle();
+
+    // Staff become active only after the invitation phase. This email is a
+    // sign-in notice for students, not a registration invitation.
+    if (roleRow?.role === "instructor" || roleRow?.role === "guidance_counselor") {
+      return new Response(JSON.stringify({ success: true, skipped: "staff_uses_invitation" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const appUrl = resolveAppUrl(body?.app_url);
 
     await sendBrevoEmail({
       to: profile.email,

@@ -42,6 +42,8 @@ import StudentFeedback from "./pages/dashboard/StudentFeedback";
 import StudentEngagementMonitoring from "./pages/dashboard/StudentEngagementMonitoring";
 import NotFound from "./pages/NotFound";
 import RequestStaffAccount from "./pages/RequestStaffAccount";
+import CompleteStudentRegistration from "./pages/CompleteStudentRegistration";
+import CompleteParentRegistration from "./pages/CompleteParentRegistration";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,6 +67,8 @@ const App = () => (
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/request-staff-account" element={<RequestStaffAccount />} />
+              <Route path="/complete-registration" element={<CompleteStudentRegistration />} />
+              <Route path="/complete-parent-registration" element={<CompleteParentRegistration />} />
               <Route path="/dashboard" element={<DashboardLayout />}>
                 <Route index element={<DashboardHome />} />
                 <Route path="subjects" element={<Subjects />} />

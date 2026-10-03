@@ -12,8 +12,8 @@ export type AccountStatusEmailInput = {
 };
 
 /**
- * Calls the `send-account-status-email` Edge Function to notify an instructor
- * or guidance counselor that their registration was approved or rejected.
+ * Calls the `send-account-status-email` Edge Function to tell a student that
+ * their registration was approved or rejected. Staff invitations are separate.
  * The caller must be an admin (verified server-side by the Edge Function).
  */
 export async function sendAccountStatusEmail(

@@ -46,6 +46,8 @@ async function sendBrevoEmail(opts: { to: string; subject: string; html: string 
 function roleLabel(role: string): string {
   if (role === "guidance_counselor") return "Guidance Counselor";
   if (role === "instructor")         return "Instructor";
+  if (role === "student")            return "Student";
+  if (role === "parent")             return "Parent / Guardian";
   return role;
 }
 
@@ -63,6 +65,118 @@ function buildInvitationEmail(opts: {
     year: "numeric", month: "long", day: "numeric",
     hour: "2-digit", minute: "2-digit", timeZoneName: "short",
   });
+  const isStudent  = opts.role === "student";
+  const isParent   = opts.role === "parent";
+
+  if (isParent) {
+    return {
+      subject: "EDGE: Complete your parent registration",
+      html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0f0f14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="560" cellpadding="0" cellspacing="0" border="0"
+             style="max-width:560px;background:#1a1a24;border-radius:12px;border:1px solid #2a2a3a;overflow:hidden;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#6c47ff,#8b5cf6);padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;letter-spacing:-0.5px;">EDGE</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Student Risk Analysis and AI Coaching System</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 6px;color:#a0a0b8;font-size:13px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Parent account approved</p>
+            <h2 style="margin:0 0 20px;color:#f0f0ff;font-size:22px;font-weight:600;">Hi ${name},</h2>
+            <p style="margin:0 0 16px;color:#c8c8e0;font-size:15px;line-height:1.6;">
+              The student and an administrator approved your EDGE parent/guardian request. Use the button below to create your password and activate your account.
+            </p>
+            <p style="margin:0 0 28px;color:#c8c8e0;font-size:15px;line-height:1.6;">
+              This link is <strong style="color:#f0f0ff;">single-use</strong> and expires on
+              <strong style="color:#f0f0ff;">${expiry}</strong>. Your password is never included in this email.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td align="center" style="padding:0 0 28px;">
+                <a href="${opts.invitationUrl}"
+                   style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6c47ff,#8b5cf6);color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">
+                  Complete Registration →
+                </a>
+              </td></tr>
+            </table>
+            <div style="background:#11111c;border:1px solid #2a2a3a;border-radius:8px;padding:14px 16px;">
+              <p style="margin:0 0 6px;color:#a0a0b8;font-size:11px;text-transform:uppercase;letter-spacing:0.6px;">Or copy this link</p>
+              <p style="margin:0;color:#8b7cf6;font-size:12px;word-break:break-all;">${opts.invitationUrl}</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px;border-top:1px solid #2a2a3a;text-align:center;">
+            <p style="margin:0;color:#606080;font-size:12px;">If you did not request a parent account, you can ignore this email.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+    };
+  }
+
+  if (isStudent) {
+    return {
+      subject: "EDGE: Complete your student registration",
+      html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0f0f14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="560" cellpadding="0" cellspacing="0" border="0"
+             style="max-width:560px;background:#1a1a24;border-radius:12px;border:1px solid #2a2a3a;overflow:hidden;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#6c47ff,#8b5cf6);padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;letter-spacing:-0.5px;">EDGE</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Student Risk Analysis and AI Coaching System</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <p style="margin:0 0 6px;color:#a0a0b8;font-size:13px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Student account approved</p>
+            <h2 style="margin:0 0 20px;color:#f0f0ff;font-size:22px;font-weight:600;">Hi ${name},</h2>
+            <p style="margin:0 0 16px;color:#c8c8e0;font-size:15px;line-height:1.6;">
+              An administrator approved your EDGE student request. Use the button below to create your password and activate your account.
+            </p>
+            <p style="margin:0 0 28px;color:#c8c8e0;font-size:15px;line-height:1.6;">
+              This link is <strong style="color:#f0f0ff;">single-use</strong> and expires on
+              <strong style="color:#f0f0ff;">${expiry}</strong>. Your password is never included in this email.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td align="center" style="padding:0 0 28px;">
+                <a href="${opts.invitationUrl}"
+                   style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6c47ff,#8b5cf6);color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">
+                  Complete Registration →
+                </a>
+              </td></tr>
+            </table>
+            <div style="background:#11111c;border:1px solid #2a2a3a;border-radius:8px;padding:14px 16px;">
+              <p style="margin:0 0 6px;color:#a0a0b8;font-size:11px;text-transform:uppercase;letter-spacing:0.6px;">Or copy this link</p>
+              <p style="margin:0;color:#8b7cf6;font-size:12px;word-break:break-all;">${opts.invitationUrl}</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px;border-top:1px solid #2a2a3a;text-align:center;">
+            <p style="margin:0;color:#606080;font-size:12px;">If you did not request a student account, you can ignore this email.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+    };
+  }
 
   return {
     subject: `EDGE: Your staff account invitation`,
@@ -198,7 +312,9 @@ serve(async (req) => {
       .from("staff_invitations")
       .select(`
         id, email, department, role, token, status, expires_at,
-        staff_registration_requests ( full_name )
+        staff_registration_requests ( full_name ),
+        student_registration_requests ( full_name ),
+        parent_registration_requests ( full_name )
       `)
       .eq("id", invitationId)
       .maybeSingle();
@@ -208,10 +324,17 @@ serve(async (req) => {
     if (inv.status === "accepted") throw new Error("Invitation already accepted");
 
     // Build the invitation URL.
-    const invitationUrl = `${appUrl}/request-staff-account?token=${inv.token}`;
+    const invitationPath = inv.role === "student"
+      ? "/complete-registration"
+      : inv.role === "parent"
+        ? "/complete-parent-registration"
+        : "/request-staff-account";
+    const invitationUrl = `${appUrl}${invitationPath}?token=${inv.token}`;
 
     // Resolve full name from the linked request (may be null for direct invites).
     const fullName =
+      (inv.parent_registration_requests as { full_name?: string } | null)?.full_name ??
+      (inv.student_registration_requests as { full_name?: string } | null)?.full_name ??
       (inv.staff_registration_requests as { full_name?: string } | null)?.full_name ??
       inv.email;
 

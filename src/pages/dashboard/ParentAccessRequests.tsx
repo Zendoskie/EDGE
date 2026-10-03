@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { studentDecideParentRegistration, studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
 import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
 
 type ParentRequestRow = {
@@ -18,6 +18,7 @@ type ParentRequestRow = {
   status: string;
   requested_at: string;
   decided_at: string | null;
+  source: 'registration' | 'link';
 };
 
 type HistoryRow = {
@@ -61,18 +62,39 @@ export default function ParentAccessRequests() {
         .order('requested_at', { ascending: false });
       if (error) throw error;
       const parentIds = Array.from(new Set((data ?? []).map((r: any) => r.parent_user_id).filter(Boolean)));
-      if (parentIds.length === 0) return [];
-      const { data: parentProfiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email')
-        .in('user_id', parentIds);
+      const { data: parentProfiles, error: profileError } = parentIds.length
+        ? await supabase.from('profiles').select('user_id, full_name, email').in('user_id', parentIds)
+        : { data: [], error: null };
       if (profileError) throw profileError;
       const parentMap = new Map((parentProfiles ?? []).map((p: any) => [p.user_id, p]));
-      return (data ?? []).map((row: any): ParentRequestRow => ({
+      const linkRows = (data ?? []).map((row: any): ParentRequestRow => ({
         ...row,
         parent_name: parentMap.get(row.parent_user_id)?.full_name ?? 'Unknown',
         parent_email: parentMap.get(row.parent_user_id)?.email ?? '',
+        source: 'link',
       }));
+
+      const { data: registrations, error: registrationError } = await (supabase as any)
+        .from('parent_registration_requests')
+        .select('id, full_name, email, student_id, status, submitted_at, student_decided_at')
+        .eq('student_user_id', user!.id)
+        .order('submitted_at', { ascending: false });
+      if (registrationError) throw registrationError;
+
+      const registrationRows = (registrations ?? []).map((row: any): ParentRequestRow => ({
+        id: row.id,
+        parent_name: row.full_name ?? 'Unknown',
+        parent_email: row.email ?? '',
+        student_id_no: row.student_id,
+        status: row.status,
+        requested_at: row.submitted_at,
+        decided_at: row.student_decided_at,
+        source: 'registration',
+      }));
+
+      return [...registrationRows, ...linkRows].sort(
+        (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
+      );
     },
   });
 
@@ -92,8 +114,10 @@ export default function ParentAccessRequests() {
   });
 
   const decideParentRequest = useMutation({
-    mutationFn: ({ linkId, decision }: { linkId: string; decision: ParentLinkDecision }) =>
-      studentDecideParentRequest(linkId, decision),
+    mutationFn: ({ linkId, decision, source }: { linkId: string; decision: ParentLinkDecision; source: 'registration' | 'link' }) =>
+      source === 'registration'
+        ? studentDecideParentRegistration(linkId, decision)
+        : studentDecideParentRequest(linkId, decision),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['student-parent-requests', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['student-parent-request-history', user?.id] });
@@ -136,7 +160,7 @@ export default function ParentAccessRequests() {
           <div>
             <h1 className="text-2xl font-display font-bold">Parent Access Requests</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Parents register using your Student ID/No. Review the parent&apos;s name and email before deciding. After you approve, an administrator must also approve before the parent can view your performance.
+              Parents request access with your Student ID. Review the parent&apos;s name and email before deciding. After you approve, an administrator must also approve. The parent then creates a password from an email before they can view your records.
             </p>
           </div>
         </div>
@@ -179,8 +203,8 @@ export default function ParentAccessRequests() {
                     <span className="block text-xs text-muted-foreground">Requested {formatDate(r.requested_at)}</span>
                     {r.status === 'pending' ? (
                       <div className="flex flex-col gap-2">
-                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                        <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending}>Approve</Button>
+                        <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject', source: r.source })} disabled={decideParentRequest.isPending}>Reject</Button>
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">Decided {formatDate(r.decided_at)}</span>
@@ -214,8 +238,8 @@ export default function ParentAccessRequests() {
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
                             <div className="flex justify-end gap-2 flex-wrap">
-                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending}>Approve</Button>
+                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject', source: r.source })} disabled={decideParentRequest.isPending}>Reject</Button>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">Decided {formatDate(r.decided_at)}</span>

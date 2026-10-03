@@ -32,6 +32,7 @@ describe('Login signup form', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /switch to sign up/i })[0]);
 
     expect(await screen.findByLabelText(/student no\./i)).toBeInTheDocument();
+    expect(document.getElementById('signup-password')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/parent gmail/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/parent gmail/i)).not.toBeInTheDocument();
   });
@@ -49,5 +50,6 @@ describe('Login signup form', () => {
     fireEvent.click(screen.getByRole('option', { name: /parent \/ guardian/i }));
 
     expect(await screen.findByLabelText(/^student id$/i)).toBeInTheDocument();
+    expect(document.getElementById('signup-password')).not.toBeInTheDocument();
   });
 });

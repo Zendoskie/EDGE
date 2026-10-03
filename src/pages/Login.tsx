@@ -37,7 +37,7 @@ const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
 ];
 
 export default function Login() {
-  const { signIn, signUp } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -47,13 +47,11 @@ export default function Login() {
   const [loginPassword, setLoginPassword] = useState('');
 
   const [signupEmail, setSignupEmail] = useState('');
-  const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
   const [signupRole, setSignupRole] = useState<'student' | 'parent'>('student');
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
-  const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
@@ -125,78 +123,57 @@ export default function Login() {
           return;
         }
 
-        // Prevent duplicate Student ID before creating auth user.
-        // Runs via a SECURITY DEFINER RPC because anon cannot SELECT profiles (RLS),
-        // and GoTrue hides the DB trigger's duplicate error behind a generic message.
-        const { error: studentIdCheckError } = await supabase.rpc('validate_student_signup', {
-          p_student_id_no: studentNo,
+        const { error: requestError } = await (supabase as any).rpc('submit_student_registration_request', {
+          p_full_name: signupName.trim(),
+          p_email: signupEmail.trim(),
+          p_student_id: studentNo,
+          p_course: signupCourse,
+          p_year_level: signupYear,
+          p_is_irregular: signupYear === 'Irregular',
         });
-        if (studentIdCheckError) {
-          const checkMsg = (studentIdCheckError.message || '').toLowerCase();
-          if (checkMsg.includes('student_id_in_use')) {
-            toast.error('This Student No. is already registered. Use a unique Student No.');
-            return;
+        if (requestError) {
+          const checkMsg = (requestError.message || '').toLowerCase();
+          if (checkMsg.includes('student_id_in_use') || checkMsg.includes('student_id_invalid')) {
+            toast.error(checkMsg.includes('student_id_invalid')
+              ? 'Student No. must match the format: 22-1-7-0008'
+              : 'This Student No. is already registered. Use a unique Student No.');
+          } else if (checkMsg.includes('email_already_registered') || checkMsg.includes('request_already_pending')) {
+            toast.error('This email already has a request or an account. Sign in after your account is activated, or use a different email.');
+          } else {
+            toast.error(requestError.message || 'Could not submit the student request.');
           }
-          // Unexpected error: let the signup attempt proceed; the DB trigger still enforces the check.
+          return;
         }
+
+        setTab('login');
+        setLoginEmail(signupEmail);
+        setLoginPassword('');
+        toast.success(
+          'Request submitted and pending approval. You cannot sign in yet. After an administrator approves it, check your email for a link to create your password.'
+        );
+        return;
       }
       if (signupRole === 'parent') {
         if (!signupGuardianStudentId.trim()) {
           toast.error("Please enter the student's Student ID.");
           return;
         }
-        if (signupPassword !== signupConfirmPassword) {
-          toast.error('Passwords do not match.');
-          return;
-        }
-        // The Student ID only locates the student and creates a request; it grants no access.
-        // GoTrue hides trigger errors behind a generic message, so surface them here first.
-        const { error: parentCheckError } = await supabase.rpc('validate_parent_signup', {
-          p_student_id_no: signupGuardianStudentId.trim(),
-          p_parent_email: signupEmail.trim(),
+        const { error: requestError } = await (supabase as any).rpc('submit_parent_registration_request', {
+          p_full_name: signupName.trim(),
+          p_email: signupEmail.trim(),
+          p_student_id: signupGuardianStudentId.trim(),
         });
-        if (parentCheckError) {
-          toast.error(parentLinkErrorMessage(parentCheckError.message));
+        if (requestError) {
+          toast.error(parentLinkErrorMessage(requestError.message));
           return;
         }
-      }
-
-      // Check if student is irregular based on year selection
-      const isIrregular = signupYear === 'Irregular';
-      
-      // For irregular students, set a default year level for database
-      const yearLevelForDb = isIrregular ? '1st Year' : signupYear;
-
-      const extras =
-        signupRole === 'student'
-          ? {
-              course: signupCourse || undefined,
-              yearLevel: yearLevelForDb || undefined,
-              studentNumber: signupStudentNumber.trim() || undefined,
-              isIrregular: isIrregular,
-            }
-          : signupRole === 'parent'
-            ? {
-                guardianStudentId: signupGuardianStudentId.trim() || undefined,
-              }
-          : undefined;
-
-      const result = await signUp(signupEmail, signupPassword, signupName, signupRole, extras);
-
-      setTab('login');
-      setLoginEmail(signupEmail);
-      setLoginPassword('');
-
-      if (result.user && signupRole === 'parent') {
+        setTab('login');
+        setLoginEmail(signupEmail);
+        setLoginPassword('');
         toast.success(
-          'Request submitted. The student must approve it first, then an administrator. You can sign in after both approvals.'
+          'Request submitted. The student must approve it before an administrator can. You cannot sign in yet. After both approvals, check your email for a link to create your password.'
         );
-      } else if (result.user) {
-        toast.success(
-          'Account submitted. An administrator must approve it before you can sign in. Confirm your email if your organization requires it.'
-        );
-      } else {
-        toast.success('If this email is available, check your inbox to finish signup.');
+        return;
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Signup failed');
@@ -249,7 +226,7 @@ export default function Login() {
       signup={
         <>
           <h2>Create your EDGE account</h2>
-          <p className="edge-auth-lead">Students and parents can request access. Staff use a separate request.</p>
+          <p className="edge-auth-lead">Students request access with their Student ID. Parents can request a linked account. Staff use a separate request.</p>
           <form onSubmit={handleSignup} className="edge-auth-fields">
                     <div className="space-y-2">
                       <Label htmlFor="signup-name">Full Name</Label>
@@ -258,18 +235,6 @@ export default function Login() {
                     <div className="space-y-2">
                       <Label htmlFor="signup-email">Email</Label>
                       <Input id="signup-email" type="email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} required placeholder="you@university.edu" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-password">Password</Label>
-                      <PasswordInput
-                        id="signup-password"
-                        autoComplete="new-password"
-                        value={signupPassword}
-                        onChange={e => setSignupPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        placeholder="••••••••"
-                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Role</Label>
@@ -342,41 +307,30 @@ export default function Login() {
                               pattern="^\d{2}-\d-\d-\d{4}$"
                               title="Use format: 22-1-7-0008"
                             />
+                            <p className="text-xs text-muted-foreground">
+                              Required on this request. You will create your password from the email sent after approval.
+                            </p>
                           </div>
                         </div>
                       </>
                     )}
                     {signupRole === 'parent' && (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-confirm-password">Confirm Password</Label>
-                          <PasswordInput
-                            id="signup-confirm-password"
-                            autoComplete="new-password"
-                            value={signupConfirmPassword}
-                            onChange={e => setSignupConfirmPassword(e.target.value)}
-                            required
-                            minLength={6}
-                            placeholder="••••••••"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="signup-guardian-student-id">Student ID</Label>
-                          <Input
-                            id="signup-guardian-student-id"
-                            value={signupGuardianStudentId}
-                            onChange={e => setSignupGuardianStudentId(e.target.value)}
-                            required
-                            placeholder="e.g. 22-1-7-0008"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Enter your child&apos;s Student ID. The student must approve your request first, then an administrator. You can sign in only after both approvals.
-                          </p>
-                        </div>
-                      </>
+                      <div className="space-y-2">
+                        <Label htmlFor="signup-guardian-student-id">Student ID</Label>
+                        <Input
+                          id="signup-guardian-student-id"
+                          value={signupGuardianStudentId}
+                          onChange={e => setSignupGuardianStudentId(e.target.value)}
+                          required
+                          placeholder="e.g. 22-1-7-0008"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Required on this request. It only asks to link that student. The student approves first, then an administrator. You create your password from the email sent after both approvals.
+                        </p>
+                      </div>
                     )}
                     <Button type="submit" className="w-full" disabled={loading}>
-                      {loading ? 'Creating account...' : 'Create Account'}
+                      {loading ? 'Submitting request...' : 'Submit request'}
                     </Button>
                   </form>
           <p className="edge-auth-switch">

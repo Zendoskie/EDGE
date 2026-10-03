@@ -125,6 +125,7 @@ export default function AdminStaffInvitations() {
           expires_at, created_at, accepted_at,
           staff_registration_requests ( full_name )
         `)
+        .in('role', ['instructor', 'guidance_counselor'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
