@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useOutlet } from "react-router-dom";
+import { Navigate, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar, navItemsForRole } from "@/components/AppSidebar";
@@ -22,7 +22,6 @@ import { useDurableInboxNotifications } from "@/hooks/useAccountApprovalNotifica
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 import { GraduationCap } from "lucide-react";
 import type { AppRole } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -66,9 +65,7 @@ function AnimatedDashboardOutlet() {
 function DashboardHeader() {
   const { state } = useSidebar();
   const isSidebarOpen = state === "expanded";
-  const { role, user } = useAuth();
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
+  const { user } = useAuth();
   const initials = (user?.email ?? "E").slice(0, 1).toUpperCase();
 
   return (
@@ -99,24 +96,6 @@ function DashboardHeader() {
           </>
         )}
       </div>
-      <form
-        className="hidden min-w-0 flex-1 md:block"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const needle = query.trim().toLowerCase();
-          if (!needle) return;
-          const match = navItemsForRole(role).find((item) => item.title.toLowerCase().includes(needle));
-          if (match) navigate(match.url);
-        }}
-      >
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search pages"
-          aria-label="Search pages"
-          className="h-9 bg-muted/50"
-        />
-      </form>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
         {/* Slot for the AI Coach trigger so it stays in the header (not covering content) */}
         <div id="ai-coach-header-slot" className="inline-flex shrink-0 items-center" />
