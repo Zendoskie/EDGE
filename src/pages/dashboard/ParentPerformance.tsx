@@ -711,12 +711,7 @@ export default function ParentPerformance() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <PageHeader
-        title="Student Performance"
-        description="Read-only view for your approved student"
-      />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
           label="Linked student"
           value={studentProfile?.full_name || 'Student'}
@@ -739,6 +734,12 @@ export default function ParentPerformance() {
         </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader
+          title="Student Performance"
+          description="Read-only view for your approved student"
+        />
+        <div className="lg:col-span-2">
       {!engagementSummary ? (
         <Card className="bg-card/90 border-border/70">
           <CardContent className="p-4">
@@ -785,6 +786,8 @@ export default function ParentPerformance() {
           </CardContent>
         </Card>
       )}
+        </div>
+      </div>
 
       <Tabs defaultValue="predictions" className="w-full min-w-0">
         <TabsList className="grid w-full grid-cols-3 h-auto sm:h-10">

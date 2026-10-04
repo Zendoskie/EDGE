@@ -218,15 +218,15 @@ export default function GuidanceReferrals() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <PageHeader title="Counselor Dashboard" description="Review and manage counseling referrals" />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <KpiCard label="Open referrals" value={pendingCount} accent />
         <KpiCard label="Approved" value={approvedCount} />
         <KpiCard label="Rejected" value={rejectedCount} />
       </div>
 
-      <Card className="bg-card/90 w-full min-w-0">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader title="Counselor Dashboard" description="Review and manage counseling referrals" />
+        <Card className="bg-card/90 w-full min-w-0 lg:col-span-2">
         <CardHeader className="pb-2 pt-4 px-4 space-y-3">
           <CardTitle className="text-base">Referrals</CardTitle>
           <Tabs value={filterTab} onValueChange={(v) => setFilterTab(v as typeof filterTab)}>
@@ -253,6 +253,7 @@ export default function GuidanceReferrals() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <Dialog open={!!reviewTarget} onOpenChange={(open) => !open && setReviewTarget(null)}>
         <DialogContent>

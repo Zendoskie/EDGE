@@ -8,7 +8,7 @@ export function MobileTabBar({ items }: { items: MobileTab[] }) {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-3 bottom-3 z-40 grid h-16 grid-flow-col rounded-[22px] border border-border bg-card/95 px-1 shadow-[0_16px_40px_-24px_hsl(234_60%_40%/0.45)] backdrop-blur md:hidden"
+      className="vision-panel fixed inset-x-3 bottom-3 z-40 grid h-16 grid-flow-col rounded-2xl px-1 md:hidden"
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
     >
       {tabs.map((item) => (

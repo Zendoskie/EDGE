@@ -78,12 +78,13 @@ export default function GuidanceEngagement() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Student Engagement"
-        description="Campus engagement view. Open a counseling referral from a student record when support is needed."
-      />
-
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader
+          title="Student Engagement"
+          description="Campus engagement view. Open a counseling referral from a student record when support is needed."
+        />
+        <div className="lg:col-span-2">
       {error ? (
         <p className="text-sm text-destructive">Could not load engagement data. {error.message}</p>
       ) : null}
@@ -143,6 +144,8 @@ export default function GuidanceEngagement() {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
 
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

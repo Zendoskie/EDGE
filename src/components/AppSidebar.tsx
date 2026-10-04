@@ -88,13 +88,12 @@ export function AppSidebar() {
 
   const items = navItemsForRole(role);
   const showText = !collapsed || isMobile;
-  const initial = (user?.email ?? 'E').slice(0, 1).toUpperCase();
 
   const signOutButton = (
     <Button
       variant="ghost"
       size={showText ? 'sm' : 'icon'}
-      className="h-9 w-full justify-start gap-3 rounded-[12px] px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+      className="mt-2 h-8 w-full justify-center gap-2 rounded-lg bg-white text-[#0b1437] hover:bg-white/90 hover:text-[#0b1437] group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-white group-data-[collapsible=icon]:px-0"
       onClick={signOut}
     >
       <LogOut className="h-4 w-4 shrink-0" />
@@ -117,30 +116,28 @@ export function AppSidebar() {
         closeTimer.current = window.setTimeout(() => setOpen(false), 140);
       }}
     >
-      <SidebarContent className="m-3 rounded-[22px] border border-sidebar-border bg-sidebar shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)] group-data-[collapsible=icon]:m-1.5 group-data-[collapsible=icon]:mb-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:!flex-none group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:rounded-b-none">
-        <SidebarGroup className="group-data-[collapsible=icon]:p-1">
-          <SidebarGroupLabel className="flex h-auto items-center gap-2.5 border-b border-sidebar-border px-3 py-3 group-data-[collapsible=icon]:!mt-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1 group-data-[collapsible=icon]:!opacity-100">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] bg-sidebar-primary">
-              <GraduationCap className="h-4 w-4 text-sidebar-primary-foreground" />
+      <SidebarContent className="bg-transparent px-3 pt-4 group-data-[collapsible=icon]:m-1.5 group-data-[collapsible=icon]:mb-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:!flex-none group-data-[collapsible=icon]:!overflow-visible group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:pt-2">
+        <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-1">
+          <SidebarGroupLabel className="mb-4 flex h-auto items-center gap-2.5 px-2 py-1 group-data-[collapsible=icon]:!mt-0 group-data-[collapsible=icon]:!h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1 group-data-[collapsible=icon]:!opacity-100">
+            <div className="vision-mark flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl">
+              <GraduationCap className="h-4 w-4 text-white" />
             </div>
             {showText && (
-              <span className="text-sidebar-foreground font-display font-bold text-lg leading-none">EDGE</span>
+              <span className="text-[13px] font-bold tracking-[0.14em] text-sidebar-foreground">EDGE</span>
             )}
           </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2 py-2 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
-            <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:items-center">
+          <SidebarGroupContent className="group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
+            <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
               {items.map((item) => (
                 <SidebarMenuItem key={item.title} className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-                  <SidebarMenuButton asChild tooltip={item.title} className="h-9 group-data-[collapsible=icon]:!size-8">
+                  <SidebarMenuButton asChild tooltip={item.title} className="h-10 group-data-[collapsible=icon]:!size-8">
                     <NavLink
                       to={item.url}
                       end={item.url === '/dashboard' || item.url.startsWith('/dashboard/admin/')}
-                      className="group/nav flex items-center gap-2.5 rounded-[12px] px-2 py-1.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
-                      activeClassName="is-active bg-sidebar-accent font-semibold text-sidebar-primary"
+                      className="group/nav flex items-center gap-3 rounded-[12px] px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
+                      activeClassName="is-active vision-nav-active font-semibold text-sidebar-accent-foreground"
                     >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-muted/80 text-sidebar-foreground group-[.is-active]/nav:bg-sidebar-primary group-[.is-active]/nav:text-sidebar-primary-foreground group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:w-4 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:group-[.is-active]/nav:bg-transparent group-data-[collapsible=icon]:group-[.is-active]/nav:text-sidebar-primary">
-                        <item.icon className="h-4 w-4 shrink-0" />
-                      </span>
+                      <item.icon className="vision-nav-icon h-4 w-4 shrink-0" />
                       {showText && <span className="truncate text-sm font-medium">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
@@ -150,16 +147,11 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="mx-3 mb-3 gap-2 rounded-b-[22px] border border-t-0 border-sidebar-border bg-sidebar px-3 py-3 group-data-[collapsible=icon]:mx-1.5 group-data-[collapsible=icon]:mb-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:rounded-b-[18px] group-data-[collapsible=icon]:rounded-t-none group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:py-1.5">
+      <SidebarFooter className="vision-account mx-3 mb-4 gap-2 rounded-2xl border border-white/10 px-3 py-3 group-data-[collapsible=icon]:mx-1.5 group-data-[collapsible=icon]:mb-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:py-1.5">
         {showText && (
-          <div className="flex min-w-0 items-center gap-2.5 px-1">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-primary">
-              {initial}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-sidebar-foreground">{user?.email}</p>
-              <p className="text-[11px] text-muted-foreground">{roleLabel(role)}</p>
-            </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-sidebar-foreground">{roleLabel(role)}</p>
+            <p className="truncate text-xs text-sidebar-foreground/70">{user?.email}</p>
           </div>
         )}
         {showText ? signOutButton : (

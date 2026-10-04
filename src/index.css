@@ -784,3 +784,273 @@ body:has(.edge-auth) {
     }
   }
 }
+
+/* Vision UI dashboard skin. Scoped to the dashboard route so login and landing stay unchanged. */
+html.vision-dashboard {
+  font-size: 17.5px;
+}
+
+html.vision-dashboard.dark {
+  color-scheme: dark;
+  --background: 232 64% 7%;
+  --foreground: 210 40% 98%;
+  --card: 230 46% 12%;
+  --card-foreground: 210 40% 98%;
+  --popover: 230 48% 9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 211 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 230 30% 18%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 230 26% 18%;
+  --muted-foreground: 220 16% 74%;
+  --accent: 211 55% 22%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 345 72% 58%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 22% 30%;
+  --input: 230 24% 22%;
+  --ring: 190 98% 56%;
+  --sidebar-background: 232 55% 8%;
+  --sidebar-foreground: 210 30% 94%;
+  --sidebar-primary: 211 100% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 211 70% 20%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 220 22% 26%;
+  --sidebar-ring: 190 98% 56%;
+  --success: 162 55% 45%;
+  --success-foreground: 150 40% 96%;
+  --warning: 36 90% 55%;
+  --warning-foreground: 40 80% 96%;
+  --risk: 345 72% 58%;
+  --risk-foreground: 0 0% 100%;
+  --chart-1: 211 100% 56%;
+  --chart-2: 190 98% 56%;
+  --chart-3: 262 70% 70%;
+  --chart-4: 36 90% 60%;
+  --chart-5: 345 80% 66%;
+}
+
+html.vision-dashboard.dark [data-sidebar="sidebar"]:not([data-mobile="true"]) {
+  background-color: #060b26;
+  background-image: linear-gradient(180deg, rgba(6, 11, 40, 0.98), rgba(8, 12, 36, 0.94));
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+html.vision-dashboard.dark,
+html.vision-dashboard.dark body,
+html.vision-dashboard.dark .peoplo-canvas {
+  background-color: #060b28;
+  background-image:
+    radial-gradient(1100px 520px at 0% -10%, rgba(0, 117, 255, 0.28), transparent 55%),
+    radial-gradient(900px 480px at 100% 0%, rgba(128, 90, 213, 0.2), transparent 50%),
+    radial-gradient(800px 420px at 80% 100%, rgba(33, 212, 253, 0.12), transparent 46%);
+  color: #f7f9ff;
+}
+
+html.vision-dashboard .content-grid {
+  max-width: none;
+}
+
+html.vision-dashboard.dark .vision-panel,
+html.vision-dashboard.dark .vision-stat,
+html.vision-dashboard.dark .page-section,
+html.vision-dashboard.dark .rounded-\[22px\].bg-card {
+  background-color: rgba(6, 11, 40, 0.74);
+  background-image: linear-gradient(127.09deg, rgba(6, 11, 40, 0.94) 19.41%, rgba(10, 14, 35, 0.55) 76.65%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 27px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(21px);
+}
+
+html.vision-dashboard .vision-stat {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 1.35rem 1.4rem;
+}
+
+html.vision-dashboard .vision-hero {
+  position: relative;
+  align-self: start;
+  height: auto;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1.75rem 1.85rem;
+  background:
+    radial-gradient(circle at 78% 42%, rgba(33, 212, 253, 0.28), transparent 36%),
+    linear-gradient(127deg, #0b4db8 0%, #06245c 42%, #071433 100%);
+  box-shadow: 0 18px 40px rgba(0, 20, 60, 0.35);
+}
+
+html.vision-dashboard.dark .vision-account {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(0, 117, 255, 0.45), transparent 55%),
+    linear-gradient(180deg, rgba(15, 21, 53, 0.4), rgba(6, 11, 40, 0.2));
+}
+
+html.vision-dashboard .vision-mark,
+html.vision-dashboard .vision-stat-icon {
+  background: #0075ff;
+  color: #fff;
+  box-shadow: none;
+}
+
+html.vision-dashboard .vision-stat-icon {
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+html.vision-dashboard .vision-stat-icon.is-accent {
+  background: #0075ff;
+}
+
+html.vision-dashboard.dark .vision-nav-active {
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: none;
+  color: #fff;
+  box-shadow: none;
+}
+
+html.vision-dashboard.dark .vision-nav-active .vision-nav-icon {
+  color: #4da3ff;
+}
+
+html.vision-dashboard .page-section-header {
+  background-color: transparent;
+  background-image: none;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html.vision-dashboard.dark .recharts-cartesian-axis-tick text,
+html.vision-dashboard.dark .recharts-legend-item-text {
+  fill: rgba(247, 249, 255, 0.75);
+  color: rgba(247, 249, 255, 0.75);
+}
+
+html.vision-dashboard.dark main :where(input, textarea, [role="combobox"]) {
+  background-color: rgba(15, 21, 53, 0.72);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f7f9ff;
+}
+
+html.vision-dashboard main .bg-white :where(input, textarea) {
+  background-color: #fff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* Light dashboard. Text is dark on white so labels, numbers, and nav stay readable. */
+html.vision-dashboard.light {
+  color-scheme: light;
+  --background: 214 40% 96%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 213 94% 38%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 32% 93%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 214 32% 93%;
+  --muted-foreground: 215 19% 32%;
+  --accent: 214 40% 92%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 345 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 22% 80%;
+  --input: 214 22% 80%;
+  --ring: 213 94% 38%;
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 222 47% 14%;
+  --sidebar-primary: 213 94% 38%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 213 90% 94%;
+  --sidebar-accent-foreground: 213 80% 24%;
+  --sidebar-border: 214 22% 86%;
+  --sidebar-ring: 213 94% 38%;
+  --success: 162 72% 26%;
+  --success-foreground: 0 0% 100%;
+  --warning: 32 80% 32%;
+  --warning-foreground: 0 0% 100%;
+  --risk: 345 72% 42%;
+  --risk-foreground: 0 0% 100%;
+}
+
+html.vision-dashboard.light,
+html.vision-dashboard.light body,
+html.vision-dashboard.light .peoplo-canvas {
+  background-color: #eef3f9;
+  background-image: radial-gradient(900px 420px at 0% -10%, rgba(0, 117, 255, 0.08), transparent 55%);
+  color: #0f172a;
+}
+
+html.vision-dashboard.light [data-sidebar="sidebar"]:not([data-mobile="true"]) {
+  background-color: #ffffff;
+  background-image: none;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+html.vision-dashboard.light .vision-panel,
+html.vision-dashboard.light .vision-stat,
+html.vision-dashboard.light .page-section,
+html.vision-dashboard.light .rounded-\[22px\].bg-card {
+  background-color: #ffffff;
+  background-image: none;
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+html.vision-dashboard.light .vision-stat {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+html.vision-dashboard.light .vision-account {
+  background: #f4f8ff;
+  border-color: rgba(0, 117, 255, 0.22);
+  color: #0f172a;
+}
+
+html.vision-dashboard.light .vision-account button {
+  border: 1px solid #0f172a;
+  color: #0f172a;
+}
+
+html.vision-dashboard.light .vision-nav-active {
+  background-color: rgba(0, 117, 255, 0.12);
+  background-image: none;
+  color: #0b3a75;
+  box-shadow: none;
+}
+
+html.vision-dashboard.light .vision-nav-active .vision-nav-icon {
+  color: #0075ff;
+}
+
+html.vision-dashboard.light .page-section-header {
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+html.vision-dashboard.light .recharts-cartesian-axis-tick text,
+html.vision-dashboard.light .recharts-legend-item-text {
+  fill: #334155;
+  color: #334155;
+}
+
+html.vision-dashboard.light main :where(input, textarea, [role="combobox"]) {
+  background-color: #ffffff;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+html.vision-dashboard.light main :where(input, textarea)::placeholder {
+  color: #475569;
+}

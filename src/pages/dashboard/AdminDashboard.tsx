@@ -541,20 +541,9 @@ export default function AdminDashboard() {
   ], [stats]);
 
   return (
-    <div className="space-y-4 p-3 md:p-5 min-w-0">
+    <div className="space-y-4 min-w-0">
 
-      <PageHeader
-        title="Admin Dashboard"
-        description={`System overview — updated ${lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`}
-        actions={
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        }
-      />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {statCards.slice(0, 4).map((card, index) => (
           <Link key={card.label} to={card.href}>
             <KpiCard label={card.label} value={loading ? '—' : card.value} icon={card.icon} accent={index === 0} />
@@ -567,6 +556,35 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader
+          className="lg:col-span-2"
+          title="Admin Dashboard"
+          description={`System overview — updated ${lastRefreshed.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`}
+          actions={
+            <Button variant="outline" size="sm" className="border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white" onClick={load} disabled={loading}>
+              <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          }
+        />
+        <Card className="bg-card/90">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Quick actions</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-2">
+            {QUICK_ACTIONS.map(action => (
+              <Link key={action.label} to={action.href}>
+                <div className={`rounded-xl border px-2 py-3 text-center ${action.border} ${action.bg}`}>
+                  <action.icon className={`mx-auto mb-1 h-4 w-4 ${action.color}`} />
+                  <p className="text-xs font-medium">{action.label}</p>
+                </div>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-3 h-auto sm:h-10 max-w-lg">
           <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
@@ -575,26 +593,6 @@ export default function AdminDashboard() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 space-y-4">
-      <div>
-        <h2 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Quick Actions
-        </h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {QUICK_ACTIONS.map(action => (
-            <Link key={action.label} to={action.href}>
-              <Card className={`group cursor-pointer border transition-colors ${action.border} ${action.bg}`}>
-                <CardContent className="flex flex-col items-center gap-1.5 p-3 text-center">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-background/50">
-                    <action.icon className={`h-4 w-4 ${action.color}`} />
-                  </div>
-                  <p className="text-xs sm:text-sm font-medium">{action.label}</p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card className="border-border/50">
           <CardHeader className="pb-2">

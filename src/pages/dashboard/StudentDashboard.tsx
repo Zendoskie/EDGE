@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookOpen, CalendarCheck, BarChart3, Brain, Sparkles, Bell, ChevronDown } from 'lucide-react';
+import { BookOpen, CalendarCheck, BarChart3, Brain, Bell, ChevronDown } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RiskBadge } from '@/components/RiskBadge';
@@ -439,29 +439,7 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <PageHeader
-        title="Student Dashboard"
-        description="Academic overview, grades, and engagement"
-        actions={
-          (programCode || yearSectionLabel) ? (
-            <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
-              {programCode && !studentProgram?.is_irregular && (
-                <Badge variant="outline" className="font-normal">
-                  {programCode}
-                  {studentProgram?.programs?.name ? ` · ${studentProgram.programs.name}` : ''}
-                </Badge>
-              )}
-              {yearSectionLabel && (
-                <Badge variant="secondary" className="font-normal">
-                  {yearSectionLabel}
-                </Badge>
-              )}
-            </div>
-          ) : null
-        }
-      />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {statsLoading
           ? Array.from({ length: 4 }).map((_, index) => (
               <Card key={`stats-skeleton-${index}`}>
@@ -482,55 +460,63 @@ export default function StudentDashboard() {
             ))}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Card className="bg-card/90 border-border/70 lg:col-span-2">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Brain className="h-4 w-4" />
-              Risk overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            {statsLoading ? (
-              <Skeleton className="h-8 w-40" />
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  {stats?.riskLevel ? (
-                    <RiskBadge level={stats.riskLevel} score={stats.riskScore} />
-                  ) : (
-                    <span className="text-sm text-muted-foreground">No risk classification yet</span>
-                  )}
-                  {stats?.riskSource === 'prediction' ? (
-                    <Badge variant="outline" className="text-xs">Risk Analysis</Badge>
-                  ) : stats?.riskSource === 'derived' && stats?.enrolledSubjects ? (
-                    <Badge variant="outline" className="text-xs">Pending analysis</Badge>
-                  ) : null}
-                </div>
-                {stats?.subjectLabel ? (
-                  <p className="text-sm text-muted-foreground">
-                    Latest subject: <span className="font-medium text-foreground">{stats.subjectLabel}</span>
-                  </p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader
+          className="lg:col-span-2"
+          title="Student Dashboard"
+          description="Academic overview, grades, and engagement"
+          actions={
+            (programCode || yearSectionLabel) ? (
+              <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+                {programCode && !studentProgram?.is_irregular && (
+                  <Badge variant="outline" className="border-white/30 font-normal text-white">
+                    {programCode}
+                    {studentProgram?.programs?.name ? ` · ${studentProgram.programs.name}` : ''}
+                  </Badge>
+                )}
+                {yearSectionLabel && (
+                  <Badge variant="secondary" className="font-normal">
+                    {yearSectionLabel}
+                  </Badge>
+                )}
+              </div>
+            ) : null
+          }
+        >
+          {statsLoading ? (
+            <Skeleton className="h-8 w-40 bg-white/20" />
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Brain className="h-4 w-4 text-white/80" />
+                {stats?.riskLevel ? (
+                  <RiskBadge level={stats.riskLevel} score={stats.riskScore} />
+                ) : (
+                  <span className="text-sm text-white/75">No risk classification yet</span>
+                )}
+                {stats?.riskSource === 'prediction' ? (
+                  <Badge variant="outline" className="border-white/30 text-xs text-white">Risk Analysis</Badge>
+                ) : stats?.riskSource === 'derived' && stats?.enrolledSubjects ? (
+                  <Badge variant="outline" className="border-white/30 text-xs text-white">Pending analysis</Badge>
                 ) : null}
-                {stats?.recommendation ? (
-                  <p className="text-sm text-muted-foreground line-clamp-3">{stats.recommendation}</p>
-                ) : null}
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </div>
+              {stats?.subjectLabel ? (
+                <p className="text-sm text-white/75">
+                  Latest subject: <span className="font-medium text-white">{stats.subjectLabel}</span>
+                </p>
+              ) : null}
+              {stats?.recommendation ? (
+                <p className="line-clamp-3 text-sm text-white/75">{stats.recommendation}</p>
+              ) : null}
+            </div>
+          )}
+        </PageHeader>
 
         <Card className="bg-card/90 border-border/70">
           <CardHeader className="pb-2 pt-4 px-4">
             <CardTitle className="text-base">Quick links</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 flex flex-col gap-2">
-            <Button variant="outline" size="sm" className="justify-start" asChild>
-              <Link to="/dashboard/learning-assistant">
-                <Sparkles className="h-4 w-4 mr-2" />
-                AI Coaching
-              </Link>
-            </Button>
             <Button variant="outline" size="sm" className="justify-start" asChild>
               <Link to="/dashboard/my-scores">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -616,7 +602,7 @@ export default function StudentDashboard() {
                 ) : recentActivity.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No graded activity yet.</p>
                 ) : (
-                  <ul className="space-y-1.5 text-sm max-h-[280px] overflow-y-auto pr-1">
+                  <ul className="space-y-2 text-base max-h-[420px] overflow-y-auto pr-1">
                     {recentActivity.map((s) => {
                       const act = s.activities;
                       const subj = act?.subjects;

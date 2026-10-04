@@ -149,7 +149,7 @@ export default function Settings() {
             <SettingsIcon className="h-5 w-5" />
             Appearance
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Choose light or dark. New visitors start in light mode.</p>
+          <p className="text-muted-foreground text-sm">Saved in this browser. The app opens in dark mode until you choose light.</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 max-w-md">

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Navigate, useOutlet } from "react-router-dom";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Link, Navigate, useLocation, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar, navItemsForRole } from "@/components/AppSidebar";
@@ -22,7 +22,7 @@ import { useDurableInboxNotifications } from "@/hooks/useAccountApprovalNotifica
 import { NotificationInboxProvider } from "@/contexts/NotificationInboxContext";
 import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger";
 import { Skeleton } from "@/components/ui/skeleton";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Settings } from "lucide-react";
 import type { AppRole } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,42 +65,44 @@ function AnimatedDashboardOutlet() {
 function DashboardHeader() {
   const { state } = useSidebar();
   const isSidebarOpen = state === "expanded";
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const { pathname } = useLocation();
   const initials = (user?.email ?? "E").slice(0, 1).toUpperCase();
+  const items = navItemsForRole(role);
+  const current =
+    items.find((item) => item.url === pathname) ??
+    [...items].reverse().find((item) => item.url !== "/dashboard" && pathname.startsWith(item.url));
+  const title = current?.title ?? "Dashboard";
 
   return (
-    <header className="sticky top-0 z-30 mx-3 mt-3 flex h-[60px] items-center gap-2 overflow-hidden rounded-[22px] border border-border bg-card px-3 shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.45)] sm:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
+    <header className="mb-4 flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="flex shrink-0 md:hidden">
           <SidebarTrigger aria-label="Open navigation" />
         </div>
         {!isSidebarOpen && (
-          <>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] bg-primary">
-              <GraduationCap className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div className="min-w-0 flex-1 pr-1">
-              <h2
-                aria-label="EDGE – Student Risk Analysis and AI Coaching System"
-                className="truncate font-display text-base font-semibold leading-tight text-foreground sm:text-lg"
-                title="EDGE – Student Risk Analysis and AI Coaching System"
-              >
-                <span className="md:hidden" aria-hidden="true">
-                  EDGE
-                </span>
-                <span className="hidden md:inline" aria-hidden="true">
-                  EDGE – Student Risk Analysis and AI Coaching System
-                </span>
-              </h2>
-            </div>
-          </>
+          <div className="vision-mark hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl md:flex">
+            <GraduationCap className="h-4 w-4 text-white" />
+          </div>
         )}
+        <div className="min-w-0">
+          <p className="truncate text-sm text-muted-foreground">
+            Pages <span className="px-1 text-muted-foreground/60">/</span> <span className="text-foreground/80">{title}</span>
+          </p>
+          <h2 className="truncate text-lg font-semibold leading-tight text-foreground">{title}</h2>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-        {/* Slot for the AI Coach trigger so it stays in the header (not covering content) */}
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <div id="ai-coach-header-slot" className="inline-flex shrink-0 items-center" />
+        <Link
+          to="/dashboard/settings"
+          aria-label="Settings"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-foreground/80 hover:bg-accent hover:text-foreground"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
         <NotificationInboxTrigger />
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-primary" aria-hidden>
+        <span className="vision-mark flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-white" aria-hidden>
           {initials}
         </span>
       </div>
@@ -212,21 +214,21 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
       >
       <div className="peoplo-canvas flex h-full min-h-0 w-full flex-1 overflow-hidden">
         <AppSidebar />
-        <div className="flex-1 min-h-0 flex flex-col">
-          <DashboardHeader />
-          {shouldShowHeaderAiCoach(role) ? (
-            <AICoachPopup
-              riskLevel={coachContext?.riskLevel ?? null}
-              subjectLabel={coachContext?.subjectLabel ?? null}
-              atRiskSubjects={coachContext?.atRiskSubjects ?? []}
-              metrics={coachContext?.metrics ?? null}
-              coachingSubjects={coachContext?.coachingSubjects ?? []}
-              storageKey={`edge_ai_coach_dismissed_dashboard_header_v1:${userId}`}
-              variant="compact"
-            />
-          ) : null}
-          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 md:p-5 md:pb-5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-24 pt-4 sm:px-5 md:px-6 md:pb-6">
             <div className="content-grid">
+              <DashboardHeader />
+              {shouldShowHeaderAiCoach(role) ? (
+                <AICoachPopup
+                  riskLevel={coachContext?.riskLevel ?? null}
+                  subjectLabel={coachContext?.subjectLabel ?? null}
+                  atRiskSubjects={coachContext?.atRiskSubjects ?? []}
+                  metrics={coachContext?.metrics ?? null}
+                  coachingSubjects={coachContext?.coachingSubjects ?? []}
+                  storageKey={`edge_ai_coach_dismissed_dashboard_header_v1:${userId}`}
+                  variant="compact"
+                />
+              ) : null}
               <AnimatedDashboardOutlet />
             </div>
           </main>
@@ -240,6 +242,11 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
 
 export default function DashboardLayout() {
   const { user, loading, role } = useAuth();
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.add("vision-dashboard");
+    return () => document.documentElement.classList.remove("vision-dashboard");
+  }, []);
 
   if (loading) {
     return (

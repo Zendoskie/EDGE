@@ -12,33 +12,19 @@ type KpiCardProps = {
 
 export function KpiCard({ label, value, hint, icon: Icon, accent, className }: KpiCardProps) {
   return (
-    <article
-      className={cn(
-        "relative overflow-hidden rounded-[22px] border border-border bg-card px-5 py-4",
-        "shadow-[0_16px_40px_-28px_hsl(234_60%_40%/0.55)]",
-        accent && "bg-primary text-primary-foreground border-transparent",
-        className,
-      )}
-    >
+    <article className={cn("vision-stat", className)}>
       <div className="flex items-center justify-between gap-3">
-        <p className={cn("text-[13px] font-medium", accent ? "text-primary-foreground/80" : "text-muted-foreground")}>
-          {label}
-        </p>
+        <div className="min-w-0">
+          <p className="text-[15px] font-medium text-muted-foreground">{label}</p>
+          <p className="mt-2 truncate text-[30px] font-bold leading-none tracking-tight text-card-foreground">{value}</p>
+          {hint ? <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">{hint}</p> : null}
+        </div>
         {Icon ? (
-          <span
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-xl",
-              accent ? "bg-white/15 text-primary-foreground" : "bg-secondary text-primary",
-            )}
-          >
-            <Icon className="h-4 w-4" aria-hidden />
+          <span className={cn("vision-stat-icon", accent && "is-accent")} aria-hidden>
+            <Icon className="h-4 w-4" />
           </span>
         ) : null}
       </div>
-      <p className="mt-3 text-[30px] font-semibold leading-none tracking-tight">{value}</p>
-      {hint ? (
-        <p className={cn("mt-2 text-xs", accent ? "text-primary-foreground/75" : "text-muted-foreground")}>{hint}</p>
-      ) : null}
     </article>
   );
 }

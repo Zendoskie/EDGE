@@ -720,15 +720,14 @@ export default function InstructorDashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in min-w-0">
-      <PageHeader title="Instructor Dashboard" description="Courses, students, and risk monitoring" />
-
-      <div className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5">
         {statCards.map((stat, index) => (
           <KpiCard key={stat.title} label={stat.title} value={stat.value} icon={stat.icon} accent={index === 0} />
         ))}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <PageHeader title="Instructor Dashboard" description="Courses, students, and risk monitoring" />
         <div className="lg:col-span-2">
           <CounselingReferralsCard
             referrals={counselingReferrals}
