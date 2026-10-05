@@ -1945,6 +1945,13 @@ export type Database = {
           has_pending_request: boolean
         }[]
       }
+      referral_reviewer_names: {
+        Args: { p_ids: string[] }
+        Returns: {
+          referral_id: string
+          reviewer_name: string
+        }[]
+      }
       complete_staff_invitation: {
         Args: { p_token: string; p_user_id: string }
         Returns: undefined

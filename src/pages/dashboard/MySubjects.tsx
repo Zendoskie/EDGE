@@ -25,6 +25,43 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 
+async function submitEnrollmentRequest(studentId: string, subjectId: string) {
+  const { data: existing, error: lookupError } = await supabase
+    .from('enrollments')
+    .select('id, status')
+    .eq('student_id', studentId)
+    .eq('subject_id', subjectId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+
+  if (existing && (existing.status === 'active' || existing.status === 'pending' || !existing.status)) {
+    throw new Error('You already have an enrollment or pending request for this course.');
+  }
+
+  if (existing?.status === 'rejected') {
+    const { error } = await supabase
+      .from('enrollments')
+      .update({ status: 'pending' })
+      .eq('id', existing.id)
+      .eq('student_id', studentId)
+      .eq('status', 'rejected');
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from('enrollments').insert({
+    student_id: studentId,
+    subject_id: subjectId,
+    status: 'pending',
+  });
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('You already have an enrollment or pending request for this course.');
+    }
+    throw error;
+  }
+}
+
 export default function MySubjects() {
   const { user, role } = useAuth();
   const navigate = useNavigate();
@@ -171,16 +208,7 @@ export default function MySubjects() {
         }
       }
 
-      // If all checks pass, create a pending enrollment request
-      const { error: insertError } = await supabase.from('enrollments').insert({
-        student_id: user!.id,
-        subject_id: subject.id,
-        status: 'pending',
-      });
-      if (insertError) {
-        if (insertError.code === '23505') throw new Error('You already have an enrollment or pending request for this course.');
-        throw insertError;
-      }
+      await submitEnrollmentRequest(user!.id, subject.id);
       return subject;
     },
     onSuccess: (subject) => {
@@ -262,16 +290,7 @@ export default function MySubjects() {
         }
       }
 
-      // If all checks pass, create a pending enrollment request
-      const { error } = await supabase.from('enrollments').insert({
-        student_id: user!.id,
-        subject_id: subjectId,
-        status: 'pending',
-      });
-      if (error) {
-        if (error.code === '23505') throw new Error('You already have an enrollment or pending request for this course.');
-        throw error;
-      }
+      await submitEnrollmentRequest(user!.id, subjectId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
@@ -284,6 +303,7 @@ export default function MySubjects() {
 
   const enrolledSubjectIds = new Set(
     enrollmentsWithSubjects
+      .filter((row: any) => row.status !== 'rejected')
       .map((row: any) => row.subject_id)
       .filter(Boolean),
   );

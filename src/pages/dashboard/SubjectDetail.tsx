@@ -330,6 +330,24 @@ function SubjectStudents({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const rejectRequest = useMutation({
+    mutationFn: async (vars: { enrollmentId: string; studentId: string }) => {
+      const { error } = await supabase
+        .from('enrollments')
+        .update({ status: 'rejected' })
+        .eq('id', vars.enrollmentId)
+        .eq('status', 'pending');
+      if (error) throw error;
+      return vars.studentId;
+    },
+    onSuccess: (studentId) => {
+      queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+      invalidateStudentLinkedCaches(queryClient, studentId);
+      toast.success('Enrollment request rejected');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const activeEnrollments = enrollments.filter((e: EnrollmentListRow) => e.status === 'active');
   const pendingEnrollments = enrollments.filter((e: EnrollmentListRow) => e.status === 'pending');
   const enrolledIds = activeEnrollments.map((e: EnrollmentListRow) => e.student_id);
@@ -436,7 +454,7 @@ function SubjectStudents({
                           size="sm"
                           variant="outline"
                           onClick={() =>
-                            unenroll.mutate({ enrollmentId: e.id, studentId: e.student_id })
+                            rejectRequest.mutate({ enrollmentId: e.id, studentId: e.student_id })
                           }
                         >
                           Reject
@@ -469,7 +487,7 @@ function SubjectAttendance({
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
-    queryKey: ['enrollments', subjectId],
+    queryKey: ['enrollments', subjectId, 'active'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enrollments')
@@ -540,9 +558,17 @@ function SubjectAttendance({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const activeEnrollments = enrollments.filter(
+    (row: EnrollmentListRow) => row.status === 'active' && !!row.student_id,
+  );
+  const activeStudentIds = new Set(activeEnrollments.map((row) => row.student_id));
+  const visibleHistory = attendanceHistory.filter((record: { student_id?: string | null }) =>
+    record.student_id ? activeStudentIds.has(record.student_id) : false,
+  );
+
   const getStatus = (studentId: string) => attendanceRecords.find(a => a.student_id === studentId)?.status || '';
   const profileByStudentId = new Map(
-    enrollments
+    activeEnrollments
       .map((e: EnrollmentListRow) => [e.student_id, e.profile] as const)
       .filter(([studentId]) => !!studentId),
   );
@@ -573,7 +599,7 @@ function SubjectAttendance({
           </TabsList>
 
           <TabsContent value="record" className="mt-4">
-            {enrollments.length === 0 ? (
+            {activeEnrollments.length === 0 ? (
               <p className="p-4 text-muted-foreground text-sm">Enroll students first to record attendance.</p>
             ) : (
               <div className="rounded-lg border overflow-x-auto">
@@ -586,7 +612,7 @@ function SubjectAttendance({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {enrollments.map((e: EnrollmentListRow) => {
+                    {activeEnrollments.map((e: EnrollmentListRow) => {
                       const profile = e.profile;
                       const programLabel = programCode
                         ? `${programCode}${programName ? ` — ${programName}` : ''}`
@@ -622,7 +648,7 @@ function SubjectAttendance({
           <TabsContent value="history" className="mt-4">
             {historyLoading ? (
               <p className="p-4 text-muted-foreground text-sm">Loading history...</p>
-            ) : attendanceHistory.length === 0 ? (
+            ) : visibleHistory.length === 0 ? (
               <p className="p-4 text-muted-foreground text-sm">No attendance history yet.</p>
             ) : (
               <div className="rounded-lg border overflow-x-auto">
@@ -636,7 +662,7 @@ function SubjectAttendance({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {attendanceHistory.map((record: any) => {
+                    {visibleHistory.map((record: any) => {
                       const profile = profileByStudentId.get(record.student_id);
                       const programLabel = programCode
                         ? `${programCode}${programName ? ` — ${programName}` : ''}`

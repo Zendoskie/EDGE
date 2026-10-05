@@ -15,12 +15,15 @@ vi.mock('@/integrations/supabase/client', () => ({
       if (table === 'enrollments') {
         return {
           select: () => ({
-            eq: async () => ({
-              data: [
-                { id: 'e1', student_id: 's1', subject_id: 'sub-1', status: 'active' },
-                { id: 'e2', student_id: 's2', subject_id: 'sub-1', status: 'active' },
-              ],
-              error: null,
+            eq: () => ({
+              eq: async () => ({
+                data: [
+                  { id: 'e1', student_id: 's1', subject_id: 'sub-1', status: 'active' },
+                  { id: 'e2', student_id: 's2', subject_id: 'sub-1', status: 'active' },
+                  { id: 'e3', student_id: 's3', subject_id: 'sub-1', status: 'pending' },
+                ],
+                error: null,
+              }),
             }),
           }),
         };
@@ -32,6 +35,7 @@ vi.mock('@/integrations/supabase/client', () => ({
               data: [
                 { user_id: 's1', full_name: 'Ana Cruz', student_id: '23-1' },
                 { user_id: 's2', full_name: 'Ben Diaz', student_id: '23-2' },
+                { user_id: 's3', full_name: 'Pending Student', student_id: '23-3' },
               ],
               error: null,
             }),
@@ -88,6 +92,7 @@ describe('GradebookTable', () => {
     expect(screen.getByText('Quiz 1')).toBeTruthy();
     expect(screen.getByText('Ana Cruz')).toBeTruthy();
     expect(screen.getByText('Ben Diaz')).toBeTruthy();
+    expect(screen.queryByText('Pending Student')).toBeNull();
     expect(screen.getByDisplayValue('40')).toBeTruthy();
     expect(screen.getAllByPlaceholderText('Missing').length).toBeGreaterThan(0);
   });

@@ -39,7 +39,13 @@ export type CounselingReferralRow = {
     email: string | null;
     student_id: string | null;
   } | null;
+  reviewed_by?: string | null;
   instructor?: {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+  } | null;
+  counselor?: {
     user_id: string;
     full_name: string | null;
     email: string | null;
@@ -56,6 +62,22 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
   const instructorIds = Array.from(new Set(rows.map((r) => r.instructor_id).filter(Boolean))) as string[];
   const subjectIds = Array.from(new Set(rows.map((r) => r.subject_id).filter(Boolean))) as string[];
   const predictionIds = Array.from(new Set(rows.map((r) => r.prediction_id).filter(Boolean))) as string[];
+
+  const reviewerNameByReferral = new Map<string, string>();
+  const referralIds = rows.map((row) => row.id).filter(Boolean) as string[];
+  if (referralIds.length > 0) {
+    const { data: reviewerRows, error: reviewerError } = await supabase.rpc(
+      "referral_reviewer_names",
+      { p_ids: referralIds },
+    );
+    if (!reviewerError) {
+      for (const row of reviewerRows ?? []) {
+        if (row.referral_id && row.reviewer_name) {
+          reviewerNameByReferral.set(row.referral_id, row.reviewer_name);
+        }
+      }
+    }
+  }
 
   const [studentsRes, instructorsRes, subjectsRes, predictionsRes] = await Promise.all([
     studentIds.length > 0
@@ -147,6 +169,13 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
       ...(r as CounselingReferralRow),
       student: studentMap.get(r.student_id as string) ?? null,
       instructor: instructorMap.get(r.instructor_id as string) ?? null,
+      counselor: reviewerNameByReferral.has(r.id as string)
+        ? {
+            user_id: (r.reviewed_by as string) ?? "",
+            full_name: reviewerNameByReferral.get(r.id as string) ?? null,
+            email: null,
+          }
+        : null,
       subject: subjectMap.get(r.subject_id as string) ?? null,
       prediction: prediction
         ? {
@@ -162,7 +191,7 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
 }
 
 const REFERRAL_SELECT =
-  "id, student_id, subject_id, instructor_id, prediction_id, recommendation_message, counselor_remarks, status, created_at, reviewed_at";
+  "id, student_id, subject_id, instructor_id, prediction_id, recommendation_message, counselor_remarks, status, created_at, reviewed_at, reviewed_by";
 
 export function useCounselingReferrals(options?: { subjectId?: string; enabled?: boolean }) {
   const { user, role } = useAuth();

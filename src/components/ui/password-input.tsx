@@ -11,8 +11,10 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
   ({ className, ...props }, ref) => {
     const [visible, setVisible] = React.useState(false);
 
+    const label = visible ? "Hide password" : "Show password";
+
     return (
-      <div className="relative">
+      <div className="relative [&_input::-ms-clear]:hidden [&_input::-ms-reveal]:hidden">
         <Input
           ref={ref}
           type={visible ? "text" : "password"}
@@ -23,9 +25,11 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           type="button"
           variant="ghost"
           size="icon"
-          className="absolute right-0 top-0 h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={() => setVisible(v => !v)}
-          aria-label={visible ? "Hide password" : "Show password"}
+          className="absolute right-0 top-0 z-10 h-full w-10 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setVisible((current) => !current)}
+          aria-label={label}
+          aria-pressed={visible}
+          data-state={visible ? "visible" : "hidden"}
         >
           {visible ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
         </Button>

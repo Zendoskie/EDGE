@@ -9,7 +9,6 @@ import {
   studentPredictionNotifications,
 } from "@/lib/notification-events";
 import {
-  resolveActivitySource,
   resolveProfileSource,
   resolveSubjectInstructorSource,
 } from "@/lib/notification-sources";
@@ -25,30 +24,6 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
 
   useEffect(() => {
     if (!userId || role !== "student") return;
-
-    const pushGrade = async (row: Record<string, unknown>) => {
-      if (row.score == null && !row.graded_at) return;
-      const id = String(row.id ?? "");
-      const t =
-        row.graded_at != null
-          ? String(row.graded_at)
-          : row.submitted_at != null
-            ? String(row.submitted_at)
-            : "";
-      const sourceName =
-        typeof row.graded_by === "string" && row.graded_by
-          ? await resolveProfileSource(row.graded_by, "Course Instructor")
-          : await resolveActivitySource(
-              typeof row.activity_id === "string" ? row.activity_id : null,
-              "Course Instructor",
-            );
-      addRef.current({
-        title: "New grade posted",
-        body: "One of your submissions has been graded. Open Scores to review.",
-        dedupeKey: `sub-grade:${id}:${t}`,
-        sourceName,
-      });
-    };
 
     const pushAttendance = async (row: Record<string, unknown>) => {
       const id = String(row.id ?? "");
@@ -108,55 +83,6 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
 
     const channel = supabase
       .channel(`edge-student-notify-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "submissions",
-          filter: `student_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.new as Record<string, unknown> | undefined;
-          if (!row) return;
-          if (payload.eventType === "INSERT") {
-            if (row.score != null || row.graded_at) void pushGrade(row);
-            return;
-          }
-          if (payload.eventType === "UPDATE") {
-            if (row.score != null || row.graded_at) void pushGrade(row);
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "interventions",
-          filter: `student_id=eq.${userId}`,
-        },
-        (payload) => {
-          const row = payload.new as Record<string, unknown> | undefined;
-          if (!row) return;
-          void (async () => {
-            const id = String(row.id ?? payload.commit_timestamp ?? Date.now());
-            const msg = typeof row.message === "string" && row.message.trim()
-              ? row.message
-              : "Your instructor sent an early warning alert. Please review your progress.";
-            const sourceName = await resolveSubjectInstructorSource(
-              typeof row.subject_id === "string" ? row.subject_id : null,
-              "Course Instructor",
-            );
-            addRef.current({
-              title: "Instructor early warning",
-              body: msg,
-              dedupeKey: `intervention:${id}`,
-              sourceName,
-            });
-          })();
-        },
-      )
       .on(
         "postgres_changes",
         {

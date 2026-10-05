@@ -69,9 +69,13 @@ export function GradebookTable({
   const activityIds = columns.map((activity) => activity.id);
 
   const { data: enrollments = [], isLoading: enrollmentsLoading } = useQuery<EnrollmentListRow[]>({
-    queryKey: ['enrollments', subjectId],
+    queryKey: ['enrollments', subjectId, 'active'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('enrollments').select('*').eq('subject_id', subjectId);
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('subject_id', subjectId)
+        .eq('status', 'active');
       if (error) throw error;
       if (!data.length) return [];
       const studentIds = data.map((row) => row.student_id).filter(Boolean) as string[];
@@ -86,7 +90,7 @@ export function GradebookTable({
   const students = useMemo(
     () =>
       [...enrollments]
-        .filter((row) => typeof row.student_id === 'string' && row.student_id.length > 0)
+        .filter((row) => row.status === 'active' && typeof row.student_id === 'string' && row.student_id.length > 0)
         .sort((a, b) =>
           (a.profile?.full_name || '').localeCompare(b.profile?.full_name || '', undefined, { sensitivity: 'base' }),
         ),
@@ -157,6 +161,47 @@ export function GradebookTable({
         .from('submissions')
         .upsert(rows, { onConflict: 'activity_id,student_id' });
       if (error) throw error;
+
+      const firstGrades = changes.filter(
+        (change) => savedScores[gradeCellKey(change.studentId, change.activityId)] == null,
+      );
+      if (firstGrades.length > 0) {
+        try {
+          const { data: subject } = await supabase
+            .from('subjects')
+            .select('code, name')
+            .eq('id', subjectId)
+            .maybeSingle();
+          const linesByStudent = new Map<string, string[]>();
+          for (const change of firstGrades) {
+            const activity = columns.find((column) => column.id === change.activityId);
+            const line = `${activity?.title ?? 'Activity'}: ${change.score}`;
+            const existing = linesByStudent.get(change.studentId) ?? [];
+            existing.push(line);
+            linesByStudent.set(change.studentId, existing);
+          }
+          for (const [studentId, lines] of linesByStudent) {
+            const email = students.find((student) => student.student_id === studentId)?.profile?.email;
+            if (!email) continue;
+            const { error: emailError } = await supabase.functions.invoke('send-notification', {
+              body: {
+                to: email,
+                student_id: studentId,
+                subject_id: subjectId,
+                subject_code: subject?.code ?? 'EDGE',
+                subject_name: subject?.name ?? 'Course',
+                body: `A grade is now available for ${subject?.code ?? 'your subject'}.\n${lines.join('\n')}`,
+              },
+            });
+            if (emailError) {
+              toast.message('Grade saved. The email notification could not be sent.');
+            }
+          }
+        } catch {
+          toast.message('Grade saved. The email notification could not be sent.');
+        }
+      }
+
       return { saved: rows.length, skippedClears };
     },
     onSuccess: async (result) => {

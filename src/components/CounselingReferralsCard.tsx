@@ -86,10 +86,23 @@ export function CounselingReferralsCard({
                           Referred by: {r.instructor?.full_name ?? r.instructor?.email ?? "—"}
                         </p>
                       ) : null}
-                      {!compact && r.recommendation_message ? (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
+                      {r.counselor?.full_name ? (
+                        <p className="text-xs text-muted-foreground truncate">
+                          Counselor: {r.counselor.full_name}
+                        </p>
+                      ) : null}
+                      {r.recommendation_message ? (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                           {r.recommendation_message}
                         </p>
+                      ) : null}
+                      {r.counselor_remarks ? (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-foreground">Counselor message</p>
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                            {r.counselor_remarks}
+                          </p>
+                        </div>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
                         {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
