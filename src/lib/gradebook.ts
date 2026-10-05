@@ -110,6 +110,27 @@ export function collectGradeChanges(input: {
   return { changes, invalid, skippedClears };
 }
 
+/** Inbox and email copy for a published activity that still has no score. */
+export function missingGradeNotificationBody(activityTitle: string, subjectCode: string): string {
+  const activity = activityTitle.trim() || 'an activity';
+  const subject = subjectCode.trim() || 'your subject';
+  return `You have a missing grade for ${activity} in ${subject}.`;
+}
+
+/**
+ * Active enrollments with no recorded score. A score of 0 is a grade.
+ * Callers must only use this after grades for the activity have been published.
+ */
+export function studentIdsMissingScore(
+  enrolledStudentIds: readonly string[],
+  scoreByStudentId: ReadonlyMap<string, number | null | undefined>,
+): string[] {
+  return enrolledStudentIds.filter((studentId) => {
+    if (!scoreByStudentId.has(studentId)) return true;
+    return scoreByStudentId.get(studentId) == null;
+  });
+}
+
 export function countMissingGrades(input: {
   enrolledStudentIds: readonly string[];
   activityIds: readonly string[];

@@ -11,7 +11,7 @@ function isCrossedEye(button: HTMLElement) {
 }
 
 describe('PasswordInput visibility icon', () => {
-  it('starts hidden with the show-password eye, then toggles to the crossed eye', () => {
+  it('starts hidden with a crossed eye, then shows an open eye while the password is visible', () => {
     render(<PasswordInput aria-label="Password" />);
 
     const input = screen.getByLabelText('Password');
@@ -20,18 +20,18 @@ describe('PasswordInput visibility icon', () => {
     expect(input).toHaveAttribute('type', 'password');
     expect(toggle).toHaveAttribute('data-state', 'hidden');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    expect(isOpenEye(toggle)).toBe(true);
+    expect(isCrossedEye(toggle)).toBe(true);
 
     fireEvent.click(toggle);
 
     expect(input).toHaveAttribute('type', 'text');
     expect(screen.getByRole('button', { name: 'Hide password' })).toHaveAttribute('data-state', 'visible');
-    expect(isCrossedEye(screen.getByRole('button', { name: 'Hide password' }))).toBe(true);
+    expect(isOpenEye(screen.getByRole('button', { name: 'Hide password' }))).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
 
     expect(input).toHaveAttribute('type', 'password');
-    expect(isOpenEye(screen.getByRole('button', { name: 'Show password' }))).toBe(true);
+    expect(isCrossedEye(screen.getByRole('button', { name: 'Show password' }))).toBe(true);
   });
 
   it('stays in tab order and keeps a second field independent', () => {

@@ -1362,6 +1362,7 @@ export type Database = {
           counselor_remarks: string | null
           created_at: string
           id: string
+          instructor_response: string | null
           message: string
           status: string
           student_id: string
@@ -1371,6 +1372,7 @@ export type Database = {
           counselor_remarks?: string | null
           created_at?: string
           id?: string
+          instructor_response?: string | null
           message: string
           status?: string
           student_id: string
@@ -1380,6 +1382,7 @@ export type Database = {
           counselor_remarks?: string | null
           created_at?: string
           id?: string
+          instructor_response?: string | null
           message?: string
           status?: string
           student_id?: string
@@ -1452,6 +1455,7 @@ export type Database = {
           created_at: string
           details: string | null
           id: string
+          instructor_response: string | null
           prediction_id: string | null
           reasons: string[]
           risk_level: string
@@ -1462,6 +1466,7 @@ export type Database = {
           created_at?: string
           details?: string | null
           id?: string
+          instructor_response?: string | null
           prediction_id?: string | null
           reasons?: string[]
           risk_level: string
@@ -1472,6 +1477,7 @@ export type Database = {
           created_at?: string
           details?: string | null
           id?: string
+          instructor_response?: string | null
           prediction_id?: string | null
           reasons?: string[]
           risk_level?: string
@@ -1790,6 +1796,7 @@ export type Database = {
         Row: {
           body: string
           created_at: string
+          dedupe_key: string | null
           id: string
           read: boolean
           source_name: string
@@ -1799,6 +1806,7 @@ export type Database = {
         Insert: {
           body: string
           created_at?: string
+          dedupe_key?: string | null
           id?: string
           read?: boolean
           source_name: string
@@ -1808,6 +1816,7 @@ export type Database = {
         Update: {
           body?: string
           created_at?: string
+          dedupe_key?: string | null
           id?: string
           read?: boolean
           source_name?: string
@@ -1984,6 +1993,20 @@ export type Database = {
       evaluate_engagement_alerts: {
         Args: { p_student_id: string }
         Returns: undefined
+      }
+      instructor_reply_to_feedback: {
+        Args: { p_feedback_id: string; p_kind: string; p_response: string }
+        Returns: undefined
+      }
+      notify_missing_activity_grades: {
+        Args: { p_activity_id: string }
+        Returns: {
+          email: string
+          notification_body: string
+          student_id: string
+          subject_code: string
+          subject_name: string
+        }[]
       }
       generate_learning_recommendations: {
         Args: { p_student_id: string; p_subject_id?: string }

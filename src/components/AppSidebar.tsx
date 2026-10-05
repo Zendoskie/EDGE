@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users, Activity,
+  LayoutDashboard, BookOpen, BarChart3, GraduationCap, CalendarCheck, FileText, LogOut, Settings, Library, FileBarChart, UserCheck, ClipboardList, Mail, Users, Activity, MessageSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -19,6 +19,7 @@ const instructorItems: SidebarNavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Subjects', url: '/dashboard/subjects', icon: BookOpen },
   { title: 'Engagement Monitoring', url: '/dashboard/student-engagement', icon: Activity },
+  { title: 'Feedback', url: '/dashboard/instructor-feedback', icon: MessageSquare },
   { title: 'Reports', url: '/dashboard/reports', icon: FileBarChart },
   { title: 'Programs', url: '/dashboard/programs', icon: Library },
   { title: 'Insights', url: '/dashboard/insights', icon: BarChart3 },

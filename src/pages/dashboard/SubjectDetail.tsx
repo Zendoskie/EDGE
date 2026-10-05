@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
 import { ASSESSMENT_TYPES, formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { findDuplicateActivityTitle } from '@/lib/gradebook';
+import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
 import { GradebookTable } from '@/components/GradebookTable';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { RiskBadge } from '@/components/RiskBadge';
@@ -312,6 +313,9 @@ function SubjectStudents({
       toast.success('Student enrolled');
       setEnrollOpen(false);
       setSelectedStudent('');
+      void publishMissingGradeAlertsForSubject(subjectId).catch(() => {
+        toast.message('Student enrolled. Missing-grade notifications could not be created.');
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -432,21 +436,26 @@ function SubjectStudents({
                       <TableCell className="space-x-2">
                         <Button
                           size="sm"
-                          onClick={() =>
-                            supabase
+                          onClick={() => {
+                            void supabase
                               .from('enrollments')
                               .update({ status: 'active' })
                               .eq('id', e.id)
-                              .then(({ error }) => {
+                              .then(async ({ error }) => {
                                 if (error) {
                                   toast.error(error.message);
-                                } else {
-                                  queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
-                                  invalidateStudentLinkedCaches(queryClient, e.student_id);
-                                  toast.success('Enrollment approved');
+                                  return;
                                 }
-                              })
-                          }
+                                queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+                                invalidateStudentLinkedCaches(queryClient, e.student_id);
+                                toast.success('Enrollment approved');
+                                try {
+                                  await publishMissingGradeAlertsForSubject(subjectId);
+                                } catch {
+                                  toast.message('Enrollment approved. Missing-grade notifications could not be created.');
+                                }
+                              });
+                          }}
                         >
                           Approve
                         </Button>
@@ -747,14 +756,19 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       if (findDuplicateActivityTitle(activities, title)) {
         throw new Error('An assessment with this title already exists for this subject.');
       }
-      const { error } = await supabase.from('activities').insert({
+      const { data: created, error } = await supabase.from('activities').insert({
         title,
         type: form.type,
         max_score: maxScore,
         subject_id: subjectId,
         created_by: userId,
-      });
+      }).select('id').single();
       if (error) throw error;
+      try {
+        await publishMissingGradeAlerts(subjectId, [created.id]);
+      } catch {
+        toast.message('Activity created. Missing-grade notifications could not be created.');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });

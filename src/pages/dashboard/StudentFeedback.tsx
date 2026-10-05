@@ -18,6 +18,7 @@ type FeedbackRow = {
   message: string;
   status: string;
   counselor_remarks: string | null;
+  instructor_response: string | null;
   created_at: string;
 };
 
@@ -32,7 +33,7 @@ export default function StudentFeedback() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('student_engagement_feedback')
-        .select('id, subject, message, status, counselor_remarks, created_at')
+        .select('id, subject, message, status, counselor_remarks, instructor_response, created_at')
         .eq('student_id', user!.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -147,6 +148,9 @@ export default function StudentFeedback() {
                   </div>
                   <p className="text-sm text-muted-foreground">{item.message}</p>
                   <p className="text-xs text-muted-foreground">Submitted: {formatLastLogin(item.created_at)}</p>
+                  {item.instructor_response ? (
+                    <p className="text-sm">Instructor reply: {item.instructor_response}</p>
+                  ) : null}
                   {item.counselor_remarks ? (
                     <p className="text-xs text-muted-foreground">Counselor remarks: {item.counselor_remarks}</p>
                   ) : null}

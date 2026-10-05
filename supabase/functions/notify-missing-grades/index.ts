@@ -162,17 +162,64 @@ serve(async (req) => {
       }))
       .filter((p) => !!p.userId) as Array<{ userId: string; email: string | null; fullName: string | null }>;
 
-    const activityTitle = safeString((activity as unknown as { title?: string }).title) || "Activity";
-    const subjectCode = subject?.code?.trim() || "your course";
+    const activityTitle = safeString((activity as unknown as { title?: string }).title) || "an activity";
+    const subjectCode = subject?.code?.trim() || "your subject";
     const subjectName = subject?.name?.trim() || "";
+    const notificationBody = `You have a missing grade for ${activityTitle} in ${subjectCode}.`;
 
-    const emailSubject = `EDGE: Grades published — ${subjectCode}`;
+    const { data: instructorProfile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const sourceName = safeString((instructorProfile as { full_name?: string | null } | null)?.full_name) || "the instructor";
 
-    const withEmail = recipients.filter((r) => !!r.email) as Array<{ userId: string; email: string; fullName: string | null }>;
-    const skippedNoEmail = recipients.length - withEmail.length;
+    await supabase
+      .from("activities")
+      .update({
+        grades_published_at: (activity as { grades_published_at?: string | null }).grades_published_at ?? new Date().toISOString(),
+        grades_published_by: user.id,
+      })
+      .eq("id", activityId)
+      .is("grades_published_at", null);
+
+    const { data: existingNotes } = recipients.length === 0
+      ? { data: [] as Array<{ user_id?: string }> }
+      : await supabase
+      .from("user_inbox_notifications")
+      .select("user_id")
+      .eq("title", "Missing grade")
+      .eq("body", notificationBody)
+      .in("user_id", recipients.map((r) => r.userId));
+    const alreadyNotified = new Set(
+      (existingNotes ?? []).map((row) => (row as { user_id?: string }).user_id).filter(Boolean) as string[],
+    );
+    const newlyMissing = recipients.filter((r) => !alreadyNotified.has(r.userId));
+
+    if (newlyMissing.length > 0) {
+      const { error: insertError } = await supabase.from("user_inbox_notifications").insert(
+        newlyMissing.map((r) => ({
+          user_id: r.userId,
+          title: "Missing grade",
+          body: notificationBody,
+          source_name: sourceName,
+        })),
+      );
+      if (insertError) throw insertError;
+    }
+
+    const emailSubject = `EDGE: ${subjectCode} — Important update`;
+    const withEmail = newlyMissing.filter((r) => !!r.email) as Array<{ userId: string; email: string; fullName: string | null }>;
+    const skippedNoEmail = newlyMissing.length - withEmail.length;
 
     if (withEmail.length === 0) {
-      return new Response(JSON.stringify({ success: true, sent: 0, skippedNoEmail, missingCount: recipients.length }), {
+      return new Response(JSON.stringify({
+        success: true,
+        sent: 0,
+        skippedNoEmail,
+        missingCount: recipients.length,
+        created: newlyMissing.length,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -182,8 +229,8 @@ serve(async (req) => {
       const subjectLine = subjectName ? `${subjectCode} — ${subjectName}` : subjectCode;
       return [
         `<p>${greeting}</p>`,
-        `<p>Your instructor has <strong>published grades</strong> for <strong>${activityTitle}</strong> in <strong>${subjectLine}</strong>.</p>`,
-        `<p>EDGE does not have a recorded score for you yet for this activity. If you believe this is incorrect, please contact your instructor.</p>`,
+        `<p>${notificationBody}</p>`,
+        `<p>This is for <strong>${activityTitle}</strong> in <strong>${subjectLine}</strong>. Your instructor has published grades, and EDGE does not have a recorded score for you yet.</p>`,
         `<p>— EDGE</p>`,
       ].join("");
     };

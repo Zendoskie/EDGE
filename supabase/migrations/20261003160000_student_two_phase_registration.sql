@@ -95,7 +95,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public', 'auth'
 AS $function$
-DECLARE
+  DECLARE
   v_name text;
   v_email text;
   v_student_id text;

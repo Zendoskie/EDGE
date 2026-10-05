@@ -3,6 +3,8 @@ import {
   classifyGradeInput,
   collectGradeChanges,
   countMissingGrades,
+  missingGradeNotificationBody,
+  studentIdsMissingScore,
   findDuplicateActivityTitle,
   gradeCellKey,
   sortGradebookActivities,
@@ -105,5 +107,23 @@ describe('gradebook', () => {
       drafts: { [gradeCellKey('student-b', 'act')]: '8' },
     });
     expect(missing).toBe(2);
+  });
+
+  it('describes a missing published grade by activity and subject', () => {
+    expect(missingGradeNotificationBody('Activity 1', 'PL101')).toBe(
+      'You have a missing grade for Activity 1 in PL101.',
+    );
+  });
+
+  it('treats a blank score as missing and a zero as graded', () => {
+    const scores = new Map<string, number | null>([
+      ['graded', 80],
+      ['zero', 0],
+      ['blank', null],
+    ]);
+    expect(studentIdsMissingScore(['graded', 'zero', 'blank', 'absent'], scores)).toEqual([
+      'blank',
+      'absent',
+    ]);
   });
 });

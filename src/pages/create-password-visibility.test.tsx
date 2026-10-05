@@ -77,16 +77,17 @@ async function expectIndependentPasswordToggles() {
 
   expect(password).toHaveAttribute('type', 'password');
   expect(confirm).toHaveAttribute('type', 'password');
-  expect(passwordToggle.querySelector('circle')).toBeTruthy();
-  expect(confirmToggle.querySelector('circle')).toBeTruthy();
+  expect(passwordToggle.innerHTML).toContain('m2 2 20 20');
+  expect(confirmToggle.innerHTML).toContain('m2 2 20 20');
 
   passwordToggle.focus();
   expect(passwordToggle).toHaveFocus();
   fireEvent.click(passwordToggle);
   expect(password).toHaveAttribute('type', 'text');
   expect(confirm).toHaveAttribute('type', 'password');
-  expect(screen.getByRole('button', { name: 'Hide password' }).innerHTML).toContain('m2 2 20 20');
+  expect(screen.getByRole('button', { name: 'Hide password' }).innerHTML).not.toContain('m2 2 20 20');
   expect(screen.getByRole('button', { name: 'Show password' })).toHaveAttribute('data-state', 'hidden');
+  expect(screen.getByRole('button', { name: 'Show password' }).innerHTML).toContain('m2 2 20 20');
 
   fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
   expect(password).toHaveAttribute('type', 'password');

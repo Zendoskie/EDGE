@@ -16,6 +16,7 @@ import {
   sortGradebookActivities,
   type GradebookActivity,
 } from '@/lib/gradebook';
+import { publishMissingGradeAlerts } from '@/lib/missing-grade-notifications';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import type { EnrollmentListRow } from '@/types/dashboard';
 
@@ -200,6 +201,15 @@ export function GradebookTable({
         } catch {
           toast.message('Grade saved. The email notification could not be sent.');
         }
+      }
+
+      try {
+        await publishMissingGradeAlerts(
+          subjectId,
+          changes.map((change) => change.activityId),
+        );
+      } catch {
+        toast.message('Grades saved. Missing-grade notifications could not be created.');
       }
 
       return { saved: rows.length, skippedClears };

@@ -31,7 +31,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           aria-pressed={visible}
           data-state={visible ? "visible" : "hidden"}
         >
-          {visible ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+          {visible ? <Eye className="h-4 w-4" aria-hidden /> : <EyeOff className="h-4 w-4" aria-hidden />}
         </Button>
       </div>
     );

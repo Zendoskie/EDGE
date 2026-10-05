@@ -22,6 +22,8 @@ import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { PageHeader } from '@/components/shell/PageHeader';
+import { InstructorFeedbackSummary } from '@/pages/dashboard/InstructorFeedback';
+import { countPendingEngagementFeedback } from '@/lib/instructor-feedback';
 
 const getYearFromSubject = (subject: any) => {
   const code = subject.code || '';
@@ -537,73 +539,42 @@ export default function InstructorDashboard() {
     return map;
   }, [earlyWarningHistory]);
 
-  const { data: recentStudentFeedback = [] } = useQuery({
-    queryKey: ['instructor-student-feedback', user?.id],
+  const { data: feedbackCounts = { pending: 0, total: 0 } } = useQuery({
+    queryKey: ['instructor-feedback-summary', user?.id, subjectsWithPrograms?.map((s: { id?: string }) => s.id).join(',')],
     queryFn: async () => {
-      const ids = subjectsWithPrograms?.map((s: any) => s.id) ?? [];
-      if (ids.length === 0) return [];
-      const { data, error } = await supabase
-        .from('student_feedback')
-        .select('id, created_at, student_id, subject_id, risk_level, reasons, details')
-        .in('subject_id', ids)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      const studentIds = Array.from(new Set((data ?? []).map((r: any) => r.student_id).filter(Boolean)));
-      const subjectIds = Array.from(new Set((data ?? []).map((r: any) => r.subject_id).filter(Boolean)));
-      const [profilesRes, subjectsRes] = await Promise.all([
-        studentIds.length ? supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', studentIds) : Promise.resolve({ data: [] as any[] }),
-        subjectIds.length ? supabase.from('subjects').select('id, code, name').in('id', subjectIds) : Promise.resolve({ data: [] as any[] }),
-      ]);
-      const profileMap = new Map((profilesRes.data ?? []).map((p: any) => [p.user_id, p]));
-      const subjectMap = new Map((subjectsRes.data ?? []).map((s: any) => [s.id, s]));
-      return (data ?? []).map((r: any) => ({
-        ...r,
-        student: profileMap.get(r.student_id) ?? null,
-        subject: subjectMap.get(r.subject_id) ?? null,
-      }));
-    },
-    enabled: !!user?.id && !!subjectsWithPrograms,
-  });
+      const subjectIds = (subjectsWithPrograms ?? []).map((subject: { id?: string }) => subject.id).filter(Boolean) as string[];
+      const riskCount = subjectIds.length
+        ? await supabase
+            .from('student_feedback')
+            .select('id', { count: 'exact', head: true })
+            .in('subject_id', subjectIds)
+        : { count: 0, error: null };
+      if (riskCount.error) throw riskCount.error;
 
-  const { data: recentEngagementFeedback = [] } = useQuery({
-    queryKey: ['instructor-engagement-feedback', user?.id],
-    queryFn: async () => {
       const { data: enrollments, error: enrollError } = await supabase
         .from('enrollments')
         .select('student_id, subjects!inner(instructor_id)')
         .eq('subjects.instructor_id', user!.id)
         .eq('status', 'active');
       if (enrollError) throw enrollError;
-
       const studentIds = Array.from(
-        new Set((enrollments ?? []).map((e: { student_id?: string }) => e.student_id).filter(Boolean)),
+        new Set((enrollments ?? []).map((row: { student_id?: string }) => row.student_id).filter(Boolean)),
       ) as string[];
-      if (studentIds.length === 0) return [];
+      const engagement = studentIds.length
+        ? await supabase
+            .from('student_engagement_feedback')
+            .select('status')
+            .in('student_id', studentIds)
+        : { data: [] as { status: string | null }[], error: null };
+      if (engagement.error) throw engagement.error;
 
-      const { data, error } = await supabase
-        .from('student_engagement_feedback')
-        .select('id, created_at, student_id, subject, message, status')
-        .in('student_id', studentIds)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-
-      const profileIds = Array.from(new Set((data ?? []).map((r) => r.student_id).filter(Boolean)));
-      type ProfileLite = { user_id: string; full_name: string | null; email: string | null; student_id: string | null };
-      const { data: profiles } = profileIds.length
-        ? await supabase.from('profiles').select('user_id, full_name, email, student_id').in('user_id', profileIds)
-        : { data: [] as ProfileLite[] };
-
-      const profileMap = new Map(
-        ((profiles ?? []) as ProfileLite[]).map((p): [string, ProfileLite] => [p.user_id, p]),
-      );
-      return (data ?? []).map((r) => ({
-        ...r,
-        student: profileMap.get(r.student_id) ?? null,
-      }));
+      const engagementRows = engagement.data ?? [];
+      return {
+        pending: countPendingEngagementFeedback(engagementRows),
+        total: (riskCount.count ?? 0) + engagementRows.length,
+      };
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!subjectsWithPrograms,
   });
 
   const notifyStudent = useMutation({
@@ -920,84 +891,7 @@ export default function InstructorDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="mt-6 bg-card/90 interactive-lift">
-            <CardHeader>
-              <CardTitle className="text-lg">Student feedback</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Feedback submitted by vulnerable/crucial students to explain why they are struggling.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {recentStudentFeedback.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No student feedback submitted yet.</p>
-              ) : (
-                <div className="space-y-3 max-h-72 overflow-y-auto">
-                  {recentStudentFeedback.map((f: any) => (
-                    <div key={f.id} className="rounded-xl border border-border/60 p-4 space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">
-                            {f.student?.full_name ?? f.student?.email ?? f.student_id} — {f.subject?.code ?? f.subject_id}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {f.subject?.name ?? ''} • {f.student?.student_id ?? '—'} • {f.created_at ? new Date(f.created_at).toLocaleString() : ''}
-                          </p>
-                        </div>
-                        <RiskBadge level={f.risk_level} />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {(f.reasons ?? []).slice(0, 6).map((r: string) => (
-                          <Badge key={r} variant="outline" className="text-xs">{r}</Badge>
-                        ))}
-                      </div>
-                      {f.details ? <p className="text-sm text-muted-foreground">{f.details}</p> : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="mt-6 bg-card/90 interactive-lift">
-            <CardHeader>
-              <CardTitle className="text-lg">Student engagement feedback</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                General feedback submitted by students about their learning experience and concerns.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {recentEngagementFeedback.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No engagement feedback submitted yet.</p>
-              ) : (
-                <div className="space-y-3 max-h-72 overflow-y-auto">
-                  {recentEngagementFeedback.map((f: {
-                    id: string;
-                    subject?: string | null;
-                    message?: string;
-                    status?: string;
-                    created_at?: string;
-                    student?: { full_name?: string; email?: string; student_id?: string } | null;
-                    student_id?: string;
-                  }) => (
-                    <div key={f.id} className="rounded-xl border border-border/60 p-4 space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">
-                            {f.student?.full_name ?? f.student?.email ?? f.student_id} — {f.subject?.trim() || 'General Feedback'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {f.student?.student_id ?? '—'} • {f.created_at ? new Date(f.created_at).toLocaleString() : ''}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-xs capitalize">{f.status ?? 'submitted'}</Badge>
-                      </div>
-                      {f.message ? <p className="text-sm text-muted-foreground">{f.message}</p> : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <InstructorFeedbackSummary pending={feedbackCounts.pending} total={feedbackCounts.total} />
 
           <Card className="mt-6 bg-card/90 interactive-lift">
             <CardHeader className="flex flex-row items-center justify-between">

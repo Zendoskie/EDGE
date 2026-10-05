@@ -39,6 +39,7 @@ import ParentAccessRequests from "./pages/dashboard/ParentAccessRequests";
 import GuidanceReferrals from "./pages/dashboard/GuidanceReferrals";
 import GuidanceEngagement from "./pages/dashboard/GuidanceEngagement";
 import StudentFeedback from "./pages/dashboard/StudentFeedback";
+import InstructorFeedback from "./pages/dashboard/InstructorFeedback";
 import StudentEngagementMonitoring from "./pages/dashboard/StudentEngagementMonitoring";
 import NotFound from "./pages/NotFound";
 import RequestStaffAccount from "./pages/RequestStaffAccount";
@@ -98,6 +99,7 @@ const App = () => (
                 <Route path="guidance-referrals" element={<GuidanceReferrals />} />
                 <Route path="guidance-engagement" element={<GuidanceEngagement />} />
                 <Route path="feedback" element={<StudentFeedback />} />
+                <Route path="instructor-feedback" element={<InstructorFeedback />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
