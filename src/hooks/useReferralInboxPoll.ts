@@ -134,7 +134,7 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
 
           if (prev === undefined) {
             seen[id] = status;
-            if (!isInitialSeed && role !== "student") {
+            if (!isInitialSeed && role === "guidance_counselor") {
               const msg = notificationForStatusChange(role, undefined, status);
               if (msg) {
                 addRef.current({
@@ -152,7 +152,10 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
           }
 
           if (prev !== status) {
-            const msg = role === "student" ? null : notificationForStatusChange(role, prev, status);
+            const msg =
+              role === "student" || role === "instructor"
+                ? null
+                : notificationForStatusChange(role, prev, status);
             if (msg) {
               addRef.current({
                 ...msg,

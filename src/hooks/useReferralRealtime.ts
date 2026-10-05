@@ -109,7 +109,10 @@ export function useReferralRealtime(
       const status = normalizeReferralStatus(row.status);
       const subjectId = typeof row.subject_id === "string" ? row.subject_id : undefined;
 
-      const msg = role === "student" ? null : notificationForReferral(role, eventType, row);
+      const msg =
+        role === "student" || role === "instructor"
+          ? null
+          : notificationForReferral(role, eventType, row);
       if (msg) {
         const actorId =
           eventType === "UPDATE" && typeof row.reviewed_by === "string"
