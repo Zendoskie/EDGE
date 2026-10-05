@@ -110,7 +110,7 @@ export function useReferralRealtime(
       const subjectId = typeof row.subject_id === "string" ? row.subject_id : undefined;
 
       const msg =
-        role === "student" || role === "instructor"
+        role === "student" || role === "instructor" || role === "guidance_counselor"
           ? null
           : notificationForReferral(role, eventType, row);
       if (msg) {

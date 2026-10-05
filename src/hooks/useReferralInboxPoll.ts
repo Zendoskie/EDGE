@@ -134,19 +134,6 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
 
           if (prev === undefined) {
             seen[id] = status;
-            if (!isInitialSeed && role === "guidance_counselor") {
-              const msg = notificationForStatusChange(role, undefined, status);
-              if (msg) {
-                addRef.current({
-                  ...msg,
-                  dedupeKey: `referral-poll:${id}:${status}:new`,
-                  sourceName: await resolveProfileSource(
-                    referral.instructor_id,
-                    "Course Instructor",
-                  ),
-                });
-              }
-            }
             changed = true;
             continue;
           }
