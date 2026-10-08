@@ -75,15 +75,11 @@ serve(async (req) => {
       });
     }
 
-    const { error: recomputeError } = await supabase.rpc("recompute_student_engagement", {
-      p_student_id: user.id,
-    });
-
     return new Response(
       JSON.stringify({
         ok: true,
         loginId: inserted.id,
-        recomputeError: recomputeError?.message ?? null,
+        recomputeError: null,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

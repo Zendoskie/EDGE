@@ -18,33 +18,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  filterAttendanceBySubjectIds,
-  filterPredictionsBySubjectIds,
-  filterSubmissionsByActiveSubjects,
-  pickLatestPredictionByCreatedAt,
-  resolveStudentRiskSummary,
-} from '@/lib/student-performance-scope';
 import { useCounselingReferrals } from '@/hooks/useCounselingReferrals';
 import { CounselingReferralsCard } from '@/components/CounselingReferralsCard';
 import { StudentEngagementCard } from '@/components/StudentEngagementCard';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { useStudentEnrolledSubjectIds } from '@/hooks/useStudentEnrolledSubjectIds';
+import { useStudentAcademicSnapshot } from '@/hooks/useStudentAcademicSnapshot';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { PageHeader } from '@/components/shell/PageHeader';
-
-interface StudentStats {
-  enrolledSubjects: number;
-  attendanceRate: string;
-  overallAverage: string;
-  riskStatus: string;
-  riskLevel: string | null;
-  recommendation: string | null;
-  subjectLabel: string | null;
-  riskSource: 'prediction' | 'derived';
-  riskScore: number | null;
-}
 
 interface RecentActivity {
   score: number | null;
@@ -77,7 +59,6 @@ export default function StudentDashboard() {
   });
   const { data: enrolledSubjectIds = [], isFetched: enrollmentsFetched } = useStudentEnrolledSubjectIds(user?.id);
   const enrollmentsReady = !!user?.id && enrollmentsFetched;
-  const enrolledSubjectIdSet = useMemo(() => new Set(enrolledSubjectIds), [enrolledSubjectIds]);
 
   const { data: studentProgram } = useQuery({
     queryKey: ['student-program', user?.id],
@@ -108,163 +89,17 @@ export default function StudentDashboard() {
         ? `Year ${studentProgram.year_level}`
         : undefined;
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['student-dashboard-stats', user?.id, enrolledSubjectIds],
-    queryFn: async () => {
-      const subjectIds = enrolledSubjectIds;
-      const enrolledCount = subjectIds.length;
-      const subjectSet = enrolledSubjectIdSet;
-
-      if (enrolledCount === 0) {
-        return {
-          enrolledSubjects: 0,
-          attendanceRate: '—',
-          overallAverage: '—',
-          riskStatus: '—',
-          riskLevel: null,
-          recommendation: null,
-          subjectLabel: null,
-          riskSource: 'derived' as const,
-          riskScore: null,
-        };
-      }
-
-      const [{ data: attRecordsRaw }, { data: subsRaw }, { data: predsRaw }] = await Promise.all([
-        supabase
-          .from('attendance')
-          .select('status, subject_id')
-          .eq('student_id', user!.id),
-        supabase
-          .from('submissions')
-          .select('score, activities(max_score, subject_id)')
-          .eq('student_id', user!.id),
-        supabase
-          .from('predictions')
-          .select('risk_level, risk_score, recommendation, created_at, subject_id, subjects(code, name)')
-          .eq('student_id', user!.id)
-          .order('created_at', { ascending: false }),
-      ]);
-
-      const attRecords = filterAttendanceBySubjectIds(attRecordsRaw ?? [], subjectSet);
-      const total = attRecords.length;
-      const present = attRecords.filter((a) => a.status === 'present' || a.status === 'late').length;
-      const attendanceRateNum = total > 0 ? Math.round((present / total) * 100) : null;
-
-      const subs = filterSubmissionsByActiveSubjects(subsRaw ?? [], subjectSet);
-      let overallAvg: number | null = null;
-      if (subs.length) {
-        const weighted: number[] = [];
-        subs.forEach((s: any) => {
-          const act = s.activities;
-          const max = act && typeof act === 'object' && 'max_score' in act ? act.max_score : 100;
-          if (s.score != null && max) weighted.push((Number(s.score) / Number(max)) * 100);
-        });
-        overallAvg = weighted.length ? Math.round(weighted.reduce((a, b) => a + b, 0) / weighted.length) : null;
-      }
-      const predsScoped = filterPredictionsBySubjectIds(predsRaw ?? [], subjectSet);
-      const pred = pickLatestPredictionByCreatedAt(predsScoped);
-
-      const summary = resolveStudentRiskSummary({
-        overallAveragePercent: overallAvg,
-        attendanceRatePercent: attendanceRateNum,
-        latestPrediction: pred
-          ? {
-              risk_level: pred.risk_level,
-              created_at: pred.created_at,
-              recommendation: (pred as { recommendation?: string | null }).recommendation ?? null,
-              subjects: (pred as { subjects?: { code?: string; name?: string | null } | null }).subjects ?? null,
-            }
-          : null,
-      });
-
-      return {
-        enrolledSubjects: enrolledCount,
-        attendanceRate: attendanceRateNum != null ? `${attendanceRateNum}%` : '—',
-        overallAverage: overallAvg != null ? `${overallAvg}%` : '—',
-        riskStatus: summary.riskStatusLabel,
-        riskLevel: summary.resolvedLevel,
-        recommendation: summary.recommendation,
-        subjectLabel: summary.subjectLabel,
-        riskSource: summary.riskSource,
-        riskScore:
-          pred?.risk_score != null && Number.isFinite(Number(pred.risk_score))
-            ? Number(pred.risk_score)
-            : null,
-      };
-    },
-    enabled: enrollmentsReady,
-  });
-
-  const { data: recentActivity = [], isLoading: activityLoading } = useQuery({
-    queryKey: ['student-recent-activity', user?.id, enrolledSubjectIds],
-    queryFn: async () => {
-      if (enrolledSubjectIds.length === 0) return [];
-      const subjectSet = enrolledSubjectIdSet;
-      const { data: subs } = await supabase
-        .from('submissions')
-        .select('score, graded_at, activity_id, assessment_type, activities(id, title, type, max_score, subject_id, subjects(code, name))')
-        .eq('student_id', user!.id)
-        .order('graded_at', { ascending: false })
-        .limit(40);
-      return filterSubmissionsByActiveSubjects(subs ?? [], subjectSet).slice(0, 5);
-    },
-    enabled: enrollmentsReady,
-  });
-
-  const { data: atRiskSubjects = [] } = useQuery({
-    queryKey: ["student-at-risk-subjects", user?.id, enrolledSubjectIds],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      const subjectIds = enrolledSubjectIds;
-      if (subjectIds.length === 0) return [];
-      const subjectSet = enrolledSubjectIdSet;
-      const { data, error } = await supabase
-        .from("predictions")
-        .select("id, subject_id, risk_level, created_at, subjects(code, name)")
-        .eq("student_id", user.id)
-        .in("subject_id", subjectIds)
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      const latestBySubject = new Map<string, any>();
-      for (const row of filterPredictionsBySubjectIds(data ?? [], subjectSet)) {
-        if (!row.subject_id) continue;
-        if (!latestBySubject.has(row.subject_id)) latestBySubject.set(row.subject_id, row);
-      }
-      return Array.from(latestBySubject.values()).filter(
-        (p: any) => p.risk_level === "critical" || p.risk_level === "at_risk",
-      );
-    },
-    enabled: enrollmentsReady,
-  });
-
-  const { data: latestGradeBySubject = {} } = useQuery<Record<string, string>>({
-    queryKey: ["student-latest-grade-by-subject", user?.id, enrolledSubjectIds],
-    queryFn: async () => {
-      if (!user?.id) return {};
-      const subjectSet = enrolledSubjectIdSet;
-      if (subjectSet.size === 0) return {};
-      const { data, error } = await supabase
-        .from("submissions")
-        .select("id, graded_at, submitted_at, activities(subject_id)")
-        .eq("student_id", user.id)
-        .not("score", "is", null)
-        .order("graded_at", { ascending: false, nullsFirst: false })
-        .order("submitted_at", { ascending: false, nullsFirst: false })
-        .limit(300);
-      if (error) return {};
-      const latest: Record<string, string> = {};
-      for (const row of data ?? []) {
-        const sid = (row as any)?.activities?.subject_id;
-        if (typeof sid !== "string" || !subjectSet.has(sid)) continue;
-        if (latest[sid]) continue;
-        const t = (row as any)?.graded_at ?? (row as any)?.submitted_at ?? null;
-        if (typeof t === "string" && t) latest[sid] = t;
-      }
-      return latest;
-    },
-    enabled: enrollmentsReady,
-  });
+  const { snapshot, isLoading: academicLoading } = useStudentAcademicSnapshot(
+    user?.id,
+    enrolledSubjectIds,
+    enrollmentsReady,
+  );
+  const stats = snapshot;
+  const statsLoading = academicLoading;
+  const recentActivity = (snapshot?.recentActivity ?? []) as RecentActivity[];
+  const activityLoading = academicLoading;
+  const atRiskSubjects = snapshot?.atRiskSubjects ?? [];
+  const latestGradeBySubject = snapshot?.latestGradeBySubject ?? {};
 
   const { data: feedbackHistory = [] } = useQuery({
     queryKey: ["student-feedback-history", user?.id],
@@ -288,10 +123,12 @@ export default function StudentDashboard() {
       if (typeof row?.subject_id !== "string") continue;
       if (!lastBySubject.has(row.subject_id)) lastBySubject.set(row.subject_id, String(row.created_at ?? ""));
     }
-    return (atRiskSubjects as any[]).filter((p: any) => {
+    const risks = snapshot?.atRiskSubjects ?? [];
+    const grades = snapshot?.latestGradeBySubject ?? {};
+    return (risks as any[]).filter((p: any) => {
       const subjectId = p.subject_id;
       if (!subjectId) return false;
-      const lastGrade = (latestGradeBySubject as any)[subjectId] as string | undefined;
+      const lastGrade = grades[subjectId] as string | undefined;
       if (!lastGrade) return false; // only ask after at least one graded submission exists
       const last = lastBySubject.get(subjectId);
       if (!last) return true;
@@ -302,7 +139,7 @@ export default function StudentDashboard() {
       // Cooldown: if no new grades, don't spam the student
       return Date.now() - lastTs > 14 * 24 * 60 * 60 * 1000;
     });
-  }, [atRiskSubjects, feedbackHistory, latestGradeBySubject]);
+  }, [snapshot, feedbackHistory]);
 
   const reasonOptions = [
     "Inadequate preparation (poor study habits/time management)",

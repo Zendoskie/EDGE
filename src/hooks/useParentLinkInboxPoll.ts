@@ -7,7 +7,7 @@ import {
   parentLinkDecisionNotification,
 } from "@/lib/parent-link-notifications";
 
-const POLL_INTERVAL_MS = 90_000;
+const POLL_INTERVAL_MS = 180_000;
 const SEEN_KEY_PREFIX = "edge_parent_link_poll_seen_";
 
 function seenStorageKey(userId: string) {

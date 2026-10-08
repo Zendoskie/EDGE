@@ -56,8 +56,8 @@ export function StudentEngagementPanel({ studentId, studentName, subjectIds }: P
       return (data ?? []) as FeedbackRow[];
     },
     enabled: !!studentId,
-    refetchOnWindowFocus: true,
-    refetchInterval: 30_000,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 
   const loading = summaryLoading || feedbackLoading;

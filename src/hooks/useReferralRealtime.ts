@@ -101,7 +101,7 @@ export function useReferralRealtime(
 
   useEffect(() => {
     if (!userId || !role) return;
-    if (!["student", "instructor", "guidance_counselor"].includes(role)) return;
+    if (role !== "student" && role !== "instructor") return;
 
     const handleRow = async (eventType: string, row: Record<string, unknown> | undefined) => {
       if (!row) return;
@@ -156,31 +156,6 @@ export function useReferralRealtime(
           schema: "public",
           table: "counseling_referrals",
           filter: `instructor_id=eq.${userId}`,
-        },
-        (payload) => {
-          void handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);
-        },
-      );
-    } else {
-      channel = channel.on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "counseling_referrals",
-        },
-        (payload) => {
-          const row = payload.new as Record<string, unknown> | undefined;
-          if (!row || normalizeReferralStatus(row.status) !== "pending") return;
-          void handleRow(payload.eventType, row);
-        },
-      );
-      channel = channel.on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "counseling_referrals",
         },
         (payload) => {
           void handleRow(payload.eventType, payload.new as Record<string, unknown> | undefined);

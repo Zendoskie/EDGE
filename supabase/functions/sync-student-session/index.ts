@@ -50,16 +50,6 @@ async function fetchMetrics(
   };
 }
 
-async function recomputeEngagement(
-  supabase: ReturnType<typeof createClient>,
-  studentId: string,
-): Promise<string | null> {
-  const { error } = await supabase.rpc("recompute_student_engagement", {
-    p_student_id: studentId,
-  });
-  return error?.message ?? null;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -157,10 +147,8 @@ serve(async (req) => {
         });
       }
 
-      const recomputeError = await recomputeEngagement(supabase, studentId);
-
       return new Response(
-        JSON.stringify({ ok: true, sessionId: inserted.id, recomputeError }),
+        JSON.stringify({ ok: true, sessionId: inserted.id, recomputeError: null }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -175,7 +163,7 @@ serve(async (req) => {
 
     const { data: row, error: readError } = await supabase
       .from("student_login_history")
-      .select("login_time, student_id, logout_time")
+      .select("login_time, student_id, logout_time, session_duration")
       .eq("id", sessionId)
       .eq("student_id", studentId)
       .maybeSingle();
@@ -218,6 +206,13 @@ serve(async (req) => {
 
     if (action === "heartbeat") {
       const sessionDuration = Math.max(0, Math.round((Date.now() - start) / 1000));
+      const previous = (row as { session_duration?: number | null }).session_duration;
+      if (typeof previous === "number" && sessionDuration - previous < 45) {
+        return new Response(JSON.stringify({ ok: true, recomputeError: null }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const { error: updateError } = await supabase
         .from("student_login_history")
         .update({ session_duration: sessionDuration })
@@ -232,18 +227,7 @@ serve(async (req) => {
         });
       }
 
-      let metrics: EngagementMetrics;
-      try {
-        metrics = await fetchMetrics(supabase, studentId);
-      } catch {
-        metrics = {
-          total_login_count: 0,
-          total_time_spent_seconds: 0,
-          last_login_at: null,
-        };
-      }
-
-      return new Response(JSON.stringify({ ok: true, metrics, recomputeError: null }), {
+      return new Response(JSON.stringify({ ok: true, recomputeError: null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -272,7 +256,6 @@ serve(async (req) => {
       });
     }
 
-    const recomputeError = await recomputeEngagement(supabase, studentId);
     let metrics: EngagementMetrics;
     try {
       metrics = await fetchMetrics(supabase, studentId);
@@ -284,7 +267,7 @@ serve(async (req) => {
       };
     }
 
-    return new Response(JSON.stringify({ ok: true, closed: true, metrics, recomputeError }), {
+    return new Response(JSON.stringify({ ok: true, closed: true, metrics, recomputeError: null }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

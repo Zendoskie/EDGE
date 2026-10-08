@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import { instructorAtRiskNotification, instructorEngagementAlertNotification, instructorEngagementFeedbackNotification } from "@/lib/notification-events";
 
-const POLL_INTERVAL_MS = 90_000;
+const POLL_INTERVAL_MS = 180_000;
 const POLL_KEY_PREFIX = "edge_instructor_inbox_poll_";
 
 function pollStorageKey(userId: string) {

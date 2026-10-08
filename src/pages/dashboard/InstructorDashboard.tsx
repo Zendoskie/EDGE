@@ -21,6 +21,7 @@ import { EngagementBadge } from '@/components/EngagementBadge';
 import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 import { KpiCard } from '@/components/shell/KpiCard';
+import { fetchInstructorCourseBundle, instructorCourseBundleKey } from '@/lib/instructor-course-bundle';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { InstructorFeedbackSummary } from '@/pages/dashboard/InstructorFeedback';
 import { countPendingEngagementFeedback } from '@/lib/instructor-feedback';
@@ -147,10 +148,13 @@ export default function InstructorDashboard() {
       if (subjectIds.length === 0) {
         return { totalStudents: 0, activeSubjects: 0, predictionsRun: 0, atRiskStudents: 0, criticalStudents: 0 };
       }
-      const [enrollmentsRes, predictionsRes] = await Promise.all([
-        supabase.from('enrollments').select('student_id, subject_id, status').in('subject_id', subjectIds),
-        supabase.from('predictions').select('id, risk_level, student_id, subject_id').in('subject_id', subjectIds),
-      ]);
+      const bundle = await queryClient.fetchQuery({
+        queryKey: instructorCourseBundleKey(user!.id, subjectIds),
+        queryFn: () => fetchInstructorCourseBundle(subjectIds),
+        staleTime: 60_000,
+      });
+      const enrollmentsRes = { data: bundle.enrollments };
+      const predictionsRes = { data: bundle.predictions as Array<{ id?: string; risk_level?: string | null; student_id?: string | null; subject_id?: string | null }> };
       const activeStudents = (enrollmentsRes.data ?? []).filter(e => e.status === 'active');
       const uniqueStudents = new Set(activeStudents.map(e => e.student_id) ?? []).size;
       const pendingCount = (enrollmentsRes.data ?? []).filter(e => e.status === 'pending').length;
@@ -181,15 +185,13 @@ export default function InstructorDashboard() {
     queryFn: async () => {
       const ids = subjectsWithPrograms?.map(s => s.id) ?? [];
       if (ids.length === 0) return { chartData: [], byProgram: [], needIntervention: [] };
-      const { data: predictions } = await supabase
-        .from('predictions')
-        .select('id, risk_level, subject_id, student_id, subjects(id, code, name)')
-        .in('subject_id', ids);
-      const { data: enrollRows } = await supabase
-        .from('enrollments')
-        .select('student_id, subject_id, status')
-        .in('subject_id', ids)
-        .eq('status', 'active');
+      const bundle = await queryClient.fetchQuery({
+        queryKey: instructorCourseBundleKey(user!.id, ids),
+        queryFn: () => fetchInstructorCourseBundle(ids),
+        staleTime: 60_000,
+      });
+      const predictions = bundle.predictions;
+      const enrollRows = bundle.enrollments.filter((e) => e.status === 'active');
       const activeKeys = new Set(
         (enrollRows ?? [])
           .filter((e): e is { student_id: string; subject_id: string; status: string } =>
@@ -231,18 +233,13 @@ export default function InstructorDashboard() {
     queryFn: async () => {
       const ids = subjectsWithPrograms?.map(s => s.id) ?? [];
       if (ids.length === 0) return [];
-      const { data, error } = await supabase
-        .from('predictions')
-        .select('id, risk_level, risk_score, recommendation, subject_id, student_id, subjects(code, name)')
-        .in('subject_id', ids)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      const { data: enrollRows } = await supabase
-        .from('enrollments')
-        .select('student_id, subject_id, status')
-        .in('subject_id', ids)
-        .eq('status', 'active');
+      const bundle = await queryClient.fetchQuery({
+        queryKey: instructorCourseBundleKey(user!.id, ids),
+        queryFn: () => fetchInstructorCourseBundle(ids),
+        staleTime: 60_000,
+      });
+      const data = bundle.predictions;
+      const enrollRows = bundle.enrollments.filter((e) => e.status === 'active');
       const activeKeys = new Set(
         (enrollRows ?? [])
           .filter((e): e is { student_id: string; subject_id: string; status: string } =>
@@ -263,22 +260,14 @@ export default function InstructorDashboard() {
       const ids = subjectsWithPrograms?.map((s) => s.id) ?? [];
       if (ids.length === 0) return [];
 
-      const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('enrollments')
-        .select('student_id, subject_id, status')
-        .in('subject_id', ids)
-        .eq('status', 'active');
-      if (enrollmentsError) throw enrollmentsError;
-      const enrollmentRows = enrollments ?? [];
+      const bundle = await queryClient.fetchQuery({
+        queryKey: instructorCourseBundleKey(user!.id, ids),
+        queryFn: () => fetchInstructorCourseBundle(ids),
+        staleTime: 60_000,
+      });
+      const enrollmentRows = bundle.enrollments.filter((e) => e.status === 'active');
       if (enrollmentRows.length === 0) return [];
-
-        const { data: predictions, error } = await supabase
-        .from('predictions')
-        .select('id, student_id, subject_id, risk_level, attendance_rate, quiz_average, assignment_average, project_score, created_at, subjects(code, name)')
-        .in('subject_id', ids)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      const predRows = predictions ?? [];
+      const predRows = bundle.predictions;
 
       const { data: attendanceRows, error: attendanceError } = await supabase
         .from('attendance')
@@ -636,10 +625,13 @@ export default function InstructorDashboard() {
       const ids = subjectsWithPrograms?.map(s => s.id) ?? [];
       if (ids.length === 0) return {};
       
-      const [enrollmentsRes, predictionsRes] = await Promise.all([
-        supabase.from('enrollments').select('subject_id, student_id, status').in('subject_id', ids),
-        supabase.from('predictions').select('subject_id, risk_level, student_id').in('subject_id', ids),
-      ]);
+      const bundle = await queryClient.fetchQuery({
+        queryKey: instructorCourseBundleKey(user!.id, ids),
+        queryFn: () => fetchInstructorCourseBundle(ids),
+        staleTime: 60_000,
+      });
+      const enrollmentsRes = { data: bundle.enrollments };
+      const predictionsRes = { data: bundle.predictions as Array<{ subject_id?: string | null; risk_level?: string | null; student_id?: string | null }> };
 
       const stats: Record<string, { students: number; atRisk: number; critical: number; predictions: number }> = {};
       

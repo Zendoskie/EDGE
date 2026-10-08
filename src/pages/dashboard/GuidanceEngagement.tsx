@@ -64,7 +64,9 @@ export default function GuidanceEngagement() {
       return buildGuidanceEngagementRows(summaries ?? [], profiles ?? []);
     },
     enabled: role === 'guidance_counselor',
-    refetchInterval: 60_000,
+    staleTime: 120_000,
+    refetchInterval: 180_000,
+    refetchOnWindowFocus: false,
   });
 
   const filtered = useMemo(() => {

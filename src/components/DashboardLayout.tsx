@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useMemo, useLayoutEffect, useState } from "react";
 import { Link, Navigate, useLocation, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -24,8 +24,6 @@ import { NotificationInboxTrigger } from "@/components/NotificationInboxTrigger"
 import { Skeleton } from "@/components/ui/skeleton";
 import { GraduationCap, Settings } from "lucide-react";
 import type { AppRole } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { AICoachPopup } from "@/components/AICoachPopup";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { shouldShowHeaderAiCoach } from "@/lib/dashboard-role-features";
@@ -33,17 +31,9 @@ import {
   buildStudentCoachingContext,
   formatAtRiskSubjectLabels,
   formatSubjectLabel,
-  type SubjectCoachingMetrics,
 } from "@/lib/coaching-context";
 import { useStudentEnrolledSubjectIds } from "@/hooks/useStudentEnrolledSubjectIds";
-
-type StudentPredictionContext = {
-  riskLevel: string | null;
-  subjectLabel: string | null;
-  atRiskSubjects: string[];
-  metrics: SubjectCoachingMetrics | null;
-  coachingSubjects: SubjectCoachingMetrics[];
-};
+import { useLatestStudentPredictions } from "@/hooks/useStudentAcademicSnapshot";
 
 function AnimatedDashboardOutlet() {
   const outlet = useOutlet();
@@ -156,51 +146,29 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
   const { data: enrolledSubjectIds = [], isFetched: enrollmentsFetched } = useStudentEnrolledSubjectIds(
     role === "student" ? userId : undefined,
   );
-
-  const { data: coachContext } = useQuery<StudentPredictionContext>({
-    queryKey: ["ai-coach-student-context", userId, enrolledSubjectIds],
-    enabled: role === "student" && !!userId && coachContextReady && enrollmentsFetched,
-    staleTime: 60_000,
-    queryFn: async () => {
-      if (enrolledSubjectIds.length === 0) {
-        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
-      }
-
-      const { data, error } = await supabase
-        .from("predictions")
-        .select(
-          "risk_level, risk_score, confidence, attendance_rate, activity_average, activity_completion_rate, quiz_average, laboratory_exam_average, comprehension_rating, recommendation, created_at, subject_id, subjects(code, name)",
-        )
-        .eq("student_id", userId)
-        .in("subject_id", enrolledSubjectIds)
-        .order("created_at", { ascending: false })
-        .limit(300);
-
-      if (error) throw error;
-      if (!data?.length) {
-        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
-      }
-
-      const coaching = buildStudentCoachingContext(data as any[]);
-      const focus = coaching.focusSubject;
-      if (!focus) {
-        return { riskLevel: null, subjectLabel: null, atRiskSubjects: [], metrics: null, coachingSubjects: [] };
-      }
-
-      const subjectLabel =
+  const { data: predictionRows = [] } = useLatestStudentPredictions(
+    role === "student" ? userId : undefined,
+    role === "student" && !!userId && coachContextReady && enrollmentsFetched,
+  );
+  const coachContext = useMemo(() => {
+    if (!predictionRows.length || enrolledSubjectIds.length === 0) return null;
+    const allowed = new Set(enrolledSubjectIds);
+    const coaching = buildStudentCoachingContext(
+      predictionRows.filter((row) => row.subject_id && allowed.has(row.subject_id)),
+    );
+    const focus = coaching.focusSubject;
+    if (!focus) return null;
+    return {
+      riskLevel: focus.riskClassification,
+      subjectLabel:
         coaching.atRiskSubjects.length > 1
           ? `${coaching.atRiskSubjects.length} subjects need attention`
-          : formatSubjectLabel(focus);
-
-      return {
-        riskLevel: focus.riskClassification,
-        subjectLabel,
-        atRiskSubjects: formatAtRiskSubjectLabels(coaching.atRiskSubjects),
-        metrics: focus,
-        coachingSubjects: coaching.subjects,
-      };
-    },
-  });
+          : formatSubjectLabel(focus),
+      atRiskSubjects: formatAtRiskSubjectLabels(coaching.atRiskSubjects),
+      metrics: focus,
+      coachingSubjects: coaching.subjects,
+    };
+  }, [predictionRows, enrolledSubjectIds]);
 
   const reduceMotion = useReducedMotion();
 

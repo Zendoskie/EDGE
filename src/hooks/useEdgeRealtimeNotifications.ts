@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
+import { invalidateEngagementKeys } from "@/hooks/useEngagementSummaryRealtime";
 import {
   studentCoachingRecommendationNotification,
   studentEngagementDropNotification,
@@ -19,6 +21,7 @@ import {
  */
 export function useEdgeRealtimeNotifications(userId: string | undefined, role: string | undefined) {
   const { addNotification } = useNotificationInbox();
+  const queryClient = useQueryClient();
   const addRef = useRef(addNotification);
   addRef.current = addNotification;
 
@@ -144,6 +147,7 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
           if (inactive) addRef.current(inactive);
           const noPart = studentNoParticipationNotification(row);
           if (noPart) addRef.current(noPart);
+          invalidateEngagementKeys(queryClient, userId);
         },
       )
       .subscribe();
@@ -151,5 +155,5 @@ export function useEdgeRealtimeNotifications(userId: string | undefined, role: s
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId, role]);
+  }, [userId, role, queryClient]);
 }

@@ -264,13 +264,7 @@ async function loadStudentRecord(db: Db, userId: string): Promise<StudentRecord>
       .from("subject_grading_systems")
       .select("subject_id, activity_weight, project_weight, attendance_weight, exam_weight")
       .in("subject_id", subjectIds),
-    db
-      .from("predictions")
-      .select("subject_id, risk_level, risk_score, created_at")
-      .eq("student_id", userId)
-      .in("subject_id", subjectIds)
-      .order("created_at", { ascending: false })
-      .limit(300),
+    db.rpc("latest_student_predictions", { p_student_id: userId }),
     loadEngagement(db, userId).catch(() => null),
   ]);
 

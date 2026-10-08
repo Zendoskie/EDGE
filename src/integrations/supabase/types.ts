@@ -2089,6 +2089,26 @@ export type Database = {
         Args: { p_student_id_no: string }
         Returns: string
       }
+      latest_student_predictions: {
+        Args: { p_student_id: string }
+        Returns: {
+          activity_average: number | null
+          activity_completion_rate: number | null
+          attendance_rate: number | null
+          comprehension_rating: number | null
+          confidence: number | null
+          created_at: string | null
+          id: string
+          laboratory_exam_average: number | null
+          quiz_average: number | null
+          recommendation: string | null
+          risk_level: string
+          risk_score: number | null
+          subject_code: string | null
+          subject_id: string
+          subject_name: string | null
+        }[]
+      }
       recompute_student_engagement: {
         Args: { p_student_id: string }
         Returns: undefined

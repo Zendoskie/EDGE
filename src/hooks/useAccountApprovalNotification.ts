@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 
@@ -19,6 +20,7 @@ export function useDurableInboxNotifications(
   role: string | undefined,
 ) {
   const { addNotification } = useNotificationInbox();
+  const queryClient = useQueryClient();
   const addRef = useRef(addNotification);
   addRef.current = addNotification;
   const seenIdsRef = useRef<Set<string>>(new Set());
@@ -64,6 +66,9 @@ export function useDurableInboxNotifications(
 
         if (error || cancelled || !data?.length) return;
         await ingest(data as DurableNotificationRow[]);
+        if (role === "guidance_counselor") {
+          void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
+        }
       } catch (e) {
         console.warn("useDurableInboxNotifications:", e);
       }
@@ -72,7 +77,7 @@ export function useDurableInboxNotifications(
     void load();
     const timer = window.setInterval(() => {
       void load();
-    }, 45_000);
+    }, 180_000);
 
     const channel = supabase
       .channel(`durable-inbox:${userId}`)
@@ -88,6 +93,9 @@ export function useDurableInboxNotifications(
           const row = payload.new as DurableNotificationRow & { read?: boolean };
           if (!row?.id || row.read) return;
           void ingest([row]);
+          if (role === "guidance_counselor") {
+            void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
+          }
         },
       )
       .subscribe();
@@ -97,7 +105,7 @@ export function useDurableInboxNotifications(
       window.clearInterval(timer);
       void supabase.removeChannel(channel);
     };
-  }, [userId, role]);
+  }, [userId, role, queryClient]);
 }
 
 /** @deprecated Prefer useDurableInboxNotifications — kept for existing imports. */

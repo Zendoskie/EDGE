@@ -75,15 +75,21 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
           return sourceName;
         };
 
-        const { data: preds } = await supabase
+        const sinceMs = Date.parse(lastPoll);
+        const { data: predictionRows } = await supabase
           .from("predictions")
           .select(
             "id, created_at, risk_level, previous_risk_level, attendance_rate, previous_attendance_rate, recommendation, subject_id, subjects(code)",
           )
           .eq("student_id", userId)
-          .gt("created_at", lastPoll);
+          .or(`created_at.gt."${lastPoll}",recommendation.not.is.null`);
 
-        for (const p of preds ?? []) {
+        const preds = (predictionRows ?? []).filter((row) => {
+          const createdMs = Date.parse(row.created_at ?? "");
+          return Number.isFinite(sinceMs) && Number.isFinite(createdMs) && createdMs > sinceMs;
+        });
+
+        for (const p of preds) {
           const row = p as {
             id: string;
             subjects: { code?: string } | null;
@@ -95,11 +101,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
         }
 
         const coachingSeen = loadCoachingRecSeen(userId);
-        const { data: coachingRows } = await supabase
-          .from("predictions")
-          .select("id, recommendation, subject_id, subjects(code)")
-          .eq("student_id", userId)
-          .not("recommendation", "is", null);
+        const coachingRows = (predictionRows ?? []).filter((row) => Boolean(row.recommendation?.trim()));
 
         const nextCoachingSeen = { ...coachingSeen };
         for (const p of coachingRows ?? []) {
@@ -195,7 +197,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
     };
 
     void run();
-    const intervalId = window.setInterval(run, 90_000);
+    const intervalId = window.setInterval(run, 180_000);
     const onVisibility = () => {
       if (document.visibilityState === "visible") void run();
     };

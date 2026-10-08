@@ -28,21 +28,28 @@ export function useStudentSessionTracking() {
       void bootstrap();
     }, bootstrapDelayMs);
 
-    const heartbeatId = window.setInterval(() => {
+    const beat = () => {
+      if (document.visibilityState === 'hidden') return;
       void updateSessionHeartbeat();
-    }, getSessionHeartbeatIntervalMs());
+    };
+    const heartbeatId = window.setInterval(beat, getSessionHeartbeatIntervalMs());
 
     const handleBeforeUnload = () => {
       finalizeStudentSessionKeepalive();
     };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void updateSessionHeartbeat();
+    };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       cancelled = true;
       window.clearTimeout(bootstrapTimer);
       window.clearInterval(heartbeatId);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [role, user?.id]);
 }

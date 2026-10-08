@@ -373,8 +373,9 @@ export function useAdminEngagementAnalytics(enabled: boolean) {
       };
     },
     enabled,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: 120_000,
+    refetchInterval: 180_000,
+    refetchOnWindowFocus: false,
   });
 
   const exportRows = useMemo(() => {

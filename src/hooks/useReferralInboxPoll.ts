@@ -5,7 +5,7 @@ import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import { normalizeReferralStatus, referralStatusLabel } from "@/lib/referral-utils";
 import { resolveProfileSource } from "@/lib/notification-sources";
 
-const POLL_INTERVAL_MS = 90_000;
+const POLL_INTERVAL_MS = 180_000;
 const SEEN_KEY_PREFIX = "edge_referral_poll_seen_";
 
 function seenStorageKey(userId: string) {
@@ -113,6 +113,7 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
 
         if (role === "student") query = query.eq("student_id", userId);
         else if (role === "instructor") query = query.eq("instructor_id", userId);
+        else query = query.eq("status", "pending");
 
         const { data, error } = await query;
         if (error || cancelled) return;
@@ -155,6 +156,18 @@ export function useReferralInboxPoll(userId: string | undefined, role: string | 
             }
             seen[id] = status;
             changed = true;
+          }
+        }
+
+        if (role === "guidance_counselor") {
+          const pendingIds = new Set(
+            (data ?? []).map((row) => String((row as { id?: string }).id ?? "")).filter(Boolean),
+          );
+          for (const [id, status] of Object.entries(seen)) {
+            if (normalizeReferralStatus(status) === "pending" && !pendingIds.has(id)) {
+              seen[id] = "decided";
+              changed = true;
+            }
           }
         }
 

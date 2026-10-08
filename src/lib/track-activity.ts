@@ -12,7 +12,7 @@ const LOGIN_SESSION_KEY = 'edge_login_session_id';
 const LOGIN_IN_PROGRESS_KEY = 'edge_login_in_progress';
 const LOGIN_TRACKED_KEY = 'edge_login_tracked_token';
 const DEDUP_PREFIX = 'edge_activity_dedup_';
-const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 60_000;
 const LOGIN_DEDUP_MS = 60_000;
 
 export type EngagementMetrics = {
@@ -299,14 +299,6 @@ async function insertLoginSessionViaEdge(
   return undefined;
 }
 
-async function refreshEngagementSummary(studentId: string): Promise<void> {
-  const { error } = await supabase.rpc('recompute_student_engagement', {
-    p_student_id: studentId,
-  });
-  if (error) console.warn('recompute failed:', error.message);
-  invalidateEngagementQueries(studentId);
-}
-
 async function insertLoginSession(
   countsAsLogin: boolean,
   auth: StudentAuthContext,
@@ -331,7 +323,7 @@ async function insertLoginSession(
 
   if (!loginId) return undefined;
 
-  await refreshEngagementSummary(auth.userId);
+  invalidateEngagementQueries(auth.userId);
   return loginId;
 }
 
@@ -357,7 +349,6 @@ export async function trackStudentLogin(auth?: StudentAuthContext | null): Promi
 
     markLoginTracked(resolved.accessToken);
     storeLoginSessionId(loginId);
-    await refreshEngagementSummary(resolved.userId);
     console.info('[engagement] login recorded:', loginId);
   } catch (err) {
     console.warn('[engagement] trackStudentLogin failed:', err);
@@ -417,14 +408,13 @@ export async function resumeStudentSession(auth?: StudentAuthContext | null): Pr
     const openSessionId = await findOpenSessionId(resolved.userId);
     if (openSessionId) {
       storeLoginSessionId(openSessionId);
-      await refreshEngagementSummary(resolved.userId);
       return;
     }
 
     const edgeResult = await callSyncStudentSession('resume', resolved);
     if (edgeResult?.sessionId) {
       storeLoginSessionId(edgeResult.sessionId);
-      await refreshEngagementSummary(resolved.userId);
+      invalidateEngagementQueries(resolved.userId);
       return;
     }
 
@@ -432,7 +422,6 @@ export async function resumeStudentSession(auth?: StudentAuthContext | null): Pr
     if (!loginId) return;
 
     storeLoginSessionId(loginId);
-    await refreshEngagementSummary(resolved.userId);
   } catch (err) {
     console.warn('resumeStudentSession failed:', err);
   }
@@ -441,7 +430,7 @@ export async function resumeStudentSession(auth?: StudentAuthContext | null): Pr
 async function updateSessionHeartbeatDirect(loginId: string): Promise<boolean> {
   const { data: row, error: readError } = await supabase
     .from('student_login_history')
-    .select('login_time, student_id, logout_time')
+    .select('login_time, student_id, logout_time, session_duration')
     .eq('id', loginId)
     .maybeSingle();
 
@@ -454,6 +443,9 @@ async function updateSessionHeartbeatDirect(loginId: string): Promise<boolean> {
   if (!Number.isFinite(start)) return false;
 
   const sessionDuration = Math.max(0, Math.round((Date.now() - start) / 1000));
+  if (typeof row.session_duration === 'number' && sessionDuration - row.session_duration < 45) {
+    return true;
+  }
   const { error: updateError } = await supabase
     .from('student_login_history')
     .update({ session_duration: sessionDuration })
@@ -537,7 +529,7 @@ async function finalizeStudentSessionDirect(loginId: string): Promise<void> {
 
   clearStoredLoginSessionId();
 
-  if (row.student_id) await refreshEngagementSummary(row.student_id);
+  if (row.student_id) invalidateEngagementQueries(row.student_id);
 }
 
 /** Finalize the active session and accumulate session duration. */

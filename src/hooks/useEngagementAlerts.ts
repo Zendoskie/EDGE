@@ -56,8 +56,9 @@ export function useInstructorEngagementAlerts(enabled = true) {
       return (data ?? []) as EngagementAlert[];
     },
     enabled: enabled && !!user?.id && role === 'instructor',
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: 120_000,
+    refetchInterval: 180_000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -83,7 +84,8 @@ export function useStudentEngagementAlerts(studentId: string | undefined | null)
       return (data ?? []) as EngagementAlert[];
     },
     enabled: !!studentId,
-    refetchInterval: 30_000,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -101,7 +103,8 @@ export function useEngagementInterventions(studentId: string | undefined | null)
       return (data ?? []) as EngagementIntervention[];
     },
     enabled: !!studentId,
-    refetchInterval: 30_000,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -237,8 +237,9 @@ export default function StudentEngagementMonitoring() {
       return { rows: mappedRows, subjectIds };
     },
     enabled: !!user?.id && role === 'instructor',
-    refetchOnWindowFocus: true,
-    refetchInterval: 30_000,
+    staleTime: 120_000,
+    refetchInterval: 180_000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {

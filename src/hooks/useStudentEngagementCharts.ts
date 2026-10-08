@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
 import {
   buildEngagementTrendSeries,
   type TrendGranularity,
@@ -82,18 +81,9 @@ export function useStudentEngagementCharts(studentId: string | undefined | null,
       return { logins, activities, feedback, risks };
     },
     enabled: !!studentId,
-    refetchOnWindowFocus: true,
-    refetchInterval: 30_000,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
-
-  useEffect(() => {
-    if (!studentId) return;
-    return subscribeEngagementInvalidation((invalidatedId) => {
-      if (invalidatedId === studentId) {
-        void query.refetch();
-      }
-    });
-  }, [studentId, query]);
 
   const series = useMemo(
     () =>

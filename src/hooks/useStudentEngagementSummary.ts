@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
 
 export type StudentEngagementSummaryRow = {
   student_id: string;
@@ -55,15 +53,6 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
-
-  useEffect(() => {
-    if (!studentId) return;
-    return subscribeEngagementInvalidation((invalidatedId) => {
-      if (invalidatedId === studentId) {
-        void query.refetch();
-      }
-    });
-  }, [studentId, query]);
 
   return {
     summary: query.data ?? null,
