@@ -52,6 +52,7 @@ export default function Login() {
   const [signupCourse, setSignupCourse] = useState('');
   const [signupYear, setSignupYear] = useState('');
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
+  const [signupParentEmail, setSignupParentEmail] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
@@ -122,6 +123,11 @@ export default function Login() {
           toast.error('Student No. must match the format: 22-1-7-0008');
           return;
         }
+        const parentEmail = signupParentEmail.trim();
+        if (!parentEmail) {
+          toast.error('Please enter the parent/guardian Gmail address.');
+          return;
+        }
 
         const { error: requestError } = await (supabase as any).rpc('submit_student_registration_request', {
           p_full_name: signupName.trim(),
@@ -130,10 +136,13 @@ export default function Login() {
           p_course: signupCourse,
           p_year_level: signupYear,
           p_is_irregular: signupYear === 'Irregular',
+          p_parent_email: parentEmail,
         });
         if (requestError) {
           const checkMsg = (requestError.message || '').toLowerCase();
-          if (checkMsg.includes('student_id_in_use') || checkMsg.includes('student_id_invalid')) {
+          if (checkMsg.includes('parent_email_required') || checkMsg.includes('parent_email_invalid')) {
+            toast.error('Enter a valid parent/guardian Gmail address.');
+          } else if (checkMsg.includes('student_id_in_use') || checkMsg.includes('student_id_invalid')) {
             toast.error(checkMsg.includes('student_id_invalid')
               ? 'Student No. must match the format: 22-1-7-0008'
               : 'This Student No. is already registered. Use a unique Student No.');
@@ -312,6 +321,21 @@ export default function Login() {
                             </p>
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-parent-email">Parent/Guardian Gmail</Label>
+                          <Input
+                            id="signup-parent-email"
+                            type="email"
+                            value={signupParentEmail}
+                            onChange={e => setSignupParentEmail(e.target.value)}
+                            required
+                            placeholder="parent@gmail.com"
+                            autoComplete="off"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Required. Your parent or guardian must sign up with this exact email. A Student ID alone does not grant them access.
+                          </p>
+                        </div>
                       </>
                     )}
                     {signupRole === 'parent' && (
@@ -325,7 +349,7 @@ export default function Login() {
                           placeholder="e.g. 22-1-7-0008"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Required on this request. It only asks to link that student. The student approves first, then an administrator. You create your password from the email sent after both approvals.
+                          Required. The email above must match the parent/guardian Gmail this student registered. The Student ID only locates the student. The student approves first, then an administrator.
                         </p>
                       </div>
                     )}

@@ -7,6 +7,12 @@ export const RISK_WEIGHTS = {
   exams: 0.3,
 } as const;
 
+/**
+ * Scored activities required before academic grades may produce a Crucial
+ * classification. There is no earlier project threshold for this.
+ */
+export const MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK = 3;
+
 export type RiskScoreInputs = {
   activityAverage: number | null;
   quizAverage: number | null;
@@ -15,6 +21,12 @@ export type RiskScoreInputs = {
   laboratoryExamAverage: number | null;
   midtermExamAverage: number | null;
   finalExamAverage: number | null;
+  /**
+   * Count of scored activities behind the averages.
+   * Official prediction must pass this. When omitted, classification stays on
+   * the historical score bands so callers that only have averages are unchanged.
+   */
+  gradedActivityCount?: number;
 };
 
 export function averageOf(values: Array<number | null | undefined>): number | null {
@@ -76,6 +88,35 @@ export function classifyRiskScore(score: number | null): CanonicalRiskLevel {
   return 'critical';
 }
 
+/**
+ * Sparse grades are averaged and then renormalized to the full risk score,
+ * so one poor activity can fall below 60 and become Crucial. Hold that label
+ * until enough scored activities exist. Attendance that is itself Crucial
+ * remains valid evidence and is not forced to Stable.
+ */
+export function applySparseGradeSafeguard(
+  level: CanonicalRiskLevel,
+  gradedActivityCount: number | undefined,
+  attendancePercent: number | null,
+): CanonicalRiskLevel {
+  if (
+    gradedActivityCount == null ||
+    !Number.isFinite(gradedActivityCount) ||
+    gradedActivityCount >= MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK
+  ) {
+    return level;
+  }
+  if (level !== 'critical') return level;
+  if (
+    attendancePercent != null &&
+    Number.isFinite(attendancePercent) &&
+    classifyRiskScore(attendancePercent) === 'critical'
+  ) {
+    return 'critical';
+  }
+  return 'at_risk';
+}
+
 export type RiskClassificationResult = {
   risk_score: number | null;
   risk_level: CanonicalRiskLevel;
@@ -88,7 +129,11 @@ export function computeRiskClassification(inputs: RiskScoreInputs): RiskClassifi
   const academic_performance = computeAcademicPerformance(inputs);
   const exam_average = computeExamAverage(inputs);
   const risk_score = computeRiskScore(inputs);
-  const risk_level = classifyRiskScore(risk_score);
+  const risk_level = applySparseGradeSafeguard(
+    classifyRiskScore(risk_score),
+    inputs.gradedActivityCount,
+    inputs.attendancePercent,
+  );
 
   const componentsPresent = [
     academic_performance != null,

@@ -12,6 +12,8 @@ export type InboxNotification = {
   id: string;
   /** When set, prevents duplicate entries (Realtime + polling). */
   dedupeKey?: string;
+  /** user_inbox_notifications.id. The database row stays unread until this item is marked read. */
+  serverId?: string;
   sourceName: string;
   title: string;
   body: string;
@@ -42,6 +44,10 @@ function loadFromStorage(userId: string): InboxNotification[] {
         typeof (x as InboxNotification).read === "boolean",
     ).map((item) => ({
       ...item,
+      serverId:
+        typeof (item as Partial<InboxNotification>).serverId === "string"
+          ? (item as InboxNotification).serverId
+          : undefined,
       sourceName:
         typeof (item as Partial<InboxNotification>).sourceName === "string" &&
         (item as Partial<InboxNotification>).sourceName?.trim()
@@ -53,7 +59,7 @@ function loadFromStorage(userId: string): InboxNotification[] {
   }
 }
 
-type AddInput = { title: string; body: string; dedupeKey?: string; sourceName?: string };
+type AddInput = { title: string; body: string; dedupeKey?: string; sourceName?: string; serverId?: string };
 
 type InboxContextValue = {
   items: InboxNotification[];
@@ -94,6 +100,7 @@ export function NotificationInboxProvider({
       const n: InboxNotification = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         dedupeKey: input.dedupeKey,
+        serverId: input.serverId,
         sourceName: input.sourceName?.trim() || "EDGE System",
         title: input.title,
         body: input.body,

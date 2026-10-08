@@ -6,7 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { UserCheck, UserX } from 'lucide-react';
+import { ParentEmailMatchIndicator } from '@/components/ParentEmailMatchIndicator';
 import { adminDecideParentRequest, adminReviewParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { parentEmailsMatch } from '@/lib/parent-email-match';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 import { getPublicAppUrl } from '@/lib/app-url';
 import {
@@ -26,6 +28,7 @@ type RequestRow = {
   parent_name: string;
   parent_email: string;
   student_name: string;
+  registered_parent_email: string | null;
   source: 'registration' | 'link';
   completed: boolean;
 };
@@ -61,7 +64,7 @@ export default function ParentGuardianRequestsCard() {
       const visibleStatuses = filter === 'awaiting'
         ? ['pending_admin']
         : ['pending_admin', 'admin_rejected', 'approved'];
-      let query = supabase
+      const query = supabase
         .from('parent_student_links')
         .select('id, status, requested_at, student_id_no, parent_user_id, student_user_id')
         .in('status', visibleStatuses)
@@ -72,15 +75,18 @@ export default function ParentGuardianRequestsCard() {
 
       const { data: registrations, error: registrationError } = await (supabase as any)
         .from('parent_registration_requests')
-        .select('id, status, submitted_at, student_id, full_name, email, student_name, completed_at')
+        .select('id, status, submitted_at, student_id, full_name, email, student_name, completed_at, student_user_id')
         .in('status', visibleStatuses)
         .order('submitted_at', { ascending: false })
         .limit(200);
       if (registrationError) throw registrationError;
 
-      const ids = Array.from(new Set((links ?? []).flatMap((l) => [l.parent_user_id, l.student_user_id])));
+      const ids = Array.from(new Set([
+        ...(links ?? []).flatMap((l) => [l.parent_user_id, l.student_user_id]),
+        ...(registrations ?? []).map((r: { student_user_id?: string }) => r.student_user_id),
+      ].filter(Boolean)));
       const { data: profiles, error: pErr } = ids.length
-        ? await supabase.from('profiles').select('user_id, full_name, email').in('user_id', ids)
+        ? await supabase.from('profiles').select('user_id, full_name, email, parent_email').in('user_id', ids)
         : { data: [], error: null };
       if (pErr) throw pErr;
       const byId = new Map((profiles ?? []).map((p) => [p.user_id, p]));
@@ -93,6 +99,7 @@ export default function ParentGuardianRequestsCard() {
         parent_name: byId.get(l.parent_user_id)?.full_name || '—',
         parent_email: byId.get(l.parent_user_id)?.email || '—',
         student_name: byId.get(l.student_user_id)?.full_name || '—',
+        registered_parent_email: byId.get(l.student_user_id)?.parent_email ?? null,
         source: 'link',
         completed: l.status === 'approved',
       }));
@@ -104,6 +111,7 @@ export default function ParentGuardianRequestsCard() {
         parent_name: r.full_name || '—',
         parent_email: r.email || '—',
         student_name: r.student_name || '—',
+        registered_parent_email: byId.get(r.student_user_id)?.parent_email ?? null,
         source: 'registration',
         completed: Boolean(r.completed_at),
       }));
@@ -172,8 +180,10 @@ export default function ParentGuardianRequestsCard() {
 
   const actions = (r: RequestRow, fullWidth: boolean) =>
     r.status === 'pending_admin' ? (
-      <div className={fullWidth ? 'flex flex-col gap-2 pt-1' : 'flex flex-wrap justify-end gap-2'}>
-        <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r, 'approve')}>
+      <div className={fullWidth ? 'flex flex-col gap-2 pt-1' : 'flex flex-col items-end gap-2'}>
+        <ParentEmailMatchIndicator registeredEmail={r.registered_parent_email} requestEmail={r.parent_email} />
+        <div className={fullWidth ? 'flex flex-col gap-2' : 'flex flex-wrap justify-end gap-2'}>
+        <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id || !parentEmailsMatch(r.registered_parent_email, r.parent_email)} onClick={() => void decide(r, 'approve')}>
           <UserCheck className="h-4 w-4 shrink-0" />
           Approve
         </Button>
@@ -181,6 +191,7 @@ export default function ParentGuardianRequestsCard() {
           <UserX className="h-4 w-4 shrink-0" />
           Reject
         </Button>
+        </div>
       </div>
     ) : (
       <Badge variant={parentLinkStatusBadgeVariant(r.status)}>{statusText(r)}</Badge>

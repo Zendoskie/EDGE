@@ -19,3 +19,9 @@ export function parentEmailsMatch(
 export function hasParentEmail(email: string | null | undefined): boolean {
   return normalizeEmailForCompare(email).length > 0;
 }
+
+export function parentEmailMatchMessage(matches: boolean): string {
+  return matches
+    ? "✓ Parent email matches the email registered by the student."
+    : "✕ Parent email does not match.";
+}

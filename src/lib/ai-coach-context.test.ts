@@ -28,9 +28,12 @@ import {
 import {
   CoachModelError,
   DB_FAILURE_REPLY,
+  FRESH_VARIATION_RULE,
   NO_ENROLLMENT_REPLY,
   OTHER_STUDENT_REPLY,
   callOpenAiChat,
+  completedRepeatOrdinal,
+  isSameQuestionRefusal,
   runCoachChat,
   sanitizeConversation,
   type ChatMessage,
@@ -472,6 +475,112 @@ describe('L. official grade calculation unchanged', () => {
       weights: input.gradingSystems[0],
     });
     expect(pl.officialGrade).toBe(expected);
+  });
+});
+
+describe('repeated study-plan questions', () => {
+  const question = 'Recommend a study plan';
+
+  it('answers the first request, then a completed repeat, then a third repeat', async () => {
+    const replies = ['Study Plan A', 'Study Plan B', 'Study Plan C'];
+    let n = 0;
+    const callModel = vi.fn(async () => replies[n++] ?? 'Study Plan');
+    const { deps } = makeDeps({ callModel });
+
+    const first = await runCoachChat(deps, [user(question)]);
+    expect(first.reply).toBe('Study Plan A');
+    expect(first.source).toBe('ai');
+    expect(callModel.mock.calls[0][0] as string).not.toContain(FRESH_VARIATION_RULE);
+
+    const second = await runCoachChat(deps, [user(question), assistant('Study Plan A'), user(question)]);
+    expect(second.reply).toBe('Study Plan B');
+    expect(second.source).toBe('ai');
+    expect(callModel.mock.calls[1][0] as string).toContain(FRESH_VARIATION_RULE);
+    expect(callModel.mock.calls[1][0] as string).toContain('PL101');
+
+    const third = await runCoachChat(deps, [
+      user(question),
+      assistant('Study Plan A'),
+      user(question),
+      assistant('Study Plan B'),
+      user(question),
+    ]);
+    expect(third.reply).toBe('Study Plan C');
+    expect(callModel.mock.calls[2][0] as string).toContain('This is request 3');
+    expect(callModel).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not treat an in-flight duplicate as a completed repeat', () => {
+    expect(completedRepeatOrdinal([user(question), user(question)])).toBe(0);
+    expect(completedRepeatOrdinal([user(question), assistant('Study Plan A'), user('  recommend   a study plan ')])).toBe(2);
+  });
+
+  it('still answers a different question without the repeat instruction', async () => {
+    const { deps, callModel } = makeDeps();
+    const res = await runCoachChat(deps, [
+      user(question),
+      assistant('Study Plan A'),
+      user('What should I review before the next quiz?'),
+    ]);
+    expect(res.source).toBe('ai');
+    expect(res.reply).toBe('Here is your plan.');
+    expect(callModel.mock.calls[0][0] as string).not.toContain(FRESH_VARIATION_RULE);
+  });
+
+  it('still answers a direct academic question from the record', async () => {
+    const { deps, callModel } = makeDeps();
+    const res = await runCoachChat(deps, [
+      user(question),
+      assistant('Study Plan A'),
+      user('What is my score in Quiz 1 in PL101?'),
+    ]);
+    expect(res.reply).toContain('41 out of 50 (82%)');
+    expect(callModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps earlier conversation history available to the model', async () => {
+    const { deps, callModel } = makeDeps();
+    await runCoachChat(deps, [user(question), assistant('Study Plan A'), user(question)]);
+    const sent = callModel.mock.calls[0][1] as ChatMessage[];
+    expect(sent.map((m) => m.content)).toEqual([question, 'Study Plan A', question]);
+  });
+
+  it('still blocks another student\'s data on a repeated question', async () => {
+    const { deps, callModel, loadRecord } = makeDeps();
+    const res = await runCoachChat(deps, [
+      user(question),
+      assistant('Study Plan A'),
+      user("What are my classmates' grades?"),
+    ]);
+    expect(res.reply).toBe(OTHER_STUDENT_REPLY);
+    expect(loadRecord).not.toHaveBeenCalled();
+    expect(callModel).not.toHaveBeenCalled();
+  });
+
+  it('replaces a same-question refusal with a fresh variation', async () => {
+    const callModel = vi.fn()
+      .mockResolvedValueOnce("I can't respond to the same question.")
+      .mockResolvedValueOnce('Study Plan B: review Quiz 2 first, then the midterm.');
+    const { deps } = makeDeps({ callModel });
+    const res = await runCoachChat(deps, [user(question), assistant('Study Plan A'), user(question)]);
+    expect(res.reply).toBe('Study Plan B: review Quiz 2 first, then the midterm.');
+    expect(res.reply).not.toMatch(/same question/i);
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(isSameQuestionRefusal("I can't respond to the same question.")).toBe(true);
+    expect(isSameQuestionRefusal('Study Plan B: review Quiz 2 first, then the midterm.')).toBe(false);
+  });
+
+  it('still falls back to the student record when the coach fails on a repeat', async () => {
+    const { deps } = makeDeps({
+      callModel: async () => {
+        throw new Error('down');
+      },
+    });
+    const res = await runCoachChat(deps, [user(question), assistant('Study Plan A'), user(question)]);
+    expect(res.source).toBe('fallback');
+    expect(res.reply).toContain('temporarily unavailable');
+    expect(res.reply).toContain('PL101');
+    expect(res.reply).not.toMatch(/same question/i);
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   hasParentEmail,
   normalizeEmailForCompare,
+  parentEmailMatchMessage,
   parentEmailsMatch,
 } from "@/lib/parent-email-match";
 
@@ -37,6 +38,15 @@ describe("parentEmailsMatch", () => {
   it("does not match when one side is missing", () => {
     expect(parentEmailsMatch(null, "parent@gmail.com")).toBe(false);
     expect(parentEmailsMatch("parent@gmail.com", undefined)).toBe(false);
+  });
+});
+
+describe("parentEmailMatchMessage", () => {
+  it("states a match and a mismatch", () => {
+    expect(parentEmailMatchMessage(true)).toBe(
+      "✓ Parent email matches the email registered by the student.",
+    );
+    expect(parentEmailMatchMessage(false)).toBe("✕ Parent email does not match.");
   });
 });
 

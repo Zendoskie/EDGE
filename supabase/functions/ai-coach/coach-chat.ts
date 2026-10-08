@@ -21,6 +21,41 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
+/** Trim, lowercase, and collapse whitespace. This is exact-text matching, not semantic similarity. */
+export function normalizeCoachQuestion(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * 0 when this question has not already been answered.
+ * 2 or more when earlier matching user turns already have an assistant reply.
+ * An identical question that is still in flight (no assistant reply yet) stays 0.
+ */
+export function completedRepeatOrdinal(messages: ChatMessage[]): number {
+  const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
+  if (lastUserIdx < 0) return 0;
+  const key = normalizeCoachQuestion(messages[lastUserIdx].content);
+  if (!key) return 0;
+  let completed = 0;
+  for (let i = 0; i < lastUserIdx; i++) {
+    if (messages[i].role !== "user") continue;
+    if (normalizeCoachQuestion(messages[i].content) !== key) continue;
+    const answered = messages.slice(i + 1, lastUserIdx).some((m) => m.role === "assistant");
+    if (answered) completed++;
+  }
+  return completed > 0 ? completed + 1 : 0;
+}
+
+export const FRESH_VARIATION_RULE =
+  "When a student repeats a completed request, provide a fresh and useful variation while remaining grounded in the student's current academic information. Vary the wording, subject priority, schedule, study blocks, strategy, or recommendations. Do not refuse the question, do not say you cannot answer it again, and do not copy the previous reply unchanged. Do not invent grades, attendance, subjects, scores, or academic history.";
+
+/** Model copy that refuses to answer because the question was already asked. */
+export function isSameQuestionRefusal(text: string): boolean {
+  return /(?:can(?:not|'t)|cannot)[^.\n]{0,80}same (?:question|request)|already (?:answered|responded to) (?:this|that|the same)|i(?:'ve| have)? already (?:provided|given|shared|created) (?:you )?(?:a |the |that )/i.test(
+    text,
+  );
+}
+
 export const OTHER_STUDENT_REPLY =
   "I can only share your own academic information. I can't look up or compare another student's scores, grades, or records. I'm happy to help with your own results or a study plan.";
 export const OUT_OF_SCOPE_COACHING_REPLY =
@@ -54,8 +89,17 @@ export function buildCoachSystemPrompt(opts: {
   focus: SubjectRecord | null;
   availability: string | null;
   now: Date;
+  repeatOrdinal?: number;
 }): string {
-  const { record, focus, availability, now } = opts;
+  const { record, focus, availability, now, repeatOrdinal } = opts;
+  const repeatNote =
+    repeatOrdinal != null && repeatOrdinal >= 2
+      ? [
+          "",
+          `This is request ${repeatOrdinal} of a question the student already received a completed answer for.`,
+          FRESH_VARIATION_RULE,
+        ]
+      : [];
   return [
     COACHING_ROLE_PROMPT,
     "",
@@ -77,6 +121,7 @@ export function buildCoachSystemPrompt(opts: {
     focus
       ? `Conversation focus subject: ${focus.code}. Treat follow-up questions such as "how can I improve?" as being about this subject unless the student names another.`
       : "Conversation focus subject: none identified. If the student must choose a subject, ask which one.",
+    ...repeatNote,
     "",
     formatStudentRecordForPrompt(record, focus, now),
   ].join("\n");
@@ -260,11 +305,20 @@ export async function runCoachChat(deps: CoachDeps, messages: ChatMessage[]): Pr
   if (!deps.aiEnabled) return result(AI_DISABLED_REPLY, "system", focus);
 
   const availability = parseStudyAvailability(messages.filter((m) => m.role === "user").map((m) => m.content));
-  const system = buildCoachSystemPrompt({ record, focus, availability, now });
+  const repeatOrdinal = completedRepeatOrdinal(messages);
+  const system = buildCoachSystemPrompt({ record, focus, availability, now, repeatOrdinal });
 
   try {
-    const raw = await deps.callModel(system, messages);
-    const reply = validateModelReply(raw);
+    let raw = await deps.callModel(system, messages);
+    let reply = validateModelReply(raw);
+    if (repeatOrdinal >= 2 && reply && isSameQuestionRefusal(reply)) {
+      raw = await deps.callModel(
+        `${system}\n\nYour previous draft refused a repeated question. That draft is invalid. Answer now with a fresh variation grounded only in the STUDENT RECORD.`,
+        messages,
+      );
+      reply = validateModelReply(raw);
+      if (reply && isSameQuestionRefusal(reply)) reply = null;
+    }
     if (!reply) throw new CoachModelError("invalid_reply");
     return result(reply, "ai", focus);
   } catch (e) {

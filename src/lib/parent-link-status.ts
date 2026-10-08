@@ -112,6 +112,21 @@ export function parentLinkErrorMessage(rawMessage: string | null | undefined): s
   if (msg.includes("student_id_required") || msg.includes("guardian_student_id_required")) {
     return "Please enter the student's Student ID.";
   }
+  if (msg.includes("parent_email_mismatch")) {
+    return "This email does not match the parent/guardian email registered by the student. A Student ID alone cannot request or approve parent access.";
+  }
+  if (msg.includes("parent_email_not_set")) {
+    return "This student has not registered a parent/guardian email yet. Parent access cannot continue until that email is on the student account.";
+  }
+  if (msg.includes("parent_email_invalid")) {
+    return "Enter a valid parent/guardian email address.";
+  }
+  if (msg.includes("parent_email_required")) {
+    return "A parent/guardian Gmail address is required.";
+  }
+  if (msg.includes("parent_email_locked")) {
+    return "The parent/guardian email was set during student registration and cannot be changed here.";
+  }
   if (msg.includes("parent_email_already_registered")) {
     return "This email already has an account. If you have a parent account, please sign in. Otherwise contact an administrator.";
   }

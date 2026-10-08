@@ -22,7 +22,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 describe('Login signup form', () => {
-  it('student signup does not ask for a Parent Gmail', async () => {
+  it('student signup requires a Parent/Guardian Gmail', async () => {
     render(
       <MemoryRouter>
         <Login />
@@ -33,8 +33,7 @@ describe('Login signup form', () => {
 
     expect(await screen.findByLabelText(/student no\./i)).toBeInTheDocument();
     expect(document.getElementById('signup-password')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/parent gmail/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/parent gmail/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/parent\/guardian gmail/i)).toBeRequired();
   });
 
   it('parent signup asks for the student Student ID', async () => {

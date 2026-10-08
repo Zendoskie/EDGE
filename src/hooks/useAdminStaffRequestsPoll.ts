@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
+import { idsToAnnounce } from "@/lib/notification-delivery";
 
 const POLL_INTERVAL_MS = 120_000;
 const SEEN_KEY_PREFIX = "edge_admin_staff_requests_seen_";
@@ -11,7 +12,7 @@ function seenStorageKey(userId: string) {
 
 function loadSeen(userId: string): Set<string> {
   try {
-    const raw = sessionStorage.getItem(seenStorageKey(userId));
+    const raw = localStorage.getItem(seenStorageKey(userId));
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set();
@@ -22,7 +23,7 @@ function loadSeen(userId: string): Set<string> {
 
 function saveSeen(userId: string, seen: Set<string>) {
   try {
-    sessionStorage.setItem(seenStorageKey(userId), JSON.stringify([...seen]));
+    localStorage.setItem(seenStorageKey(userId), JSON.stringify([...seen]));
   } catch {
     /* ignore storage errors */
   }
@@ -41,8 +42,8 @@ function friendlyRole(role: string): string {
  * Mirrors the pattern of useAdminPendingUsersPoll but targets the
  * staff_registration_requests table (Phase 2 / Phase 3 workflow).
  *
- * Uses sessionStorage so the admin is not re-notified about requests
- * that were already pending when they logged in.
+ * Remembers announced request ids in localStorage. A pending request is announced
+ * the first time it is seen, including requests that were already pending at login.
  */
 export function useAdminStaffRequestsPoll(
   userId: string | undefined,
@@ -71,22 +72,20 @@ export function useAdminStaffRequestsPoll(
         const rows = (data ?? []) as Array<{ id: string; full_name: string; role: string }>;
         if (rows.length === 0) return;
 
-        const isInitialSeed = seenRef.current.size === 0;
         const seen = new Set(seenRef.current);
+        const announce = new Set(idsToAnnounce(seen, rows.map((row) => row.id)));
         let changed = false;
 
         for (const row of rows) {
-          if (!seen.has(row.id)) {
-            seen.add(row.id);
-            changed = true;
-            if (!isInitialSeed) {
-              addRef.current({
-                title: "New Staff Account Request",
-                body: `${row.full_name} has submitted a ${friendlyRole(row.role)} account request. Open User Approvals to review.`,
-                dedupeKey: `admin-staff-request:${row.id}`,
-              });
-            }
-          }
+          if (!announce.has(row.id)) continue;
+          seen.add(row.id);
+          changed = true;
+          addRef.current({
+            title: "New Staff Account Request",
+            body: `${row.full_name} has submitted a ${friendlyRole(row.role)} account request. Open User Approvals to review.`,
+            dedupeKey: `admin-staff-request:${row.id}`,
+            sourceName: "EDGE System",
+          });
         }
 
         if (changed) {

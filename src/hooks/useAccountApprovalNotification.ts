@@ -2,13 +2,13 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
-
-type DurableNotificationRow = {
-  id: string;
-  title: string;
-  body: string;
-  source_name: string;
-};
+import {
+  DURABLE_INBOX_POLL_MS,
+  durableInboxRetryDelay,
+  durableRowToInboxInput,
+  readServerIdsToSync,
+  type DurableInboxRow,
+} from "@/lib/notification-delivery";
 
 /**
  * Bridges durable `user_inbox_notifications` into the dashboard bell inbox.
@@ -19,65 +19,97 @@ export function useDurableInboxNotifications(
   userId: string | undefined,
   role: string | undefined,
 ) {
-  const { addNotification } = useNotificationInbox();
+  const { addNotification, items } = useNotificationInbox();
   const queryClient = useQueryClient();
   const addRef = useRef(addNotification);
   addRef.current = addNotification;
-  const seenIdsRef = useRef<Set<string>>(new Set());
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const syncedReadRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const ids = readServerIdsToSync(items, syncedReadRef.current);
+    if (!userId || ids.length === 0) return;
+    for (const id of ids) syncedReadRef.current.add(id);
+    void supabase
+      .from("user_inbox_notifications")
+      .update({ read: true })
+      .in("id", ids)
+      .eq("user_id", userId)
+      .then(({ error }) => {
+        if (!error) return;
+        for (const id of ids) syncedReadRef.current.delete(id);
+        console.warn("useDurableInboxNotifications: mark read failed");
+      });
+  }, [items, userId]);
 
   useEffect(() => {
     if (!userId || !role) return;
 
     let cancelled = false;
+    let retryTimer: number | undefined;
 
-    const ingest = async (rows: DurableNotificationRow[]) => {
-      const fresh: DurableNotificationRow[] = [];
+    const ingest = (rows: DurableInboxRow[]) => {
+      const shown = new Set(
+        itemsRef.current.map((item) => item.serverId).filter((id): id is string => Boolean(id)),
+      );
+      let added = 0;
       for (const row of rows) {
-        if (seenIdsRef.current.has(row.id)) continue;
-        seenIdsRef.current.add(row.id);
-        fresh.push(row);
-        addRef.current({
-          title: row.title,
-          body: row.body,
-          sourceName: row.source_name,
-          dedupeKey: `user-inbox-notification:${row.id}`,
-        });
+        const input = durableRowToInboxInput(row);
+        if (!input || shown.has(input.serverId)) continue;
+        shown.add(input.serverId);
+        added += 1;
+        addRef.current(input);
       }
-      if (fresh.length === 0) return;
-      await supabase
-        .from("user_inbox_notifications")
-        .update({ read: true })
-        .in(
-          "id",
-          fresh.map((n) => n.id),
-        )
-        .eq("user_id", userId);
+      if (added > 0 && role === "guidance_counselor") {
+        void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
+      }
     };
 
-    const load = async () => {
+    const load = async (attempt = 0) => {
       try {
         const { data, error } = await supabase
           .from("user_inbox_notifications")
           .select("id, title, body, source_name")
           .eq("user_id", userId)
           .eq("read", false)
-          .order("created_at", { ascending: true })
+          .order("created_at", { ascending: false })
           .limit(50);
 
-        if (error || cancelled || !data?.length) return;
-        await ingest(data as DurableNotificationRow[]);
-        if (role === "guidance_counselor") {
-          void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
+        if (cancelled) return;
+        if (error) {
+          const delay = durableInboxRetryDelay(attempt);
+          if (delay != null) {
+            retryTimer = window.setTimeout(() => {
+              void load(attempt + 1);
+            }, delay);
+          } else {
+            console.warn("useDurableInboxNotifications:", error.message);
+          }
+          return;
         }
+        if (data?.length) ingest(data as DurableInboxRow[]);
       } catch (e) {
-        console.warn("useDurableInboxNotifications:", e);
+        if (cancelled) return;
+        const delay = durableInboxRetryDelay(attempt);
+        if (delay != null) {
+          retryTimer = window.setTimeout(() => {
+            void load(attempt + 1);
+          }, delay);
+        } else {
+          console.warn("useDurableInboxNotifications:", e);
+        }
       }
     };
 
     void load();
     const timer = window.setInterval(() => {
       void load();
-    }, 180_000);
+    }, DURABLE_INBOX_POLL_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     const channel = supabase
       .channel(`durable-inbox:${userId}`)
@@ -90,12 +122,9 @@ export function useDurableInboxNotifications(
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const row = payload.new as DurableNotificationRow & { read?: boolean };
+          const row = payload.new as DurableInboxRow & { read?: boolean };
           if (!row?.id || row.read) return;
-          void ingest([row]);
-          if (role === "guidance_counselor") {
-            void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
-          }
+          ingest([row]);
         },
       )
       .subscribe();
@@ -103,6 +132,8 @@ export function useDurableInboxNotifications(
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (retryTimer != null) window.clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
       void supabase.removeChannel(channel);
     };
   }, [userId, role, queryClient]);

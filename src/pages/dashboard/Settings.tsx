@@ -14,7 +14,9 @@ import { useTheme } from 'next-themes';
 import StudentProfileSetup from '@/components/StudentProfileSetup';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { ParentEmailMatchIndicator } from '@/components/ParentEmailMatchIndicator';
 import { studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { parentEmailsMatch } from '@/lib/parent-email-match';
 import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
 import { PageHeader } from '@/components/shell/PageHeader';
 
@@ -260,7 +262,8 @@ export default function Settings() {
                       </div>
                       {r.status === 'pending' ? (
                         <div className="flex flex-col gap-2">
-                          <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
+                          <ParentEmailMatchIndicator registeredEmail={profile?.parent_email} requestEmail={r.parent_email} />
+                          <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending || !parentEmailsMatch(profile?.parent_email, r.parent_email)}>Approve</Button>
                           <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
                         </div>
                       ) : (
@@ -292,9 +295,12 @@ export default function Settings() {
                         </TableCell>
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
-                            <div className="flex justify-end gap-2 flex-wrap">
-                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending}>Approve</Button>
-                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                            <div className="flex flex-col items-end gap-2">
+                              <ParentEmailMatchIndicator registeredEmail={profile?.parent_email} requestEmail={r.parent_email} />
+                              <div className="flex justify-end gap-2 flex-wrap">
+                                <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve' })} disabled={decideParentRequest.isPending || !parentEmailsMatch(profile?.parent_email, r.parent_email)}>Approve</Button>
+                                <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject' })} disabled={decideParentRequest.isPending}>Reject</Button>
+                              </div>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">No action needed</span>

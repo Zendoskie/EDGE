@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK,
+  RISK_WEIGHTS,
   classifyRiskScore,
   computeAcademicPerformance,
   computeExamAverage,
@@ -74,6 +76,99 @@ describe('risk-scoring', () => {
     expect(classifyRiskScore(60)).toBe('at_risk');
     expect(classifyRiskScore(59.99)).toBe('critical');
     expect(classifyRiskScore(59)).toBe('critical');
+  });
+
+  it('keeps the official 50/20/30 weights', () => {
+    expect(RISK_WEIGHTS).toEqual({ academic: 0.5, attendance: 0.2, exams: 0.3 });
+    expect(MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK).toBe(3);
+  });
+
+  const poorGrade = {
+    activityAverage: 20,
+    quizAverage: null,
+    projectScore: null,
+    attendancePercent: null,
+    laboratoryExamAverage: null,
+    midtermExamAverage: null,
+    finalExamAverage: null,
+  };
+
+  it('A. does not fabricate a score when there are no grades', () => {
+    const result = computeRiskClassification({
+      ...poorGrade,
+      activityAverage: null,
+      gradedActivityCount: 0,
+    });
+    expect(result.academic_performance).toBeNull();
+    expect(result.risk_score).toBeNull();
+    expect(result.risk_level).toBe('stable');
+  });
+
+  it('B. does not mark one very poor grade as Crucial', () => {
+    const result = computeRiskClassification({ ...poorGrade, gradedActivityCount: 1 });
+    expect(result.risk_score).toBe(20);
+    expect(result.risk_level).toBe('at_risk');
+  });
+
+  it('C. stays conservative with two very poor grades', () => {
+    const result = computeRiskClassification({ ...poorGrade, activityAverage: 15, gradedActivityCount: 2 });
+    expect(result.risk_score).toBe(15);
+    expect(result.risk_level).toBe('at_risk');
+  });
+
+  it('D. applies the existing classification once three poor grades exist', () => {
+    const result = computeRiskClassification({ ...poorGrade, gradedActivityCount: 3 });
+    expect(result.risk_score).toBe(20);
+    expect(result.risk_level).toBe('critical');
+  });
+
+  it('E. does not turn three good grades into Crucial', () => {
+    const result = computeRiskClassification({
+      activityAverage: 95,
+      quizAverage: 95,
+      projectScore: 95,
+      attendancePercent: 95,
+      laboratoryExamAverage: 95,
+      midtermExamAverage: 95,
+      finalExamAverage: 95,
+      gradedActivityCount: 3,
+    });
+    expect(result.risk_level).toBe('excelling');
+    expect(result.risk_score).toBe(95);
+  });
+
+  it('F. updates classification when another grade supplies enough evidence', () => {
+    const before = computeRiskClassification({ ...poorGrade, gradedActivityCount: 2 });
+    const after = computeRiskClassification({ ...poorGrade, gradedActivityCount: 3 });
+    expect(before.risk_level).toBe('at_risk');
+    expect(after.risk_level).toBe('critical');
+    expect(after.risk_score).toBe(before.risk_score);
+  });
+
+  it('G. still treats independently Crucial attendance as valid evidence', () => {
+    const sparseGrades = computeRiskClassification({
+      ...poorGrade,
+      attendancePercent: 40,
+      gradedActivityCount: 1,
+    });
+    expect(sparseGrades.risk_level).toBe('critical');
+
+    const noGrades = computeRiskClassification({
+      ...poorGrade,
+      activityAverage: null,
+      attendancePercent: 40,
+      gradedActivityCount: 0,
+    });
+    expect(noGrades.academic_performance).toBeNull();
+    expect(noGrades.risk_score).toBe(40);
+    expect(noGrades.risk_level).toBe('critical');
+
+    const strongAttendance = computeRiskClassification({
+      ...poorGrade,
+      attendancePercent: 98,
+      gradedActivityCount: 1,
+    });
+    expect(strongAttendance.risk_level).not.toBe('critical');
   });
 
   it('returns full classification result', () => {

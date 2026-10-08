@@ -82,6 +82,11 @@ export function toApiMessages(list: ChatMsg[], nextUserText: string): { role: "u
   return [...turns, { role: "user" as const, content: nextUserText }].map((m) => ({ role: m.role, content: m.content }));
 }
 
+/** A completed question can be sent again. A request still in flight cannot be sent a second time. */
+export function canSendCoachMessage(text: string, inFlight: boolean): boolean {
+  return text.trim().length > 0 && !inFlight;
+}
+
 function messagesStorageKey(dismissKey: string) {
   return `edge_ai_coach_msgs_${dismissKey}`;
 }
@@ -149,6 +154,9 @@ export function AICoachPopup(props: {
   const [subjectsOpen, setSubjectsOpen] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
+  const inFlightRef = useRef(false);
+  const messagesRef = useRef<ChatMsg[]>([]);
+  messagesRef.current = messages;
 
   useEffect(() => {
     // Portal the AI Coach trigger into the dashboard header (so it doesn't overlap cards/content).
@@ -212,10 +220,12 @@ export function AICoachPopup(props: {
   }, [open, messages.length]);
 
   const sendMutation = useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async (vars: { text: string; history: ChatMsg[] }) => {
       // Only real conversation turns are sent. The server loads the student's records itself
       // (identity comes from the session), so no client-built context or student id is sent.
-      const payloadMessages = toApiMessages(messages, text);
+      // history is the conversation captured at send time, before this turn is appended,
+      // so a completed question is sent again instead of being dropped.
+      const payloadMessages = toApiMessages(vars.history, vars.text);
 
       const data = (await invokeAiCoach({ messages: payloadMessages })) as AICoachResponse;
       if (data?.error) throw new Error(data.error);
@@ -223,8 +233,8 @@ export function AICoachPopup(props: {
       if (!reply) throw new Error("AI coach returned an empty response");
       return reply;
     },
-    onMutate: (text: string) => {
-      setMessages((prev) => [...prev, { role: "user", content: text, ts: Date.now() }]);
+    onMutate: (vars: { text: string }) => {
+      setMessages((prev) => [...prev, { role: "user", content: vars.text, ts: Date.now() }]);
     },
     onSuccess: (reply) => {
       setMessages((prev) => [...prev, { role: "assistant", content: reply, ts: Date.now() }]);
@@ -244,7 +254,19 @@ export function AICoachPopup(props: {
       });
       console.error(error);
     },
+    onSettled: () => {
+      inFlightRef.current = false;
+    },
   });
+
+  const submitDraft = (raw: string) => {
+    const text = raw.trim();
+    if (!canSendCoachMessage(text, inFlightRef.current || sendMutation.isPending)) return;
+    inFlightRef.current = true;
+    const history = messagesRef.current;
+    setDraft("");
+    sendMutation.mutate({ text, history });
+  };
 
   const assistantAdvice = useMemo(
     () =>
@@ -454,22 +476,15 @@ export function AICoachPopup(props: {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    const text = draft.trim();
-                    if (!text || sendMutation.isPending) return;
-                    setDraft("");
-                    sendMutation.mutate(text);
+                    submitDraft(draft);
                   }
                 }}
               />
               <Button
                 size="icon"
+                aria-label="Send message"
                 disabled={sendMutation.isPending || !draft.trim()}
-                onClick={() => {
-                  const text = draft.trim();
-                  if (!text || sendMutation.isPending) return;
-                  setDraft("");
-                  sendMutation.mutate(text);
-                }}
+                onClick={() => submitDraft(draft)}
               >
                 <Send className="h-4 w-4" />
               </Button>

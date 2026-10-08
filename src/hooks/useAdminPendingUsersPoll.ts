@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
+import { idsToAnnounce } from "@/lib/notification-delivery";
 
 const POLL_INTERVAL_MS = 120_000;
 const SEEN_KEY_PREFIX = "edge_admin_pending_poll_seen_";
@@ -11,7 +12,7 @@ function seenStorageKey(userId: string) {
 
 function loadSeen(userId: string): Set<string> {
   try {
-    const raw = sessionStorage.getItem(seenStorageKey(userId));
+    const raw = localStorage.getItem(seenStorageKey(userId));
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set();
@@ -22,7 +23,7 @@ function loadSeen(userId: string): Set<string> {
 
 function saveSeen(userId: string, seen: Set<string>) {
   try {
-    sessionStorage.setItem(seenStorageKey(userId), JSON.stringify([...seen]));
+    localStorage.setItem(seenStorageKey(userId), JSON.stringify([...seen]));
   } catch {
     /* ignore storage errors */
   }
@@ -38,8 +39,8 @@ function friendlyRole(role: string): string {
  * Admin-only poll: fires a dashboard inbox notification when a new instructor
  * or guidance counselor account is waiting for approval.
  *
- * Uses sessionStorage to track which pending users have already been announced
- * so the admin is not notified about users who were pending before they logged in.
+ * Remembers announced user ids in localStorage. A pending account is announced
+ * the first time it is seen, including accounts that were already pending at login.
  */
 export function useAdminPendingUsersPoll(
   userId: string | undefined,
@@ -76,24 +77,21 @@ export function useAdminPendingUsersPoll(
           .in("role", ["instructor", "guidance_counselor"]);
         if (cancelled) return;
 
-        const isInitialSeed = seenRef.current.size === 0;
         const seen = new Set(seenRef.current);
+        const rows = (rolesRows ?? []) as Array<{ user_id: string; role: string }>;
+        const announce = new Set(idsToAnnounce(seen, rows.map((row) => row.user_id)));
         let changed = false;
 
-        for (const row of rolesRows ?? []) {
-          const uid = (row as { user_id: string }).user_id;
-          const r = (row as { role: string }).role;
-          if (!seen.has(uid)) {
-            seen.add(uid);
-            changed = true;
-            if (!isInitialSeed) {
-              addRef.current({
-                title: "New Registration Pending",
-                body: `A new ${friendlyRole(r)} account is awaiting approval. Open User Approvals to review.`,
-                dedupeKey: `admin-pending-user:${uid}`,
-              });
-            }
-          }
+        for (const row of rows) {
+          if (!announce.has(row.user_id)) continue;
+          seen.add(row.user_id);
+          changed = true;
+          addRef.current({
+            title: "New Registration Pending",
+            body: `A new ${friendlyRole(row.role)} account is awaiting approval. Open User Approvals to review.`,
+            dedupeKey: `admin-pending-user:${row.user_id}`,
+            sourceName: "EDGE System",
+          });
         }
 
         if (changed) {

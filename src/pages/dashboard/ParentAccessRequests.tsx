@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { ParentEmailMatchIndicator } from '@/components/ParentEmailMatchIndicator';
 import { studentDecideParentRegistration, studentDecideParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import { parentEmailsMatch } from '@/lib/parent-email-match';
 import { parentLinkStatusBadgeVariant, parentLinkStatusLabel } from '@/lib/parent-link-status';
 
 type ParentRequestRow = {
@@ -50,6 +52,20 @@ function formatDate(iso: string | null | undefined): string {
 export default function ParentAccessRequests() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
+
+  const { data: registeredParentEmail = null } = useQuery({
+    queryKey: ['student-registered-parent-email', user?.id],
+    enabled: role === 'student' && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('parent_email')
+        .eq('user_id', user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.parent_email ?? null;
+    },
+  });
 
   const { data: requests = [], isLoading: requestsLoading } = useQuery({
     queryKey: ['student-parent-requests', user?.id],
@@ -203,7 +219,8 @@ export default function ParentAccessRequests() {
                     <span className="block text-xs text-muted-foreground">Requested {formatDate(r.requested_at)}</span>
                     {r.status === 'pending' ? (
                       <div className="flex flex-col gap-2">
-                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending}>Approve</Button>
+                        <ParentEmailMatchIndicator registeredEmail={registeredParentEmail} requestEmail={r.parent_email} />
+                        <Button size="sm" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending || !parentEmailsMatch(registeredParentEmail, r.parent_email)}>Approve</Button>
                         <Button size="sm" variant="outline" className="w-full" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject', source: r.source })} disabled={decideParentRequest.isPending}>Reject</Button>
                       </div>
                     ) : (
@@ -237,9 +254,12 @@ export default function ParentAccessRequests() {
                         </TableCell>
                         <TableCell className="text-right">
                           {r.status === 'pending' ? (
-                            <div className="flex justify-end gap-2 flex-wrap">
-                              <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending}>Approve</Button>
-                              <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject', source: r.source })} disabled={decideParentRequest.isPending}>Reject</Button>
+                            <div className="flex flex-col items-end gap-2">
+                              <ParentEmailMatchIndicator registeredEmail={registeredParentEmail} requestEmail={r.parent_email} />
+                              <div className="flex justify-end gap-2 flex-wrap">
+                                <Button size="sm" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'approve', source: r.source })} disabled={decideParentRequest.isPending || !parentEmailsMatch(registeredParentEmail, r.parent_email)}>Approve</Button>
+                                <Button size="sm" variant="outline" onClick={() => decideParentRequest.mutate({ linkId: r.id, decision: 'reject', source: r.source })} disabled={decideParentRequest.isPending}>Reject</Button>
+                              </div>
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">Decided {formatDate(r.decided_at)}</span>

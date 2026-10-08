@@ -43,6 +43,7 @@ interface StudentMetrics {
   final_exam_average: number | null;
   activity_completion_rate: number | null;
   comprehension_rating: number | null;
+  graded_activity_count: number;
 }
 
 type AssessmentType =
@@ -97,6 +98,7 @@ function classifyStudent(metrics: StudentMetrics): {
     laboratoryExamAverage: metrics.laboratory_exam_average,
     midtermExamAverage: metrics.midterm_exam_average,
     finalExamAverage: metrics.final_exam_average,
+    gradedActivityCount: metrics.graded_activity_count,
   });
 
   return {
@@ -287,6 +289,7 @@ serve(async (req) => {
       const attendanceRate = totalClasses > 0 ? presentCount / totalClasses : null;
 
       const studentSubs = submissions.filter((s) => s.student_id === sid);
+      let gradedActivityCount = 0;
       const activityMap: Record<AssessmentType, { score: number; max: number }[]> = {
         activity: [],
         assignment: [],
@@ -303,6 +306,7 @@ serve(async (req) => {
         const score = Number(sub.score);
         const max = Number(act.max_score);
         if (!assessmentType || !Number.isFinite(score) || !Number.isFinite(max) || max <= 0) continue;
+        gradedActivityCount += 1;
         activityMap[assessmentType].push({ score, max });
       }
 
@@ -345,6 +349,7 @@ serve(async (req) => {
         final_exam_average: finalExamAvg,
         activity_completion_rate: completionRate,
         comprehension_rating: comprehensionRating,
+        graded_activity_count: gradedActivityCount,
       };
     });
 

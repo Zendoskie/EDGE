@@ -84,6 +84,8 @@ describe("parentLinkErrorMessage", () => {
     expect(parentLinkErrorMessage("pending_request_exists")).toMatch(/already pending/i);
     expect(parentLinkErrorMessage("already_approved")).toMatch(/already linked/i);
     expect(parentLinkErrorMessage("parent_email_already_registered")).toMatch(/already has an account/i);
+    expect(parentLinkErrorMessage("parent_email_mismatch")).toMatch(/does not match/i);
+    expect(parentLinkErrorMessage("parent_email_not_set")).toMatch(/has not registered/i);
   });
 });
 
