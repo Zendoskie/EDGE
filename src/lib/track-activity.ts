@@ -465,7 +465,6 @@ async function updateSessionHeartbeatDirect(loginId: string): Promise<boolean> {
     return false;
   }
 
-  if (row.student_id) await refreshEngagementSummary(row.student_id);
   return true;
 }
 
@@ -492,10 +491,7 @@ export async function updateSessionHeartbeat(): Promise<void> {
       clearStoredLoginSessionId();
       return;
     }
-    if (edgeResult?.ok) {
-      invalidateEngagementQueries(auth.userId);
-      return;
-    }
+    if (edgeResult?.ok) return;
 
     await updateSessionHeartbeatDirect(loginId);
   } catch (err) {

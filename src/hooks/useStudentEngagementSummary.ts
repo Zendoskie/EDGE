@@ -33,10 +33,6 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
         .eq('student_id', studentId!)
         .maybeSingle();
 
-      void supabase.rpc('recompute_student_engagement', { p_student_id: studentId! }).then(({ error: recomputeError }) => {
-        if (recomputeError) console.warn('recompute failed:', recomputeError.message);
-      });
-
       if (error) throw error;
       if (!data) return null;
 
@@ -58,7 +54,6 @@ export function useStudentEngagementSummary(studentId: string | undefined | null
     enabled: !!studentId,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: 30_000,
   });
 
   useEffect(() => {

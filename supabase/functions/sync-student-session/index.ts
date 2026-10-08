@@ -232,7 +232,6 @@ serve(async (req) => {
         });
       }
 
-      const recomputeError = await recomputeEngagement(supabase, studentId);
       let metrics: EngagementMetrics;
       try {
         metrics = await fetchMetrics(supabase, studentId);
@@ -244,7 +243,7 @@ serve(async (req) => {
         };
       }
 
-      return new Response(JSON.stringify({ ok: true, metrics, recomputeError }), {
+      return new Response(JSON.stringify({ ok: true, metrics, recomputeError: null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

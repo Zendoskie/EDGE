@@ -80,12 +80,6 @@ async function aggregateFromLoginHistory(studentId: string): Promise<EngagementM
   };
 }
 
-function scheduleEngagementRecompute(studentId: string) {
-  void supabase.rpc('recompute_student_engagement', { p_student_id: studentId }).then(({ error }) => {
-    if (error) console.warn('recompute failed:', error.message);
-  });
-}
-
 async function fetchEngagementMetrics(studentId: string): Promise<EngagementMetrics> {
   const [aggregate, summaryRes] = await Promise.all([
     aggregateFromLoginHistory(studentId),
@@ -95,8 +89,6 @@ async function fetchEngagementMetrics(studentId: string): Promise<EngagementMetr
       .eq('student_id', studentId)
       .maybeSingle(),
   ]);
-
-  scheduleEngagementRecompute(studentId);
 
   const { data, error } = summaryRes;
   if (error) throw error;
@@ -122,7 +114,6 @@ export function useStudentEngagementMetrics(studentId: string | undefined | null
     enabled: !!studentId,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: 30_000,
   });
 
   useEffect(() => {
