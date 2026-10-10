@@ -19,6 +19,7 @@ import { normalizeReferralStatus } from '@/lib/referral-utils';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
+import { formatOfficialRiskLabel } from '@/lib/risk-scoring';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { fetchInstructorCourseBundle, instructorCourseBundleKey } from '@/lib/instructor-course-bundle';
@@ -977,7 +978,7 @@ export default function InstructorDashboard() {
                 <ul className="space-y-2 text-sm">
                   {recentPredictions.slice(0, 5).map((p: any) => (
                     <li key={p.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                      <span>{(p.subjects as any)?.code} — {riskLabel(canonicalRiskLevel(p.risk_level))}{p.risk_score != null ? ` (${Number(p.risk_score).toFixed(1)})` : ''}</span>
+                      <span>{(p.subjects as any)?.code} — {formatOfficialRiskLabel(p.risk_level, p.risk_score != null ? Number(p.risk_score) : null)}</span>
                       <span className="text-muted-foreground text-xs">{(p.subjects as any)?.name}</span>
                     </li>
                   ))}

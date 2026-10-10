@@ -1,4 +1,4 @@
-import type { CanonicalRiskLevel } from '@/lib/risk-utils';
+import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from '@/lib/risk-utils';
 
 /** Weights for the rule-based risk score (must sum to 1). */
 export const RISK_WEIGHTS = {
@@ -12,6 +12,15 @@ export const RISK_WEIGHTS = {
  * classification. There is no earlier project threshold for this.
  */
 export const MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK = 3;
+
+/**
+ * Recorded attendance rows required before attendance may set Vulnerable or
+ * Crucial while scored submissions are still below the grade minimum.
+ * No earlier session-count rule exists. Three matches the graded-evidence
+ * minimum: one session can only be 0% or 100%, and two sessions can still be
+ * 50% from a single absence.
+ */
+export const MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK = 3;
 
 export type RiskScoreInputs = {
   activityAverage: number | null;
@@ -27,6 +36,12 @@ export type RiskScoreInputs = {
    * the historical score bands so callers that only have averages are unchanged.
    */
   gradedActivityCount?: number;
+  /**
+   * Recorded attendance rows used as the denominator of attendance percent.
+   * Official prediction must pass this. When omitted, attendance cannot
+   * override a sparse-grade hold.
+   */
+  attendanceSessionCount?: number;
 };
 
 export function averageOf(values: Array<number | null | undefined>): number | null {
@@ -89,15 +104,16 @@ export function classifyRiskScore(score: number | null): CanonicalRiskLevel {
 }
 
 /**
- * Sparse grades are averaged and then renormalized to the full risk score,
- * so one poor activity can fall below 60 and become Crucial. Hold that label
- * until enough scored activities exist. Attendance that is itself Crucial
- * remains valid evidence and is not forced to Stable.
+ * Sparse grades are averaged and then renormalized, so one poor activity can
+ * fall below 60. Hold Crucial and Vulnerable from grades until enough scored
+ * activities exist. Attendance may still set those labels once enough
+ * sessions are recorded. A missing session count does not authorize that override.
  */
 export function applySparseGradeSafeguard(
   level: CanonicalRiskLevel,
   gradedActivityCount: number | undefined,
   attendancePercent: number | null,
+  attendanceSessionCount?: number,
 ): CanonicalRiskLevel {
   if (
     gradedActivityCount == null ||
@@ -106,15 +122,35 @@ export function applySparseGradeSafeguard(
   ) {
     return level;
   }
-  if (level !== 'critical') return level;
-  if (
+
+  const attendanceSupported =
+    attendanceSessionCount != null &&
+    Number.isFinite(attendanceSessionCount) &&
+    attendanceSessionCount >= MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK &&
     attendancePercent != null &&
-    Number.isFinite(attendancePercent) &&
-    classifyRiskScore(attendancePercent) === 'critical'
-  ) {
-    return 'critical';
+    Number.isFinite(attendancePercent);
+
+  if (attendanceSupported) {
+    const attendanceLevel = classifyRiskScore(attendancePercent);
+    if (attendanceLevel === 'critical' || attendanceLevel === 'at_risk') {
+      return attendanceLevel;
+    }
   }
-  return 'at_risk';
+
+  if (gradedActivityCount === 0 || level === 'critical' || level === 'at_risk') {
+    return 'stable';
+  }
+
+  return level;
+}
+
+/** Official label, with the formula score only when it sits in the same band. */
+export function formatOfficialRiskLabel(level: unknown, score?: number | null): string {
+  const canonical = canonicalRiskLevel(level);
+  const label = riskLabel(canonical);
+  if (score == null || !Number.isFinite(score)) return label;
+  if (classifyRiskScore(score) !== canonical) return label;
+  return `${label} (${Math.round(score * 10) / 10})`;
 }
 
 export type RiskClassificationResult = {
@@ -133,6 +169,7 @@ export function computeRiskClassification(inputs: RiskScoreInputs): RiskClassifi
     classifyRiskScore(risk_score),
     inputs.gradedActivityCount,
     inputs.attendancePercent,
+    inputs.attendanceSessionCount,
   );
 
   const componentsPresent = [

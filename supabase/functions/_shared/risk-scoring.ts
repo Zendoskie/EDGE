@@ -15,6 +15,14 @@ export const RISK_WEIGHTS = {
  */
 export const MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK = 3;
 
+/**
+ * Recorded attendance rows required before attendance may set Vulnerable or
+ * Crucial while scored submissions are still below the grade minimum.
+ * No earlier session-count rule exists. Three matches the graded-evidence
+ * minimum. Keep in sync with src/lib/risk-scoring.ts.
+ */
+export const MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK = 3;
+
 export type RiskScoreInputs = {
   activityAverage: number | null;
   quizAverage: number | null;
@@ -25,6 +33,12 @@ export type RiskScoreInputs = {
   finalExamAverage: number | null;
   /** Count of scored activities behind the averages. Official prediction must pass this. */
   gradedActivityCount?: number;
+  /**
+   * Recorded attendance rows used as the denominator of attendance percent.
+   * Official prediction must pass this. When omitted, attendance cannot
+   * override a sparse-grade hold.
+   */
+  attendanceSessionCount?: number;
 };
 
 function averageOf(values: Array<number | null | undefined>): number | null {
@@ -78,15 +92,17 @@ export function classifyRiskScore(score: number | null): RiskLevel {
 }
 
 /**
- * Sparse grades are averaged and then renormalized to the full risk score,
- * so one poor activity can fall below 60 and become Crucial. Hold that label
- * until enough scored activities exist. Attendance that is itself Crucial
- * remains valid evidence and is not forced to Stable.
+ * Sparse grades are averaged and then renormalized, so one poor activity can
+ * fall below 60. Hold Crucial and Vulnerable from grades until enough scored
+ * activities exist. Attendance may still set those labels once enough
+ * sessions are recorded. A missing session count does not authorize that override.
+ * Keep in sync with src/lib/risk-scoring.ts.
  */
 export function applySparseGradeSafeguard(
   level: RiskLevel,
   gradedActivityCount: number | undefined,
   attendancePercent: number | null,
+  attendanceSessionCount?: number,
 ): RiskLevel {
   if (
     gradedActivityCount == null ||
@@ -95,15 +111,26 @@ export function applySparseGradeSafeguard(
   ) {
     return level;
   }
-  if (level !== "critical") return level;
-  if (
+
+  const attendanceSupported =
+    attendanceSessionCount != null &&
+    Number.isFinite(attendanceSessionCount) &&
+    attendanceSessionCount >= MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK &&
     attendancePercent != null &&
-    Number.isFinite(attendancePercent) &&
-    classifyRiskScore(attendancePercent) === "critical"
-  ) {
-    return "critical";
+    Number.isFinite(attendancePercent);
+
+  if (attendanceSupported) {
+    const attendanceLevel = classifyRiskScore(attendancePercent);
+    if (attendanceLevel === "critical" || attendanceLevel === "at_risk") {
+      return attendanceLevel;
+    }
   }
-  return "at_risk";
+
+  if (gradedActivityCount === 0 || level === "critical" || level === "at_risk") {
+    return "stable";
+  }
+
+  return level;
 }
 
 export function computeRiskClassification(inputs: RiskScoreInputs): {
@@ -120,6 +147,7 @@ export function computeRiskClassification(inputs: RiskScoreInputs): {
     classifyRiskScore(risk_score),
     inputs.gradedActivityCount,
     inputs.attendancePercent,
+    inputs.attendanceSessionCount,
   );
 
   const componentsPresent = [

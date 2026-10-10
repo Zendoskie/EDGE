@@ -44,6 +44,7 @@ interface StudentMetrics {
   activity_completion_rate: number | null;
   comprehension_rating: number | null;
   graded_activity_count: number;
+  attendance_session_count: number;
 }
 
 type AssessmentType =
@@ -99,6 +100,7 @@ function classifyStudent(metrics: StudentMetrics): {
     midtermExamAverage: metrics.midterm_exam_average,
     finalExamAverage: metrics.final_exam_average,
     gradedActivityCount: metrics.graded_activity_count,
+    attendanceSessionCount: metrics.attendance_session_count,
   });
 
   return {
@@ -350,6 +352,7 @@ serve(async (req) => {
         activity_completion_rate: completionRate,
         comprehension_rating: comprehensionRating,
         graded_activity_count: gradedActivityCount,
+        attendance_session_count: totalClasses,
       };
     });
 

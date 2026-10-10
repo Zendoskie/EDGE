@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
+import { formatOfficialRiskLabel } from '@/lib/risk-scoring';
 import { cn } from '@/lib/utils';
-import { canonicalRiskLevel, riskBadgeClassName, riskLabel } from '@/lib/risk-utils';
+import { canonicalRiskLevel, riskBadgeClassName } from '@/lib/risk-utils';
 
 type RiskBadgeProps = {
   level: unknown;
@@ -10,9 +11,7 @@ type RiskBadgeProps = {
 
 export function RiskBadge({ level, score, className }: RiskBadgeProps) {
   const canonical = canonicalRiskLevel(level);
-  const label = riskLabel(canonical);
-  const display =
-    score != null && Number.isFinite(score) ? `${label} (${Math.round(score * 10) / 10})` : label;
+  const display = formatOfficialRiskLabel(level, score);
 
   return (
     <Badge variant="outline" className={cn(riskBadgeClassName(canonical), className)}>
