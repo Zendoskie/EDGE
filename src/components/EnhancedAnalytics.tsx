@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { officialBandCounts, RISK_BANDS } from '@/lib/risk-scoring';
+import { riskChartColor } from '@/lib/risk-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -268,11 +270,13 @@ export default function EnhancedAnalytics() {
     decliningSubjects: subjectPerformance.filter(s => s.trend === 'down').length
   };
 
+  // Official cut points, but these are unweighted averages, so ranges are named instead of risk classes.
+  const bandCounts = officialBandCounts(subjectPerformance.map((s) => s.averageScore));
   const pieData = [
-    { name: 'Excellent', value: subjectPerformance.filter(s => s.averageScore >= 90).length, color: '#10b981' },
-    { name: 'Good', value: subjectPerformance.filter(s => s.averageScore >= 75 && s.averageScore < 90).length, color: '#3b82f6' },
-    { name: 'Average', value: subjectPerformance.filter(s => s.averageScore >= 60 && s.averageScore < 75).length, color: '#f59e0b' },
-    { name: 'Needs Improvement', value: subjectPerformance.filter(s => s.averageScore < 60).length, color: '#ef4444' }
+    { name: `${RISK_BANDS.excelling}% and above`, value: bandCounts.excelling, color: riskChartColor('excelling') },
+    { name: `${RISK_BANDS.stable}% to below ${RISK_BANDS.excelling}%`, value: bandCounts.stable, color: riskChartColor('stable') },
+    { name: `${RISK_BANDS.at_risk}% to below ${RISK_BANDS.stable}%`, value: bandCounts.at_risk, color: riskChartColor('at_risk') },
+    { name: `Below ${RISK_BANDS.at_risk}%`, value: bandCounts.critical, color: riskChartColor('critical') },
   ].filter(item => item.value > 0);
 
   return (
@@ -298,10 +302,10 @@ export default function EnhancedAnalytics() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-medium">Avg Score</span>
+              <span className="text-sm font-medium">Unweighted avg</span>
             </div>
-            <p className="text-2xl font-bold">{overallStats.averageScore}%</p>
-            <p className="text-xs text-muted-foreground">Across all subjects</p>
+            <p className="text-2xl font-bold">{subjectPerformance.length ? `${overallStats.averageScore}%` : '—'}</p>
+            <p className="text-xs text-muted-foreground">Simple mean across subjects</p>
           </CardContent>
         </Card>
 
@@ -394,8 +398,11 @@ export default function EnhancedAnalytics() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5" />
-              Grade Distribution
+              Unweighted average distribution
             </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Subjects grouped by simple mean score. This is not your weighted grade or risk classification.
+            </p>
           </CardHeader>
           <CardContent>
             <ChartContainer config={{}} className="h-80">

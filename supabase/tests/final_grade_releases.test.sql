@@ -79,6 +79,9 @@ BEGIN
     (par, 'P3B Parent', 'parent', '{"parent_invite": "1"}'::jsonb),
     (par2, 'P3B Other Parent', 'parent', '{"parent_invite": "1"}'::jsonb)
   ) AS u(id, name, role, extra);
+  -- Signup metadata never grants a staff role; staff roles come from a trusted path.
+  INSERT INTO public.user_roles (user_id, role) VALUES (ins, 'instructor'), (ins2, 'instructor')
+  ON CONFLICT (user_id, role) DO NOTHING;
   UPDATE public.profiles SET account_status = 'approved' WHERE user_id IN (par, par2);
   -- trg_enforce_parent_link_email_match requires the student's registered parent email to match the
   -- parent's account email. It is written the way complete_student_invitation does, under the

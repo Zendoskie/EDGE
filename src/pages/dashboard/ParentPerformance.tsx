@@ -17,6 +17,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { computeSubjectWeightedGrade } from '@/lib/weighted-grading';
+import { PREDICTION_EVIDENCE_COLUMNS } from '@/lib/risk-scoring';
 import { FinalGradeBadge } from '@/components/FinalGradeBadge';
 import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
@@ -224,7 +225,7 @@ export default function ParentPerformance() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, subject_id, risk_level, risk_score, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name)')
+        .select(`id, subject_id, risk_level, recommendation, created_at, subject:subjects!predictions_subject_id_fkey(code,name), ${PREDICTION_EVIDENCE_COLUMNS}`)
         .eq('student_id', studentId!)
         .in('subject_id', enrolledSubjectIds)
         .order('created_at', { ascending: false })
@@ -307,7 +308,7 @@ export default function ParentPerformance() {
     },
   });
 
-  const { data: gradingSystems = [] } = useQuery({
+  const { data: gradingSystems = [], isSuccess: gradingSystemsLoaded } = useQuery({
     queryKey: ['parent-student-grading-systems', studentId, enrolledSubjectIds.join(',')],
     enabled: !!studentId && enrolledSubjectIds.length > 0,
     queryFn: async () => {
@@ -436,11 +437,20 @@ export default function ParentPerformance() {
         return (Number(submission.score) / max) * 100;
       })
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-    if (scored.length === 0) return 0;
+    if (scored.length === 0) return null;
     return scored.reduce((acc, cur) => acc + cur, 0) / scored.length;
   }, [activities, submissionByActivityId]);
 
   const latestPrediction = predictions[0] ?? null;
+
+  // Before the grading systems load, weights stay unknown so no status is shown as confirmed early.
+  const weightsForSubject = useCallback(
+    (subjectId: unknown) =>
+      gradingSystemsLoaded
+        ? ((gradingSystems as any[]).find((g: any) => g.subject_id === subjectId) ?? null)
+        : undefined,
+    [gradingSystems, gradingSystemsLoaded],
+  );
 
   const predictionsResolved = useMemo(() => {
     return (predictions as any[]).map((p: any) => {
@@ -711,13 +721,22 @@ export default function ParentPerformance() {
           accent
         />
         <KpiCard label="Attendance" value={`${attendanceRate.toFixed(1)}%`} hint={`${attendance.length} records`} icon={Calendar} />
-        <KpiCard label="Average" value={`${averageScore.toFixed(1)}%`} hint={`${submissions.length} submissions`} icon={FileText} />
+        <KpiCard
+          label="Unweighted avg"
+          value={averageScore != null ? `${averageScore.toFixed(1)}%` : '—'}
+          hint={`Simple mean of ${submissions.length} submissions; not the weighted grade`}
+          icon={FileText}
+        />
         <Card>
           <CardContent className="p-5">
             <p className="text-[13px] font-medium text-muted-foreground">Risk</p>
             <div className="mt-3">
               {latestPrediction ? (
-                <RiskBadge level={latestPrediction.risk_level} score={latestPrediction.risk_score} />
+                <RiskBadge
+                  level={latestPrediction.risk_level}
+                  evidence={latestPrediction}
+                  weights={weightsForSubject(latestPrediction.subject_id)}
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">No predictions yet</p>
               )}
@@ -808,7 +827,7 @@ export default function ParentPerformance() {
                         <p className="text-sm font-medium">
                           {p.resolvedSubject.code} — {p.resolvedSubject.name}
                         </p>
-                        <RiskBadge level={p.risk_level} score={p.risk_score} />
+                        <RiskBadge level={p.risk_level} evidence={p} weights={weightsForSubject(p.subject_id)} />
                       </div>
                       {p.recommendation ? <p className="text-sm text-muted-foreground line-clamp-2">{p.recommendation}</p> : null}
                       <p className="text-xs text-muted-foreground">
@@ -879,7 +898,8 @@ export default function ParentPerformance() {
                     Each activity percentage is computed as <span className="font-medium text-foreground">(score / max score) x 100</span>.
                   </p>
                   <p>
-                    Subject averages are the mean of graded activity percentages. Weighted scores follow instructor-configured category weights.
+                    The unweighted average is the simple mean of graded activity percentages. The weighted grade follows
+                    instructor-configured category weights and is the one used for risk classification.
                   </p>
                   <p>
                     Risk statuses combine attendance trends, score performance, and predictions.
@@ -911,7 +931,7 @@ export default function ParentPerformance() {
                         <p className="font-medium text-sm">{s.code} — {s.name}</p>
                         <div className="flex flex-wrap items-center gap-1">
                           {s.average != null ? (
-                            <Badge variant="outline" className="text-xs">Avg: {s.average}%</Badge>
+                            <Badge variant="outline" className="text-xs">Unweighted avg: {s.average}%</Badge>
                           ) : null}
                           <FinalGradeBadge
                             release={releases.data?.find((r) => r.subject_id === s.id) ?? null}

@@ -5,6 +5,7 @@ import {
   type CanonicalEngagementLevel,
 } from "@/lib/engagement-utils";
 import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from "@/lib/risk-utils";
+import { riskDisplayStatus, type RiskEvidenceRow } from "@/lib/risk-scoring";
 
 /** Matches risk-analysis attendance concern threshold (70%). Stored as 0–1 rate in predictions. */
 export const ATTENDANCE_THRESHOLD = 0.7;
@@ -64,7 +65,7 @@ export function studentPredictionNotifications(
   if (prevRisk && prevRisk !== riskLevel) {
     out.push({
       title: "Risk classification changed",
-      body: `${code}: your status changed from ${riskLabel(prevRisk)} to ${riskLabel(riskLevel)}. Open Performance Insights.`,
+      body: `${code}: your status changed from ${riskLabel(prevRisk)} to ${riskDisplayStatus({ level: riskLevel, evidence: row as RiskEvidenceRow }).label}. Open Performance Insights.`,
       dedupeKey: `risk-change:${id}:${writeStamp(row)}:${prevRisk}->${riskLevel}`,
       sourceName: EDGE_SYSTEM_SOURCE,
     });
@@ -178,7 +179,7 @@ export function instructorAtRiskNotification(
 
   return {
     title: `Student now ${riskLabel(riskLevel)}`,
-    body: `${studentName} in ${code} is now classified as ${riskLabel(riskLevel)}. Review Risk Analysis.`,
+    body: `${studentName} in ${code} is now classified as ${riskDisplayStatus({ level: riskLevel, evidence: row as RiskEvidenceRow }).label}. Review Risk Analysis.`,
     dedupeKey: `instructor-at-risk:${studentId}:${subjectId}:${riskLevel}:${writeStamp(row)}`,
     sourceName: EDGE_SYSTEM_SOURCE,
   };

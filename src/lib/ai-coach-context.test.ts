@@ -22,6 +22,8 @@ import {
 import { canonicalRiskLevel as officialCanonicalRisk, riskLabel as officialRiskLabel } from '@/lib/risk-utils';
 import {
   DEFAULT_SUBJECT_GRADING_WEIGHTS,
+  WEAK_AREA_BENCHMARK,
+  analyzeWeakAreas,
   answerGradeLookup,
   assessmentPercent,
   averageOf,
@@ -38,9 +40,14 @@ import {
   isProjectType,
   parseAssessmentReference,
   parseStudyAvailability,
+  formatStudentRecordForPrompt,
+  type GradeWeights,
   type StudentRecord,
   type StudentRecordInput,
+  type SubjectRecord,
+  type WeakAreaAnalysis,
 } from '../../supabase/functions/ai-coach/academic-context';
+import { RISK_BANDS } from '../../supabase/functions/_shared/risk-scoring';
 import {
   CoachModelError,
   DB_FAILURE_REPLY,
@@ -190,11 +197,13 @@ describe('C. personalised study recommendation', () => {
     expect(res.source).toBe('ai');
     const system = callModel.mock.calls[0][0] as string;
     expect(system).toContain('- Quiz 1 [Quiz]: 41/50 (82%)');
-    expect(system).toContain('Quiz 2 (Quiz) scored 60%, below 70%');
+    expect(system).toMatch(/- Quiz 2 \[Quiz, Activity\]: 30\/50 \(60\.00%\); effective weight [\d.]+%; 15\.00 points below 75%/);
     expect(system).toContain('Attendance: 75% (8 present, 1 late, 3 absent of 12 sessions)');
-    expect(system).toContain('Official risk classification: Vulnerable; official risk score: 61.50');
+    expect(system).toContain(
+      'Official risk classification: Vulnerable — Provisional (incomplete data: no evidence yet for Project); official risk score: 61.50',
+    );
     expect(system).toContain('Engagement level: Active');
-    expect(system).toContain('Project 1 (Project) has no score recorded and its due date has passed');
+    expect(system).toContain('Project 1 [Project]: no score recorded and its due date has passed');
     expect(system).toContain('Quiz 3 [Quiz]: not graded yet, due 2026-10-09');
   });
 
@@ -202,9 +211,11 @@ describe('C. personalised study recommendation', () => {
     const { deps, callModel } = makeDeps();
     await runCoachChat(deps, [user('How can I improve in PL101?')]);
     const system = callModel.mock.calls[0][0] as string;
-    const weakSection = system.split('Evidence-based weak areas:')[1].split('Subject:')[0];
+    const pl = system.split('Subject: PL101')[1].split('Subject:')[0];
+    const weakSection = pl.split('Weak-area priority')[1].split('Incomplete or missing evidence')[0];
     expect(weakSection).not.toContain('Quiz 1');
     expect(weakSection).not.toContain('Activity 1');
+    expect(weakSection).not.toContain('Project 1');
   });
 });
 
@@ -447,12 +458,17 @@ describe('J. risk classification unchanged', () => {
       });
       const risk = rec.subjects.find((s) => s.code === 'PL101')!.risk!;
       expect(risk.classification).toBe(officialCanonicalRisk(level));
-      expect(risk.label).toBe(officialRiskLabel(officialCanonicalRisk(level)));
+      // PL101 has no project score yet, so the official label carries the Phase 3 provisional qualifier.
+      expect(risk.label).toBe(
+        `${officialRiskLabel(officialCanonicalRisk(level))} — Provisional (incomplete data: no evidence yet for Project)`,
+      );
     }
   });
 
   it('uses the latest official prediction and never invents one', () => {
-    expect(record.subjects.find((s) => s.code === 'PL101')!.risk!.label).toBe('Vulnerable');
+    expect(record.subjects.find((s) => s.code === 'PL101')!.risk!.label).toBe(
+      'Vulnerable — Provisional (incomplete data: no evidence yet for Project)',
+    );
     expect(record.subjects.find((s) => s.code === 'CS102')!.risk).toBeNull();
   });
 });
@@ -789,8 +805,265 @@ describe('Phase 3C: official final grade wording', () => {
     expect(index).toContain('.select("subject_id, subjects(code, name, final_grade_releases(student_id, status, final_grade))")');
     expect(index).toContain('.eq("subjects.final_grade_releases.student_id", userId)');
     expect(index).not.toMatch(/from\(\s*["']final_grade_releases["']\s*\)/);
-    expect(index.match(/\.from\("/g)?.length).toBe(13);
-    expect(index.match(/\.rpc\(/g)?.length ?? 0).toBe(1);
+    // 14 requests in total: the predictions read replaced latest_student_predictions one for one.
+    expect(index.match(/\.from\("/g)?.length).toBe(14);
+    expect(index.match(/\.rpc\(/g)?.length ?? 0).toBe(0);
     expect(index).not.toMatch(/release-final-grades|commit_final_grade_releases|\.channel\(/);
+  });
+});
+
+describe('Phase 2 coaching: weighted weak-area priority', () => {
+  type Item = { type: string; score?: number | null; max?: number; title?: string; due?: string | null };
+  const PAST = '2026-09-01T00:00:00Z';
+  const FUTURE = '2026-12-10T00:00:00Z';
+
+  function subjectOf(
+    items: Item[],
+    opts: { weights?: GradeWeights; present?: number; absent?: number; risk?: string } = {},
+  ): SubjectRecord {
+    const rec = buildStudentRecord({
+      enrollments: [{ subject_id: 's', subjects: { code: 'WK101', name: 'Weak Areas' } }],
+      activities: items.map((it, i) => ({
+        id: `w${i}`,
+        subject_id: 's',
+        title: it.title ?? `${it.type} ${i + 1}`,
+        type: it.type,
+        max_score: it.max ?? 100,
+        due_date: it.due ?? null,
+      })),
+      submissions: items.flatMap((it, i) =>
+        it.score === undefined ? [] : [{ activity_id: `w${i}`, score: it.score, assessment_type: it.type }],
+      ),
+      attendance: [
+        ...Array.from({ length: opts.present ?? 0 }, () => ({ subject_id: 's', status: 'present' })),
+        ...Array.from({ length: opts.absent ?? 0 }, () => ({ subject_id: 's', status: 'absent' })),
+      ],
+      gradingSystems: opts.weights ? [{ subject_id: 's', ...opts.weights }] : [],
+      predictions: [{ subject_id: 's', risk_level: opts.risk ?? 'critical', risk_score: 60, created_at: '2026-09-30T00:00:00Z' }],
+      engagement: null,
+    });
+    return rec.subjects[0];
+  }
+  const comp = (a: WeakAreaAnalysis, key: string) => a.components.find((c) => c.key === key)!;
+  const promptOf = (s: SubjectRecord) =>
+    formatStudentRecordForPrompt({ subjects: [s], engagement: null, riskAvailable: true }, s, NOW);
+  /** Every weighted component reported with its effective weight must rebuild the official provisional grade. */
+  const rebuiltGrade = (a: WeakAreaAnalysis) =>
+    a.components.reduce((sum, c) => sum + (c.effectiveWeight != null ? (c.effectiveWeight * c.percent!) / 100 : 0), 0);
+
+  it('uses the official Crucial boundary as the benchmark', () => {
+    expect(WEAK_AREA_BENCHMARK).toBe(RISK_BANDS.at_risk);
+    expect(WEAK_AREA_BENCHMARK).toBe(75);
+  });
+
+  it('1. flags 74% as below the benchmark (above the old 70% cut-off)', () => {
+    const s = subjectOf([{ type: 'activity', score: 74, title: 'Lab Activity 3' }]);
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'activity').gap).toBeCloseTo(1, 10);
+    expect(a.ranked.map((c) => c.key)).toEqual(['activity']);
+    expect(a.belowBenchmarkAssessments.map((x) => x.title)).toEqual(['Lab Activity 3']);
+    expect(promptOf(s)).toContain('1. Activity: 74.00% from 1 scored of 1');
+  });
+
+  it('2. does not flag exactly 75%', () => {
+    const s = subjectOf([{ type: 'activity', score: 75 }]);
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'activity').gap).toBe(0);
+    expect(a.ranked).toEqual([]);
+    expect(a.belowBenchmarkAssessments).toEqual([]);
+    const p = promptOf(s);
+    expect(p).toContain('- none: no weighted component is below 75%');
+    expect(p).toContain('At or above 75%: Activity 75.00%');
+  });
+
+  it('3. treats a score of zero as real evidence', () => {
+    const s = subjectOf([{ type: 'project', score: 0, title: 'Capstone Proposal' }, { type: 'activity', score: 90 }]);
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'project').percent).toBe(0);
+    expect(comp(a, 'project').gap).toBe(75);
+    expect(a.ranked[0].key).toBe('project');
+    expect(a.belowBenchmarkAssessments[0]).toMatchObject({ title: 'Capstone Proposal', percent: 0, gap: 75 });
+    expect(promptOf(s)).toContain('Capstone Proposal 0/100 (0.00%)');
+  });
+
+  it('4. never turns a missing or null score into zero or a low-score weakness', () => {
+    const s = subjectOf([
+      { type: 'activity', score: 90, title: 'Activity A' },
+      { type: 'activity', score: null, title: 'Activity B', due: PAST },
+      { type: 'activity', title: 'Activity C', due: PAST },
+      { type: 'midterm_exam', title: 'Midterm', due: FUTURE },
+    ]);
+    const a = analyzeWeakAreas(s, NOW);
+    const act = comp(a, 'activity');
+    expect(act.percent).toBe(90);
+    expect(act.scored).toHaveLength(1);
+    expect(act.unscored.map((x) => x.percent)).toEqual([null, null]);
+    expect(comp(a, 'project')).toMatchObject({ percent: null, effectiveWeight: null, gap: null, priority: null });
+    expect(comp(a, 'midterm')).toMatchObject({ percent: null, effectiveWeight: null, priority: null });
+    expect(a.ranked).toEqual([]);
+    expect(a.belowBenchmarkAssessments).toEqual([]);
+    const p = promptOf(s);
+    const incomplete = p.split('Incomplete or missing evidence')[1];
+    expect(incomplete).toContain('Activity B [Activity]: no score recorded and its due date has passed');
+    expect(incomplete).toContain('Activity C [Activity]: no score recorded and its due date has passed');
+    expect(incomplete).toContain('Project: no assessments recorded yet (configured weight 25)');
+    expect(incomplete).toContain('Attendance: no attendance recorded');
+    expect(p).toContain('- Midterm Exam: PENDING, no score recorded.');
+    expect(p).not.toMatch(/Activity [BC][^\n]*0\.00%/);
+  });
+
+  it('5. ranks weaknesses by effective weight x gap', () => {
+    const s = subjectOf(
+      [
+        { type: 'activity', score: 70 },
+        { type: 'project', score: 50 },
+        { type: 'midterm_exam', score: 60 },
+      ],
+      { present: 10 },
+    );
+    const a = analyzeWeakAreas(s, NOW);
+    expect(a.ranked.map((c) => c.key)).toEqual(['project', 'midterm', 'activity']);
+    expect(a.ranked.map((c) => c.priority)).toEqual([
+      expect.closeTo(6.25, 10),
+      expect.closeTo(5.25, 10),
+      expect.closeTo(1.25, 10),
+    ]);
+    expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
+    const p = promptOf(s);
+    expect(p.indexOf('1. Project: 50.00%')).toBeLessThan(p.indexOf('2. Midterm Exam: 60.00%'));
+    expect(p.indexOf('2. Midterm Exam: 60.00%')).toBeLessThan(p.indexOf('3. Activity: 70.00%'));
+  });
+
+  it('6. splits Activity and Project weight equally across scored assessments', () => {
+    const s = subjectOf(
+      [
+        { type: 'quiz', score: 40 },
+        { type: 'activity', score: 60 },
+        { type: 'assignment', score: 80 },
+        { type: 'activity', score: 100 },
+        { type: 'activity', due: FUTURE },
+        { type: 'project', score: 50 },
+        { type: 'project', score: 70 },
+        { type: 'midterm_exam', score: 80 },
+      ],
+      { present: 4 },
+    );
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'activity').effectiveWeight).toBeCloseTo(25, 10);
+    expect(comp(a, 'activity').scored.map((x) => x.effectiveWeight)).toEqual(Array(4).fill(6.25));
+    expect(comp(a, 'activity').unscored[0].effectiveWeight).toBeNull();
+    expect(comp(a, 'project').scored.map((x) => x.effectiveWeight)).toEqual([12.5, 12.5]);
+    expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
+  });
+
+  it('7. gives the Midterm the full Exam weight while the Final has no score', () => {
+    const s = subjectOf(
+      [
+        { type: 'activity', score: 90 },
+        { type: 'project', score: 90 },
+        { type: 'midterm_exam', score: 60, title: 'Midterm Exam' },
+        { type: 'final_exam', title: 'Final Exam', due: FUTURE },
+      ],
+      { present: 10 },
+    );
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'midterm').effectiveWeight).toBeCloseTo(35, 10);
+    expect(comp(a, 'final')).toMatchObject({ percent: null, effectiveWeight: null, priority: null });
+    expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
+    const p = promptOf(s);
+    expect(p).toContain('- Midterm Exam: SCORED, 60.00% (effective weight 35.00% of the provisional grade; the full Exam weight because no Final Exam score is recorded)');
+    expect(p).toContain('- Final Exam: PENDING, no score recorded. It is not a zero.');
+    expect(p).not.toContain('Final Exam: SCORED');
+  });
+
+  it('8. splits the Exam weight once a Final score exists, including a Final of zero', () => {
+    const s = subjectOf(
+      [
+        { type: 'activity', score: 90 },
+        { type: 'project', score: 90 },
+        { type: 'midterm_exam', score: 80, title: 'Midterm Exam' },
+        { type: 'final_exam', score: 0, title: 'Final Exam' },
+      ],
+      { present: 10 },
+    );
+    const a = analyzeWeakAreas(s, NOW);
+    expect(comp(a, 'midterm').effectiveWeight).toBeCloseTo(17.5, 10);
+    expect(comp(a, 'final').effectiveWeight).toBeCloseTo(17.5, 10);
+    expect(comp(a, 'final').percent).toBe(0);
+    expect(a.ranked[0]).toMatchObject({ key: 'final', priority: expect.closeTo(13.125, 10) });
+    expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
+  });
+
+  it('9. passes Midterm and Final to the coach as separate records', () => {
+    const s = subjectOf([
+      { type: 'midterm_exam', score: 40, max: 50, title: 'Midterm Exam' },
+      { type: 'final_exam', score: 30, max: 60, title: 'Final Exam' },
+    ]);
+    const p = promptOf(s);
+    expect(p).toContain('Exam records (Midterm and Final are separate):');
+    expect(p).toContain('- Midterm Exam: SCORED, 80.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Midterm Exam 40/50 (80.00%), weight 50.00%.');
+    expect(p).toContain('- Final Exam: SCORED, 50.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Final Exam 30/60 (50.00%), weight 50.00%.');
+    expect(p).toContain('exam combined 65%');
+  });
+
+  it('10. different weakness profiles produce different ranked evidence', () => {
+    const projectWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 45 }, { type: 'midterm_exam', score: 80 }], { present: 10 });
+    const midtermWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 88 }, { type: 'midterm_exam', score: 52 }], { present: 10 });
+    const attendanceWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 88 }, { type: 'midterm_exam', score: 80 }], { present: 4, absent: 6 });
+    const first = [projectWeak, midtermWeak, attendanceWeak].map((s) => analyzeWeakAreas(s, NOW).ranked.map((c) => c.key));
+    expect(first).toEqual([['project'], ['midterm'], ['attendance']]);
+    const lines = [projectWeak, midtermWeak, attendanceWeak].map((s) => promptOf(s).match(/^1\. .*$/m)![0]);
+    expect(new Set(lines).size).toBe(3);
+    expect(lines[2]).toContain('1. Attendance: 40.00% attendance rate');
+  });
+
+  it('11. custom subject weights change the priorities', () => {
+    const items: Item[] = [{ type: 'activity', score: 100 }, { type: 'project', score: 50 }, { type: 'midterm_exam', score: 60 }];
+    const byDefault = analyzeWeakAreas(subjectOf(items, { present: 10 }), NOW);
+    const examHeavy = subjectOf(items, { present: 10, weights: { activity_weight: 15, project_weight: 10, attendance_weight: 15, exam_weight: 60 } });
+    const custom = analyzeWeakAreas(examHeavy, NOW);
+    expect(byDefault.ranked.map((c) => c.key)).toEqual(['project', 'midterm']);
+    expect(custom.ranked.map((c) => c.key)).toEqual(['midterm', 'project']);
+    expect(comp(custom, 'midterm').priority).toBeCloseTo(9, 10);
+    expect(comp(custom, 'project').priority).toBeCloseTo(2.5, 10);
+    expect(rebuiltGrade(custom)).toBeCloseTo(examHeavy.provisionalGrade!, 10);
+  });
+
+  it('12. keeps the stored risk classification; the analysis never reclassifies', async () => {
+    const s = subjectOf([{ type: 'activity', score: 20 }, { type: 'project', score: 10 }], { risk: 'stable' });
+    expect(analyzeWeakAreas(s, NOW).ranked.length).toBeGreaterThan(0);
+    expect(s.risk).toMatchObject({ classification: 'stable' });
+    expect(s.risk!.label).toBe('Stable — Provisional (incomplete data: no evidence yet for Attendance, Exams)');
+    const rec: StudentRecord = { subjects: [s], engagement: null, riskAvailable: true };
+    const { deps, callModel } = makeDeps({ loadRecord: vi.fn(async () => rec) });
+    const res = await runCoachChat(deps, [user('How can I improve in WK101?')]);
+    expect(res.risk_level).toBe('stable');
+    const system = callModel.mock.calls[0][0] as string;
+    expect(system).toContain('Official risk classification: Stable');
+    expect(system).not.toContain('Official risk classification: Crucial');
+    const src = readFileSync(resolve(__dirname, '../../supabase/functions/ai-coach/academic-context.ts'), 'utf8');
+    expect(src).not.toMatch(/classifyRiskScore|classifyStudentRisk|applyCoverageGuard/);
+  });
+
+  it('13. gives a Crucial student the ranked evidence and the coaching rules, with no extra query', async () => {
+    const s = subjectOf([{ type: 'activity', score: 80 }, { type: 'project', score: 55, title: 'Web App Project' }, { type: 'midterm_exam', score: 68 }], { present: 9, absent: 1 });
+    const rec: StudentRecord = { subjects: [s], engagement: null, riskAvailable: true };
+    const { deps, callModel } = makeDeps({ loadRecord: vi.fn(async () => rec) });
+    const res = await runCoachChat(deps, [user('How can I improve in WK101?')]);
+    expect(res.source).toBe('ai');
+    expect(res.risk_level).toBe('critical');
+    expect(callModel).toHaveBeenCalledTimes(1);
+    const system = callModel.mock.calls[0][0] as string;
+    expect(system).toContain('Official risk classification: Crucial');
+    expect(system).toMatch(/1\. Project: 55\.00% from 1 scored of 1 \(effective weight 25\.00%[^\n]*Low sources: Web App Project 55\/100 \(55\.00%\)/);
+    expect(system).toContain('2. Midterm Exam: 68.00%');
+    expect(system).toContain("Address them in the listed order, starting with priority 1");
+    expect(system).toContain('When the official risk classification is Crucial, lead with the priority 1 area');
+    expect(system).toContain("Items under 'Incomplete or missing evidence' are not low scores");
+    expect(system).toContain('If the Final Exam is PENDING, MISSING or NOT RECORDED, say so; never call it a zero');
+    expect(system).toContain('never use it to call the student Crucial, Vulnerable');
+    expect(system).toContain('never fabricate assessment names, scores, deadlines, teacher feedback or completed work');
+    expect(system).toContain('Never recalculate, reclassify, or disagree with them.');
+    expect(system).not.toContain('Evidence-based weak areas');
   });
 });

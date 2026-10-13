@@ -59,6 +59,13 @@ describe('SubjectAttendance client path', () => {
     expect(attendanceTab).not.toContain('recalculateSubjectRisk(');
   });
 
+  it('blocks repeat clicks per student and reloads the date after a failed mark', () => {
+    expect(attendanceTab).toContain('disabled={savingStudentIds.has(e.student_id)}');
+    expect(attendanceTab).toContain('if (savingStudentIds.has(studentId)) return;');
+    expect(attendanceTab).toContain("queryClient.invalidateQueries({ queryKey: ['attendance', subjectId, markedDate] })");
+    expect(attendanceTab).not.toContain('refetchInterval');
+  });
+
   it('keeps the four attendance statuses', () => {
     expect(attendanceTab).toContain("['present', 'absent', 'late', 'excused']");
   });
@@ -109,6 +116,20 @@ describe('attendance session migration', () => {
     expect(fn).toContain('AND e.enrolled_at IS NOT NULL');
     expect(fn).toContain("(e.enrolled_at AT TIME ZONE 'Asia/Manila')::date <= p_date");
     expect(fn).toContain('WHERE a.status IS DISTINCT FROM EXCLUDED.status');
+  });
+
+  it('serializes calls per subject and date with a transaction lock taken after the guards, before the first-mark check', () => {
+    const lock = fn.indexOf('pg_catalog.pg_advisory_xact_lock(');
+    expect(lock).toBeGreaterThan(-1);
+    expect(fn.match(/pg_advisory/g)).toHaveLength(1);
+    expect(fn).not.toMatch(/pg_advisory_unlock|pg_advisory_lock\(/);
+    expect(fn).toMatch(/pg_advisory_xact_lock\(\s*pg_catalog\.hashtext\('record_attendance:' \|\| p_subject_id::text\),\s*p_date - DATE '2000-01-01'\s*\)/);
+    expect(fn).not.toMatch(/p_date::text/);
+    for (const guard of ['p_date > v_today', 'instructor_owns_subject(p_subject_id)', "e.status = 'active'", 'not yet enrolled on this date']) {
+      expect(fn.indexOf(guard)).toBeLessThan(lock);
+    }
+    expect(lock).toBeLessThan(fn.indexOf('IF NOT EXISTS ('));
+    expect(lock).toBeLessThan(fn.indexOf('INSERT INTO public.attendance'));
   });
 
   it('adds no session table, trigger or policy change', () => {

@@ -147,7 +147,7 @@ export default function GuidanceReferrals() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
-          {r.prediction?.risk_level ? <RiskBadge level={r.prediction.risk_level} /> : null}
+          {r.prediction?.risk_level ? <RiskBadge level={r.prediction.risk_level} evidence={r.prediction} /> : null}
           <ReferralStatusBadge status={r.status} />
         </div>
       </div>

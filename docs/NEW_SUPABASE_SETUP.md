@@ -112,6 +112,22 @@ npx supabase secrets set BREVO_FROM="EDGE <youremail@example.com>" --env prod
 Notes:
 - For best deliverability, use a sender email that is verified in Brevo (and ideally on a domain you control).
 
+5. Automatic student risk emails (rollout gate):
+
+- Name: `EDGE_RISK_EMAILS_ENABLED` (Edge Function secret read by `predict-risk`).
+- Default: **off**. Only the exact value `true` enables sending; an absent, empty or any other value keeps it off.
+- When on, `predict-risk` emails a student only for a definitive Crucial or Vulnerable result: a recorded risk score
+  and evidence in every weighted grade category. Provisional (incomplete) results are never emailed. At most one email
+  per student, subject and level every 24 hours. Predictions, dashboards and in-app notifications work the same with the gate off.
+- Enable only after the Brevo secrets above are set and the sender is verified:
+
+```bash
+npx supabase secrets set EDGE_RISK_EMAILS_ENABLED=true --project-ref <project-ref>
+```
+
+- Disable: `npx supabase secrets unset EDGE_RISK_EMAILS_ENABLED --project-ref <project-ref>` (or set it to `false`).
+- The deployed `predict-risk` must include this gate (`supabase/functions/_shared/risk-email.ts`); older deployments ignore it.
+
 ---
 
 ## Step 4B (Optional): AI via OpenAI (AI Coach + Performance Insights)

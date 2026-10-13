@@ -15,6 +15,7 @@ import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 import { FormattedAssistantContent } from "@/components/FormattedAssistantContent";
 import { AI_COACH_MODEL_LABEL } from "@/lib/ai-model";
 import {
+  coachingRiskLabel,
   formatCoachingMetricsBlock,
   type SubjectCoachingMetrics,
 } from "@/lib/coaching-context";
@@ -36,7 +37,7 @@ function buildContextualStarter(
   metrics?: SubjectCoachingMetrics | null,
   subjectLabel?: string | null,
 ): ChatMsg[] {
-  const status = riskLabel(canonical);
+  const status = metrics ? coachingRiskLabel(metrics) : riskLabel(canonical);
   const subj = subjectLabel?.trim();
   const metricsSummary = metrics ? formatCoachingMetricsBlock(metrics) : null;
 
@@ -323,7 +324,9 @@ export function AICoachPopup(props: {
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
                 AI Coach
-                {shouldAutoOpen ? <RiskBadge level={canonical} score={props.metrics?.riskScore} /> : null}
+                {shouldAutoOpen ? (
+                  <RiskBadge level={canonical} evidence={props.metrics?.riskEvidence} weights={props.metrics?.riskWeights} />
+                ) : null}
               </DialogTitle>
               <DialogDescription className="space-y-1">
                 <span className="block">

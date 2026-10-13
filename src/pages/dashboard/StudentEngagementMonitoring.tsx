@@ -55,6 +55,7 @@ import {
   type CanonicalRiskLevel,
 } from '@/lib/risk-utils';
 import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
+import { PREDICTION_EVIDENCE_COLUMNS, type RiskEvidenceRow } from '@/lib/risk-scoring';
 
 type EngagementRow = {
   studentId: string;
@@ -69,6 +70,7 @@ type EngagementRow = {
   engagementLevel: CanonicalEngagementLevel;
   riskLevel: CanonicalRiskLevel | null;
   riskScore: number | null;
+  riskEvidence: RiskEvidenceRow | null;
 };
 
 type MonitoringPayload = {
@@ -151,7 +153,7 @@ export default function StudentEngagementMonitoring() {
           .in('student_id', studentIds),
         supabase
           .from('predictions')
-          .select('student_id, subject_id, risk_level, risk_score, created_at')
+          .select(`student_id, subject_id, risk_level, created_at, ${PREDICTION_EVIDENCE_COLUMNS}`)
           .in('subject_id', subjectIds)
           .in('student_id', studentIds)
           .order('created_at', { ascending: false }),
@@ -180,12 +182,17 @@ export default function StudentEngagementMonitoring() {
 
       const worstRiskByStudent = new Map<
         string,
-        { level: CanonicalRiskLevel; score: number | null }
+        { level: CanonicalRiskLevel; score: number | null; evidence: RiskEvidenceRow }
       >();
+      const seenPairs = new Set<string>();
 
       for (const pred of predictions ?? []) {
         if (!pred.student_id || !pred.subject_id) continue;
-        if (!activeEnrollmentKeys.has(`${pred.student_id}::${pred.subject_id}`)) continue;
+        const pairKey = `${pred.student_id}::${pred.subject_id}`;
+        if (!activeEnrollmentKeys.has(pairKey)) continue;
+        // Rows are newest first; older predictions for the same subject are superseded.
+        if (seenPairs.has(pairKey)) continue;
+        seenPairs.add(pairKey);
 
         const level = canonicalRiskLevel(pred.risk_level);
         const score =
@@ -194,7 +201,7 @@ export default function StudentEngagementMonitoring() {
             : null;
         const existing = worstRiskByStudent.get(pred.student_id);
         if (!existing || RISK_SEVERITY[level] > RISK_SEVERITY[existing.level]) {
-          worstRiskByStudent.set(pred.student_id, { level, score });
+          worstRiskByStudent.set(pred.student_id, { level, score, evidence: pred });
         }
       }
 
@@ -230,6 +237,7 @@ export default function StudentEngagementMonitoring() {
             engagementLevel: canonicalEngagementLevel(summary?.engagement_level),
             riskLevel: risk?.level ?? null,
             riskScore: risk?.score ?? null,
+            riskEvidence: risk?.evidence ?? null,
           };
         })
         .sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -439,9 +447,9 @@ export default function StudentEngagementMonitoring() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Risk</SelectItem>
-                <SelectItem value="elevated">Elevated (at risk + critical)</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
-                <SelectItem value="at_risk">At Risk</SelectItem>
+                <SelectItem value="elevated">Elevated (Vulnerable + Crucial)</SelectItem>
+                <SelectItem value="critical">Crucial</SelectItem>
+                <SelectItem value="at_risk">Vulnerable</SelectItem>
                 <SelectItem value="stable">Stable</SelectItem>
                 <SelectItem value="excelling">Excelling</SelectItem>
               </SelectContent>
@@ -537,7 +545,7 @@ export default function StudentEngagementMonitoring() {
                       </TableCell>
                       <TableCell>
                         {row.riskLevel ? (
-                          <RiskBadge level={row.riskLevel} score={row.riskScore} />
+                          <RiskBadge level={row.riskLevel} evidence={row.riskEvidence} />
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>
                         )}

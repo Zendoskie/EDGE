@@ -300,8 +300,8 @@ function InvitationForm({ token }: { token: string }) {
 
     try {
       // 1. Create the Supabase Auth account.
-      //    The DB triggers (handle_new_user + handle_new_user_role) will insert
-      //    profiles (account_status='pending') and user_roles automatically.
+      //    handle_new_user inserts the profile (account_status='pending'). The staff
+      //    role comes from step 2 (complete_staff_invitation), not from signup metadata.
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email:    inv.email,
         password,

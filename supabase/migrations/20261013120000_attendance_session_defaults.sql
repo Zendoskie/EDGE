@@ -114,6 +114,17 @@ BEGIN
     END IF;
   END IF;
 
+  -- One request per subject and session date at a time, held until commit or rollback. Two concurrent
+  -- first marks for different students would otherwise insert the defaults and their own student in
+  -- opposite order and deadlock (40P01). Taken after the checks above, so refused calls never wait,
+  -- and before the check below, which then sees any roster a previous holder committed. The date is
+  -- a day number (DateStyle-independent); a subject-hash collision only makes two subjects' marks on
+  -- the same date wait for each other.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('record_attendance:' || p_subject_id::text),
+    p_date - DATE '2000-01-01'
+  );
+
   -- First mark of this session date: default every other eligible active student to Present.
   IF NOT EXISTS (
     SELECT 1 FROM public.attendance a

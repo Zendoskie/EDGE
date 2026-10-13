@@ -12,6 +12,15 @@ import {
   type PredictionValues,
 } from "../_shared/risk-scoring.ts";
 import type { GradeItem, GradeWeights } from "../_shared/weighted-grading.ts";
+import {
+  buildRiskEmail,
+  isDefinitiveRiskEmail,
+  planRiskEmails,
+  RISK_EMAIL_GATE_ENV,
+  riskEmailKey,
+  riskEmailsEnabled,
+  type RiskEmailCandidate,
+} from "../_shared/risk-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -358,6 +367,7 @@ serve(async (req) => {
       .eq("subject_id", subject_id);
     if (existingErr) throw existingErr;
 
+    const emailCandidates: RiskEmailCandidate[] = [];
     const rows: PredictionValues[] = studentMetrics.map((metrics) => {
       const attendancePercent = metrics.attendance_rate != null ? metrics.attendance_rate * 100 : null;
       const { risk_score, band, risk_level, coverage, grade } = classifyStudentRisk({
@@ -365,6 +375,7 @@ serve(async (req) => {
         attendancePercent,
         weights: gradingWeights,
       });
+      emailCandidates.push({ student_id: metrics.student_id, risk_level, risk_score, coverage });
       const academic_performance = legacyAcademicPerformance({
         activityAverage: metrics.activity_average,
         quizAverage: metrics.quiz_average,
@@ -441,9 +452,10 @@ serve(async (req) => {
       if (deleteError) console.error("predict-risk stale/duplicate cleanup:", deleteError);
     }
 
-    // Auto-notify critical / at-risk students (at most once per 24h per subject+risk level)
-    const notifyRows = rows.filter((r) => r.risk_level === "critical" || r.risk_level === "at_risk");
-    if (notifyRows.length > 0) {
+    // Auto-email Crucial / Vulnerable students only when the rollout gate is on and the evidence is complete
+    // (at most once per 24h per subject+risk level). Stored predictions and in-app notices are unaffected.
+    const riskEmailsOn = riskEmailsEnabled(Deno.env.get(RISK_EMAIL_GATE_ENV));
+    if (riskEmailsOn && emailCandidates.some(isDefinitiveRiskEmail)) {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: alreadySent } = await supabase
         .from("email_notifications")
@@ -451,23 +463,19 @@ serve(async (req) => {
         .eq("subject_id", subject_id)
         .gte("sent_at", since);
 
-      const sentSet = new Set(
-        (alreadySent ?? []).map((n: { student_id: string; risk_level: string }) => `${n.student_id}:${n.risk_level}`),
-      );
+      const sentSet = new Set((alreadySent ?? []).map(riskEmailKey));
+      const notifyRows = planRiskEmails({ enabled: riskEmailsOn, candidates: emailCandidates, alreadySent: sentSet });
 
       for (const n of notifyRows) {
-        const key = `${n.student_id}:${n.risk_level}`;
-        if (sentSet.has(key)) continue;
-
         const studentEmail = profileMap[n.student_id]?.email;
         if (!studentEmail) continue;
 
-        const subj = `EDGE Alert: ${n.risk_level === "critical" ? "Critical" : "At Risk"} — ${subject.code}`;
-        const html = `
-          <p>Hello ${profileMap[n.student_id]?.full_name || "student"},</p>
-          <p>You have been identified as <strong>${n.risk_level === "critical" ? "Critical" : "At Risk"}</strong> for <strong>${subject.code} — ${subject.name}</strong> by the EDGE risk analysis system.</p>
-          <p>Log in to EDGE and open the AI Coach for personalized study strategies and improvement actions based on your latest metrics.</p>
-        `;
+        const { subject: subj, html } = buildRiskEmail({
+          riskLevel: n.risk_level,
+          studentName: profileMap[n.student_id]?.full_name,
+          subjectCode: subject.code,
+          subjectName: subject.name,
+        });
 
         try {
           await sendBrevoEmail({ to: studentEmail, subject: subj, html });

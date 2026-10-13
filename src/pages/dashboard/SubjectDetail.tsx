@@ -229,7 +229,7 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
         <CardContent className="text-sm">
           {myPrediction ? (
             <div className="flex flex-wrap items-center gap-3">
-              <RiskBadge level={myPrediction.risk_level} score={myPrediction.risk_score} />
+              <RiskBadge level={myPrediction.risk_level} evidence={myPrediction} />
               {myPrediction.risk_score != null && (
                 <span className="text-muted-foreground">
                   Score: <span className="font-medium text-foreground">{roundGrade2(Number(myPrediction.risk_score))?.toFixed(2)}</span>/100
@@ -496,7 +496,7 @@ function SubjectStudents({
 }
 
 /* ───── Attendance Tab ───── */
-function SubjectAttendance({
+export function SubjectAttendance({
   subjectId,
   programCode,
   programName,
@@ -542,16 +542,18 @@ function SubjectAttendance({
 
   const { data: attendanceHistory = [], isLoading: historyLoading } = useSubjectAttendanceHistory(subjectId);
 
+  const [savingStudentIds, setSavingStudentIds] = useState<ReadonlySet<string>>(() => new Set());
+
   const markAttendance = useMutation({
-    mutationFn: async ({ studentId, status }: { studentId: string; status: string }) => {
+    mutationFn: async ({ studentId, status, markedDate }: { studentId: string; status: string; markedDate: string }) => {
       const { data, error } = await supabase.rpc('record_attendance', {
         p_subject_id: subjectId,
-        p_date: date,
+        p_date: markedDate,
         p_student_id: studentId,
         p_status: status,
       });
       if (error) throw error;
-      return { markedDate: date, rows: data ?? [] };
+      return { markedDate, rows: data ?? [] };
     },
     onSuccess: ({ markedDate, rows }) => {
       queryClient.setQueryData(['attendance', subjectId, markedDate], rows);
@@ -566,8 +568,21 @@ function SubjectAttendance({
         if (result.ok) queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
       });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error & { code?: string }, { markedDate }) => {
+      // P0001 = a record_attendance rule message written for instructors; anything else is technical.
+      toast.error(e.code === 'P0001' ? e.message : "Attendance wasn't saved. Please try again.");
+      queryClient.invalidateQueries({ queryKey: ['attendance', subjectId, markedDate] });
+    },
+    onSettled: (_data, _error, { studentId }) =>
+      setSavingStudentIds((prev) => new Set([...prev].filter((id) => id !== studentId))),
   });
+
+  // Marked in the click handler, not onMutate, so a second click in the same frame is already blocked.
+  const recordAttendance = (studentId: string, status: string) => {
+    if (savingStudentIds.has(studentId)) return;
+    setSavingStudentIds((prev) => new Set(prev).add(studentId));
+    markAttendance.mutate({ studentId, status, markedDate: date });
+  };
 
   const activeEnrollments = enrollments.filter(
     (row: EnrollmentListRow) => row.status === 'active' && !!row.student_id,
@@ -639,14 +654,15 @@ function SubjectAttendance({
                           <TableCell className="font-medium">{profile?.full_name || '—'}</TableCell>
                           <TableCell>{programLabel}</TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1.5" aria-busy={savingStudentIds.has(e.student_id)}>
                               {['present', 'absent', 'late', 'excused'].map(status => (
                                 <Button
                                   key={status}
                                   size="sm"
                                   variant={getStatus(e.student_id) === status ? 'default' : 'outline'}
                                   className="capitalize text-xs h-8"
-                                  onClick={() => markAttendance.mutate({ studentId: e.student_id, status })}
+                                  disabled={savingStudentIds.has(e.student_id)}
+                                  onClick={() => recordAttendance(e.student_id, status)}
                                 >
                                   {status}
                                 </Button>
@@ -1618,7 +1634,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                         <RiskScoreBreakdown prediction={p} weights={effectiveWeights} />
                       </TableCell>
                       <TableCell>
-                        <RiskBadge level={p.risk_level} />
+                        <RiskBadge level={p.risk_level} evidence={p} weights={gradingSystem} />
                       </TableCell>
                       <TableCell>
                         {engagement ? (

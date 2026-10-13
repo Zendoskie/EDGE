@@ -19,7 +19,13 @@ import { normalizeReferralStatus } from '@/lib/referral-utils';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { EngagementAnalytics } from '@/components/insights/EngagementAnalytics';
-import { formatOfficialRiskLabel } from '@/lib/risk-scoring';
+import {
+  INSUFFICIENT_CHART_COLOR,
+  INSUFFICIENT_DATA_LABEL,
+  riskDisplayStatus,
+  summarizeRiskStatuses,
+  type RiskEvidenceRow,
+} from '@/lib/risk-scoring';
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { fetchInstructorCourseBundle, instructorCourseBundleKey } from '@/lib/instructor-course-bundle';
@@ -204,11 +210,15 @@ export default function InstructorDashboard() {
         (p: any) => p.student_id && p.subject_id && activeKeys.has(`${p.student_id}::${p.subject_id}`),
       );
       const criticalAndAtRisk = preds.filter((p: any) => p.risk_level === 'critical' || p.risk_level === 'at_risk');
-      const chartData = RISK_LEVEL_ORDER.map((level) => ({
-        level: riskLabel(level),
-        count: preds.filter((p: any) => p.risk_level === level).length,
-        fill: riskChartColor(level),
-      }));
+      const riskSummary = summarizeRiskStatuses(preds as RiskEvidenceRow[]);
+      const chartData = [
+        ...RISK_LEVEL_ORDER.map((level) => ({
+          level: riskLabel(level),
+          count: riskSummary.counts[level],
+          fill: riskChartColor(level),
+        })),
+        { level: INSUFFICIENT_DATA_LABEL, count: riskSummary.insufficient, fill: INSUFFICIENT_CHART_COLOR },
+      ];
       const programCount: Record<string, number> = {};
       const programMeta: Record<string, { code: string; name?: string | null }> = {};
       for (const s of subjectsWithPrograms ?? []) {
@@ -410,15 +420,18 @@ export default function InstructorDashboard() {
           scoreHistoryForDisplay.length > 0
             ? scoreHistoryForDisplay.slice(0, 5).reduce((a, b) => a + b.pct, 0) / Math.min(scoreHistoryForDisplay.length, 5)
             : null;
+        // A stored 0% average is a real score, not a missing one.
         const displayScoreAvg =
-          latestScoreAvgPred > 0
+          latestScores.length > 0
             ? Math.round(latestScoreAvgPred)
             : scoreFromHistory != null
               ? Math.round(scoreFromHistory)
               : null;
 
         const reasons: string[] = [];
-        if (latestRisk === 'critical' || latestRisk === 'at_risk') reasons.push(`Risk level: ${riskLabel(canonicalRiskLevel(latestRisk))}`);
+        if (latestRisk === 'critical' || latestRisk === 'at_risk') {
+          reasons.push(`Risk level: ${riskDisplayStatus({ level: latestRisk, evidence: latest }).label}`);
+        }
         if (attendancePct != null && attendancePct < 75) reasons.push(`Low attendance: ${attendancePct}%`);
         if (displayScoreAvg != null && displayScoreAvg < 70) reasons.push(`Low score average: ${displayScoreAvg}%`);
         if (trend === 'declined') reasons.push('Declining trend detected');
@@ -433,6 +446,7 @@ export default function InstructorDashboard() {
           subjectCode,
           subjectName,
           latestRisk,
+          latestEvidence: latest,
           attendancePct,
           latestScoreAvg: displayScoreAvg,
           trend,
@@ -862,7 +876,11 @@ export default function InstructorDashboard() {
                           {row.studentName} ({row.studentNo}) — {row.subjectCode}
                         </p>
                         <div className="flex gap-2">
-                          <RiskBadge level={row.latestRisk} />
+                          {row.latestEvidence ? (
+                            <RiskBadge level={row.latestRisk} evidence={row.latestEvidence} />
+                          ) : (
+                            <Badge variant="outline">No prediction yet</Badge>
+                          )}
                           {engagementByStudent.get(row.studentId) ? (
                             <EngagementBadge level={engagementByStudent.get(row.studentId).engagement_level} />
                           ) : null}
@@ -872,7 +890,7 @@ export default function InstructorDashboard() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Attendance: {row.attendancePct != null ? `${row.attendancePct}%` : '—'} • Score Avg: {row.latestScoreAvg != null ? `${row.latestScoreAvg}%` : 'No graded metrics yet'}
+                        Attendance: {row.attendancePct != null ? `${row.attendancePct}%` : '—'} • Unweighted score avg: {row.latestScoreAvg != null ? `${row.latestScoreAvg}%` : 'No graded metrics yet'}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Last prediction: {row.createdAt ? new Date(row.createdAt).toLocaleString() : 'No prediction yet'}
@@ -952,7 +970,7 @@ export default function InstructorDashboard() {
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {analyticsData.needIntervention.slice(0, 15).map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                      <RiskBadge level={p.risk_level} />
+                      <RiskBadge level={p.risk_level} evidence={p} />
                       <span className="text-sm truncate flex-1 mx-3">{(p.subjects as any)?.code}</span>
                       <Button variant="ghost" size="sm" asChild>
                         <Link to={`/dashboard/subjects/${p.subject_id}`}>Intervene</Link>
@@ -978,7 +996,7 @@ export default function InstructorDashboard() {
                 <ul className="space-y-2 text-sm">
                   {recentPredictions.slice(0, 5).map((p: any) => (
                     <li key={p.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                      <span>{(p.subjects as any)?.code} — {formatOfficialRiskLabel(p.risk_level, p.risk_score != null ? Number(p.risk_score) : null)}</span>
+                      <span>{(p.subjects as any)?.code} — {riskDisplayStatus({ level: p.risk_level, evidence: p }).label}</span>
                       <span className="text-muted-foreground text-xs">{(p.subjects as any)?.name}</span>
                     </li>
                   ))}

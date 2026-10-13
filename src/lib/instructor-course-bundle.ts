@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { PREDICTION_EVIDENCE_COLUMNS } from '@/lib/risk-scoring';
 
 export type InstructorCourseBundle = {
   enrollments: Array<{
@@ -25,7 +26,7 @@ export async function fetchInstructorCourseBundle(subjectIds: string[]): Promise
     supabase
       .from('predictions')
       .select(
-        'id, risk_level, risk_score, recommendation, student_id, subject_id, attendance_rate, quiz_average, assignment_average, project_score, created_at, subjects(id, code, name)',
+        `id, risk_level, recommendation, student_id, subject_id, assignment_average, created_at, subjects(id, code, name), ${PREDICTION_EVIDENCE_COLUMNS}`,
       )
       .in('subject_id', subjectIds)
       .order('created_at', { ascending: false }),

@@ -10,13 +10,19 @@
  */
 
 import {
+  assessmentPercent,
   averageOf,
   computeSubjectWeightedGrade,
   DEFAULT_SUBJECT_GRADING_WEIGHTS,
   type GradeWeights,
+  isCourseworkType,
   isExamType,
+  isFinalExamType,
+  isMidtermSideType,
+  isProjectType,
   roundGrade2,
 } from "../_shared/weighted-grading.ts";
+import { categoryCoverage, RISK_BANDS, type RiskCategory } from "../_shared/risk-scoring.ts";
 
 export type CanonicalRiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 
@@ -114,7 +120,60 @@ export type RawPrediction = {
   risk_level?: string | null;
   risk_score?: number | null;
   created_at?: string | null;
+  activity_average?: number | null;
+  quiz_average?: number | null;
+  project_score?: number | null;
+  attendance_rate?: number | null;
+  laboratory_exam_average?: number | null;
+  midterm_exam_average?: number | null;
+  final_exam_average?: number | null;
 };
+
+const PREDICTION_EVIDENCE_KEYS = [
+  "activity_average",
+  "quiz_average",
+  "project_score",
+  "attendance_rate",
+  "laboratory_exam_average",
+  "midterm_exam_average",
+  "final_exam_average",
+] as const;
+const RISK_CATEGORY_NAMES: Record<RiskCategory, string> = {
+  activity: "Activities",
+  project: "Project",
+  attendance: "Attendance",
+  exam: "Exams",
+};
+
+/**
+ * Same convention as the dashboards: no score means "Insufficient data"; a weighted category without
+ * evidence qualifies the stored label as provisional. Coverage comes from the stored prediction columns.
+ * Without them, live category evidence may only mark the label provisional: it postdates the stored
+ * analysis, so it never confirms it.
+ */
+export function riskDisplayLabel(
+  level: CanonicalRiskLevel,
+  pred: RawPrediction,
+  weights: GradeWeights | null,
+  liveEvidence: Record<RiskCategory, boolean>,
+): string {
+  const label = riskStatusLabel(level);
+  if (pred.risk_score == null || !Number.isFinite(Number(pred.risk_score))) return "Insufficient data";
+  const has = (v: unknown) => v != null && Number.isFinite(Number(v));
+  const stored = PREDICTION_EVIDENCE_KEYS.every((k) => k in pred);
+  const evidence = stored
+    ? {
+        activity: has(pred.activity_average) || has(pred.quiz_average),
+        project: has(pred.project_score),
+        attendance: has(pred.attendance_rate),
+        exam: has(pred.laboratory_exam_average) || has(pred.midterm_exam_average) || has(pred.final_exam_average),
+      }
+    : liveEvidence;
+  const coverage = categoryCoverage(weights, evidence);
+  if (coverage.complete) return stored ? label : `${label} — Risk status unverified`;
+  const missing = coverage.missing.map((c) => RISK_CATEGORY_NAMES[c]).join(", ");
+  return `${label} — Provisional (incomplete data: no evidence yet for ${missing})`;
+}
 export type RawEngagement = {
   engagementLevel: string;
   engagementScore: number | null;
@@ -284,7 +343,12 @@ export function buildStudentRecord(input: StudentRecordInput): StudentRecord {
       risk: classification
         ? {
             classification,
-            label: riskStatusLabel(classification),
+            label: riskDisplayLabel(classification, pred!, savedWeights, {
+              activity: courseworkAverage != null,
+              project: projectAverage != null,
+              attendance: attendancePercent != null,
+              exam: examAverage != null,
+            }),
             score:
               pred!.risk_score != null && Number.isFinite(Number(pred!.risk_score))
                 ? roundGrade2(Number(pred!.risk_score))
@@ -405,9 +469,6 @@ export function findAssessments(subject: SubjectRecord, ref: AssessmentReference
 }
 
 /* ---------------------------------------------------------------- intents & guards */
-
-export const LOW_SCORE_THRESHOLD = 70;
-export const LOW_ATTENDANCE_THRESHOLD = 75;
 
 const ADVICE_WORDS =
   /\b(improv\w*|study|studying|tips?|advice|how (?:can|do|should|to|could)|prepare|review|plan|strateg\w*|weak\w*|help|focus|boost|raise)\b/i;
@@ -635,51 +696,340 @@ export function answerGradeLookup(record: StudentRecord, text: string, focus: Su
   return scope.map(gradeLine).join("\n");
 }
 
-export function buildFallbackSummary(record: StudentRecord, scope: SubjectRecord[]): string {
-  const subjects = scope.length > 0 ? scope : record.subjects;
-  const blocks = subjects.map((s) => {
-    const bits = [gradeLine(s)];
-    bits.push(
-      s.attendance.percent != null
-        ? `Attendance: ${s.attendance.percent}% (${s.attendance.present + s.attendance.late} of ${s.attendance.total} sessions present or late).`
-        : "Attendance: no records yet.",
-    );
-    bits.push(
-      s.risk
-        ? `Official risk classification: ${s.risk.label}${s.risk.score != null ? ` (risk score ${s.risk.score.toFixed(2)})` : ""}.`
-        : "Official risk classification: not available yet.",
-    );
-    return bits.join("\n");
-  });
-  return `The AI coach is temporarily unavailable, so I can't build a personalised plan right now. Here is what your records show:\n\n${blocks.join("\n\n")}\n\nPlease try again in a few minutes for coaching advice.`;
-}
-
 /* ---------------------------------------------------------------- prompt context */
 
-export function weakAreaFacts(s: SubjectRecord, now: Date): string[] {
-  const facts: string[] = [];
+/** Coaching benchmark: the official Crucial boundary. A coaching reference only; it never reclassifies risk. */
+export const WEAK_AREA_BENCHMARK: number = RISK_BANDS.at_risk;
+
+export type WeakComponentKey = "activity" | "project" | "midterm" | "final" | "attendance";
+
+export type EvidenceSource = {
+  title: string;
+  typeLabel: string;
+  score: number | null;
+  maxScore: number | null;
+  /** Unrounded percentage; null when the score is missing or the max score is invalid. Zero is a score. */
+  percent: number | null;
+  /** Share of the current provisional grade carried by this one assessment; null when unscored. */
+  effectiveWeight: number | null;
+  dueDate: string | null;
+  pastDue: boolean;
+};
+
+export type ComponentEvidence = {
+  key: WeakComponentKey;
+  label: string;
+  /** Category weight as configured (Midterm and Final show the Exam weight). */
+  configuredWeight: number;
+  percent: number | null;
+  /** Share of the current provisional grade, after the official renormalization and Exam split. Null when not established. */
+  effectiveWeight: number | null;
+  /** Points below the benchmark (0 when at or above); null without a percentage. */
+  gap: number | null;
+  /** effectiveWeight x gap / 100; null when either is unknown. */
+  priority: number | null;
+  scored: EvidenceSource[];
+  unscored: EvidenceSource[];
+};
+
+export type RankedAssessment = EvidenceSource & { component: string; gap: number; priority: number };
+
+export type WeakAreaAnalysis = {
+  benchmark: number;
+  /** All five components in a fixed order: Activity, Project, Midterm Exam, Final Exam, Attendance. */
+  components: ComponentEvidence[];
+  /** Components below the benchmark that carry grade weight, highest priority first. */
+  ranked: ComponentEvidence[];
+  /** Scored assessments below the benchmark that carry grade weight, highest priority first. */
+  belowBenchmarkAssessments: RankedAssessment[];
+  /** Assessments whose type maps to no grading category. The official grade excludes them too. */
+  unmapped: EvidenceSource[];
+};
+
+const byPriority = <T extends { priority: number | null; gap: number | null }>(a: T, b: T) =>
+  (b.priority ?? 0) - (a.priority ?? 0) || (b.gap ?? 0) - (a.gap ?? 0);
+
+/**
+ * Deterministic weak-area analysis from the student's own record, using the official grading
+ * rules: categories without data are left out and the rest renormalized; assessments split their
+ * category weight equally; Midterm carries the full Exam weight until a Final score exists.
+ */
+export function analyzeWeakAreas(s: SubjectRecord, now: Date): WeakAreaAnalysis {
+  const B = WEAK_AREA_BENCHMARK;
+  const groups: Record<Exclude<WeakComponentKey, "attendance">, AssessmentRecord[]> = {
+    activity: [],
+    project: [],
+    midterm: [],
+    final: [],
+  };
+  const unmapped: AssessmentRecord[] = [];
   for (const a of s.assessments) {
-    if (a.percent != null && a.percent < LOW_SCORE_THRESHOLD) {
-      facts.push(`${a.title} (${a.typeLabel}) scored ${a.percent}%, below ${LOW_SCORE_THRESHOLD}%`);
-    }
+    if (isCourseworkType(a.type)) groups.activity.push(a);
+    else if (isProjectType(a.type)) groups.project.push(a);
+    else if (isFinalExamType(a.type)) groups.final.push(a);
+    else if (isMidtermSideType(a.type)) groups.midterm.push(a);
+    else unmapped.push(a);
   }
-  for (const a of s.assessments) {
-    if (a.score == null && a.dueDate && Date.parse(a.dueDate) < now.getTime()) {
-      facts.push(`${a.title} (${a.typeLabel}) has no score recorded and its due date has passed`);
-    }
-  }
-  if (s.attendance.percent != null && s.attendance.percent < LOW_ATTENDANCE_THRESHOLD) {
-    facts.push(`Attendance is ${s.attendance.percent}%, below ${LOW_ATTENDANCE_THRESHOLD}%`);
-  }
-  const groups: Array<[string, number | null]> = [
-    ["Coursework", s.courseworkAverage],
-    ["Projects", s.projectAverage],
-    ["Exams", s.examAverage],
+
+  const toSource = (a: AssessmentRecord): EvidenceSource => ({
+    title: a.title,
+    typeLabel: a.typeLabel,
+    score: a.score,
+    maxScore: a.maxScore,
+    percent: assessmentPercent(a.score, a.maxScore),
+    effectiveWeight: null,
+    dueDate: a.dueDate,
+    pastDue: a.score == null && !!a.dueDate && Date.parse(a.dueDate) < now.getTime(),
+  });
+  const split = (items: AssessmentRecord[]) => {
+    const all = items.map(toSource);
+    const scored = all.filter((x) => x.percent != null);
+    return { scored, unscored: all.filter((x) => x.percent == null), percent: averageOf(scored.map((x) => x.percent)) };
+  };
+  const parts = {
+    activity: split(groups.activity),
+    project: split(groups.project),
+    midterm: split(groups.midterm),
+    final: split(groups.final),
+  };
+  const att = s.attendance;
+  const attendancePercent = att.total > 0 ? ((att.present + att.late) / att.total) * 100 : null;
+
+  const w = s.gradingWeights;
+  const examPercent = averageOf([parts.midterm.percent, parts.final.percent]);
+  const categories = [
+    { weight: w.activity, present: parts.activity.percent != null },
+    { weight: w.project, present: parts.project.percent != null },
+    { weight: w.attendance, present: attendancePercent != null },
+    { weight: w.exam, present: examPercent != null },
   ];
-  for (const [label, avg] of groups) {
-    if (avg != null && avg < LOW_SCORE_THRESHOLD) facts.push(`${label} average is ${Math.round(avg)}%, below ${LOW_SCORE_THRESHOLD}%`);
+  const total = categories.filter((c) => c.present && c.weight > 0).reduce((sum, c) => sum + c.weight, 0);
+  const share = (weight: number, present: boolean) => (present && weight > 0 && total > 0 ? (weight / total) * 100 : null);
+  const examShare = share(w.exam, examPercent != null);
+  const bothExamSides = parts.midterm.percent != null && parts.final.percent != null;
+  const sideShare = (present: boolean) => (examShare != null && present ? (bothExamSides ? examShare / 2 : examShare) : null);
+
+  const build = (
+    key: WeakComponentKey,
+    label: string,
+    configuredWeight: number,
+    percent: number | null,
+    effectiveWeight: number | null,
+    scored: EvidenceSource[] = [],
+    unscored: EvidenceSource[] = [],
+  ): ComponentEvidence => {
+    const gap = percent != null ? Math.max(0, B - percent) : null;
+    for (const x of scored) x.effectiveWeight = effectiveWeight != null ? effectiveWeight / scored.length : null;
+    return {
+      key,
+      label,
+      configuredWeight,
+      percent,
+      effectiveWeight,
+      gap,
+      priority: effectiveWeight != null && gap != null ? (effectiveWeight * gap) / 100 : null,
+      scored,
+      unscored,
+    };
+  };
+
+  const components = [
+    build("activity", "Activity", w.activity, parts.activity.percent, share(w.activity, parts.activity.percent != null), parts.activity.scored, parts.activity.unscored),
+    build("project", "Project", w.project, parts.project.percent, share(w.project, parts.project.percent != null), parts.project.scored, parts.project.unscored),
+    build("midterm", "Midterm Exam", w.exam, parts.midterm.percent, sideShare(parts.midterm.percent != null), parts.midterm.scored, parts.midterm.unscored),
+    build("final", "Final Exam", w.exam, parts.final.percent, sideShare(parts.final.percent != null), parts.final.scored, parts.final.unscored),
+    build("attendance", "Attendance", w.attendance, attendancePercent, share(w.attendance, attendancePercent != null)),
+  ];
+
+  const ranked = components.filter((c) => (c.priority ?? 0) > 0).sort(byPriority);
+  const belowBenchmarkAssessments = components
+    .flatMap((c) =>
+      c.scored
+        .filter((x) => x.percent! < B && (x.effectiveWeight ?? 0) > 0)
+        .map((x) => {
+          const gap = B - x.percent!;
+          return { ...x, component: c.label, gap, priority: (x.effectiveWeight! * gap) / 100 };
+        }),
+    )
+    .sort(byPriority);
+
+  return { benchmark: B, components, ranked, belowBenchmarkAssessments, unmapped: unmapped.map(toSource) };
+}
+
+const f2 = (n: number) => n.toFixed(2);
+
+function sourceValue(x: EvidenceSource): string {
+  if (x.score == null) return x.pastDue ? "NO SCORE RECORDED (past due)" : "not graded yet";
+  const base = `${x.score}/${x.maxScore ?? "?"}`;
+  return x.percent != null ? `${base} (${f2(x.percent)}%)` : `${base} (percentage not calculable: invalid max score)`;
+}
+
+function examRecordLine(c: ComponentEvidence, other: ComponentEvidence): string {
+  const all = [...c.scored, ...c.unscored];
+  const items = all.length
+    ? ` Assessments: ${all
+        .map((x) => `${x.title} ${sourceValue(x)}${x.effectiveWeight != null ? `, weight ${f2(x.effectiveWeight)}%` : ""}${x.dueDate ? `, due ${isoDay(x.dueDate)}` : ""}`)
+        .join("; ")}.`
+    : "";
+  if (c.percent == null) {
+    const status = all.length === 0 ? "NOT RECORDED" : all.some((x) => x.pastDue) ? "MISSING" : "PENDING";
+    const pending =
+      c.key === "final"
+        ? " It is not a zero. Until a Final Exam score exists, the Midterm carries the full Exam weight; once it is scored, Midterm and Final split the Exam weight equally."
+        : " It is not a zero and carries no weight until scored.";
+    return `- ${c.label}: ${status}, no score recorded.${pending}${items}`;
   }
-  return facts;
+  const status = c.unscored.length ? `PARTIALLY SCORED (${c.scored.length} of ${all.length})` : "SCORED";
+  const weight =
+    c.effectiveWeight == null
+      ? "carries no grade weight because the exam weight is 0"
+      : `effective weight ${f2(c.effectiveWeight)}% of the provisional grade; ${
+          other.percent != null ? "half of the Exam weight because both Midterm and Final are scored" : `the full Exam weight because no ${other.label} score is recorded`
+        }`;
+  return `- ${c.label}: ${status}, ${f2(c.percent)}% (${weight}).${items}`;
+}
+
+function formatWeakAreaBlock(a: WeakAreaAnalysis, isFocus: boolean): string[] {
+  const B = a.benchmark;
+  const [, , midterm, final] = a.components;
+  const lines = ["Exam records (Midterm and Final are separate):", examRecordLine(midterm, final), examRecordLine(final, midterm)];
+
+  lines.push(
+    `Weak-area priority (benchmark ${B}%, the Crucial boundary; priority = effective weight x points below ${B} / 100; address in this order):`,
+  );
+  if (a.ranked.length === 0) lines.push(`- none: no weighted component is below ${B}%`);
+  a.ranked.forEach((c, i) => {
+    const below = c.scored.filter((x) => x.percent! < B).map((x) => `${x.title} ${sourceValue(x)}`);
+    const n = c.scored.length + c.unscored.length;
+    const basis = c.key === "attendance" ? "attendance rate" : `from ${c.scored.length} scored of ${n}`;
+    lines.push(
+      `${i + 1}. ${c.label}: ${f2(c.percent!)}% ${basis} (effective weight ${f2(c.effectiveWeight!)}% of the provisional grade; ${f2(c.gap!)} points below ${B}%; priority ${f2(c.priority!)})${below.length ? `. Low sources: ${below.join("; ")}` : ""}`,
+    );
+  });
+
+  lines.push("Below-benchmark assessments (highest priority first):");
+  const limit = isFocus ? 8 : 4;
+  if (a.belowBenchmarkAssessments.length === 0) lines.push(`- none below ${B}%`);
+  for (const x of a.belowBenchmarkAssessments.slice(0, limit)) {
+    lines.push(
+      `- ${x.title} [${x.typeLabel === x.component ? x.typeLabel : `${x.typeLabel}, ${x.component}`}]: ${sourceValue(x)}; effective weight ${f2(x.effectiveWeight!)}%; ${f2(x.gap)} points below ${B}%; priority ${f2(x.priority)}`,
+    );
+  }
+  if (a.belowBenchmarkAssessments.length > limit) lines.push(`- (${a.belowBenchmarkAssessments.length - limit} more not shown)`);
+
+  const incomplete = incompleteEvidence(a);
+  lines.push("Incomplete or missing evidence (NOT low scores; never treat as zero):");
+  if (incomplete.length === 0) lines.push("- none");
+  for (const t of incomplete.slice(0, 10)) lines.push(`- ${t}`);
+
+  if (a.unmapped.length > 0) {
+    lines.push("Unmapped assessments (type matches no grading category; excluded from the provisional grade, weights and weak-area priority; not weaknesses):");
+    for (const x of a.unmapped.slice(0, 10)) lines.push(`- ${x.title} [${x.typeLabel}]: ${sourceValue(x)}`);
+  }
+
+  const fine = a.components.filter((c) => c.percent != null && c.percent >= B && c.effectiveWeight != null);
+  lines.push(`At or above ${B}%: ${fine.length ? fine.map((c) => `${c.label} ${f2(c.percent!)}%`).join(", ") : "none"}`);
+  return lines;
+}
+
+/** Missing or uncalculable evidence. These are never low scores and never zero. */
+function incompleteEvidence(a: WeakAreaAnalysis): string[] {
+  const incomplete: string[] = [];
+  for (const c of a.components) {
+    if (c.key === "attendance") {
+      if (c.percent == null && c.configuredWeight > 0) incomplete.push(`Attendance: no attendance recorded (configured weight ${c.configuredWeight})`);
+      continue;
+    }
+    if (c.key === "midterm" || c.key === "final") {
+      for (const x of c.unscored) if (x.pastDue) incomplete.push(`${x.title} [${x.typeLabel}]: no score recorded and its due date has passed`);
+      continue;
+    }
+    if (c.configuredWeight <= 0) continue;
+    if (c.scored.length + c.unscored.length === 0) incomplete.push(`${c.label}: no assessments recorded yet (configured weight ${c.configuredWeight})`);
+    else if (c.scored.length === 0) incomplete.push(`${c.label}: no scores recorded yet (${c.unscored.length} assessment(s) without a score)`);
+    for (const x of c.unscored) {
+      if (x.pastDue) incomplete.push(`${x.title} [${x.typeLabel}]: no score recorded and its due date has passed`);
+      else if (x.score != null) incomplete.push(`${x.title} [${x.typeLabel}]: score recorded but the percentage cannot be calculated`);
+    }
+  }
+  return incomplete;
+}
+
+/* ---------------------------------------------------------------- AI-down fallback */
+
+const FALLBACK_ACTIONS: Record<WeakComponentKey, string> = {
+  activity: "Rework the topics behind these items and practise similar questions before your next activity or quiz.",
+  project: "Check the project requirements with your instructor and ask whether the weakest parts can still be improved.",
+  midterm: "Review the Midterm topics where you lost points.",
+  final: "Review the Final Exam topics where you lost points and ask your instructor which areas to revisit.",
+  attendance: "Attend every remaining session and catch up on what you missed.",
+};
+
+function fallbackScore(x: EvidenceSource): string {
+  return `${x.title} ${sourceValue(x)}${x.score === 0 ? ", a recorded score of 0" : ""}`;
+}
+
+function fallbackSubjectBlock(s: SubjectRecord, now: Date): string {
+  const a = analyzeWeakAreas(s, now);
+  const B = a.benchmark;
+  const lines = [
+    `${subjectTitle(s)}:`,
+    s.risk
+      ? `Official risk classification: ${s.risk.label}${s.risk.score != null ? ` (risk score ${s.risk.score.toFixed(2)})` : ""}.`
+      : "Official risk classification: not available yet.",
+    gradeLine(s),
+  ];
+
+  if (!a.components.some((c) => c.percent != null)) {
+    lines.push(
+      "No scores or attendance are recorded for this subject yet, so I can't point to weak areas or give personalised steps. Check My Scores once your work is graded.",
+    );
+  } else if (a.ranked.length === 0) {
+    lines.push(`No weighted part of your grade is below ${B}% in your records.`);
+  } else {
+    lines.push(`Priority areas (below ${B}%, largest effect on your provisional grade first):`);
+    const final = a.components.find((c) => c.key === "final")!;
+    a.ranked.slice(0, 3).forEach((c, i) => {
+      const low = c.scored.filter((x) => x.percent! < B).map(fallbackScore);
+      const value =
+        c.key === "attendance"
+          ? `${f2(c.percent!)}% (${s.attendance.present + s.attendance.late} of ${s.attendance.total} sessions present or late)`
+          : `${f2(c.percent!)}%`;
+      const action =
+        c.key === "midterm" && final.percent == null && final.unscored.length > 0
+          ? `${FALLBACK_ACTIONS.midterm} Use them to prepare for the Final Exam.`
+          : FALLBACK_ACTIONS[c.key];
+      lines.push(
+        `${i + 1}. ${c.label}: ${value}, effective weight ${f2(c.effectiveWeight!)}% of your provisional grade.${low.length ? ` Low scores: ${low.join("; ")}.` : ""} Next step: ${action}`,
+      );
+    });
+  }
+
+  const missing = incompleteEvidence(a);
+  if (missing.length > 0) lines.push(`Missing or not yet scored (not counted as zero): ${missing.slice(0, 5).join("; ")}.`);
+  const upcoming = a.components
+    .flatMap((c) => c.unscored)
+    .filter((x) => x.score == null && !x.pastDue && x.dueDate)
+    .sort((x, y) => dueTs(x.dueDate) - dueTs(y.dueDate))
+    .slice(0, 3);
+  if (upcoming.length > 0) lines.push(`Upcoming, not graded yet: ${upcoming.map((x) => `${x.title} (due ${isoDay(x.dueDate)})`).join("; ")}.`);
+  if (a.unmapped.length > 0) {
+    lines.push(`Not counted in your grade (assessment type not recognised): ${a.unmapped.slice(0, 5).map((x) => x.title).join("; ")}.`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Deterministic reply when the model is unavailable: the same weak-area analysis the prompt uses,
+ * quoted from the record. It never reclassifies risk and gives no steps without academic evidence.
+ */
+export function buildFallbackSummary(record: StudentRecord, scope: SubjectRecord[], now: Date): string {
+  const subjects = scope.length > 0 ? scope : record.subjects;
+  return [
+    "The AI coach is temporarily unavailable, so this summary comes straight from your records rather than AI coaching. It does not change your official risk classification.",
+    ...subjects.map((s) => fallbackSubjectBlock(s, now)),
+    "Please try again in a few minutes for a fuller study plan.",
+  ].join("\n\n");
 }
 
 function isoDay(value: string | null): string {
@@ -704,7 +1054,7 @@ function formatSubjectBlock(s: SubjectRecord, isFocus: boolean, now: Date): stri
     lines.push("Provisional weighted grade: UNAVAILABLE (no graded work or attendance yet)");
   }
   lines.push(
-    `Category averages: coursework ${fmtPct(s.courseworkAverage)}, projects ${fmtPct(s.projectAverage)}, exams ${fmtPct(s.examAverage)}`,
+    `Category averages: activity/coursework ${fmtPct(s.courseworkAverage)}, projects ${fmtPct(s.projectAverage)}, exam combined ${fmtPct(s.examAverage)} (Midterm and Final are listed separately below)`,
   );
   lines.push(
     `Average of all graded assessments: ${s.overallGradedAveragePercent != null ? `${s.overallGradedAveragePercent}%` : "n/a"} (${s.gradedCount} graded of ${s.assessments.length})`,
@@ -735,10 +1085,7 @@ function formatSubjectBlock(s: SubjectRecord, isFocus: boolean, now: Date): stri
   }
   if (s.assessments.length > limit) lines.push(`- (${s.assessments.length - limit} more not shown)`);
 
-  const weak = weakAreaFacts(s, now);
-  lines.push("Evidence-based weak areas:");
-  if (weak.length === 0) lines.push("- none evidenced by the record");
-  for (const w of weak.slice(0, 10)) lines.push(`- ${w}`);
+  lines.push(...formatWeakAreaBlock(analyzeWeakAreas(s, now), isFocus));
   return lines.join("\n");
 }
 

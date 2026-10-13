@@ -13,6 +13,7 @@ import {
   unseenCoachingRecommendation,
 } from "@/lib/notification-events";
 import { resolveProfileSource } from "@/lib/notification-sources";
+import { PREDICTION_EVIDENCE_COLUMNS } from "@/lib/risk-scoring";
 
 const POLL_KEY_PREFIX = "edge_inbox_poll_";
 
@@ -60,7 +61,7 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
         const { data: predictionRows } = await supabase
           .from("predictions")
           .select(
-            "id, created_at, risk_level, previous_risk_level, attendance_rate, previous_attendance_rate, recommendation, subject_id, subjects(code)",
+            `id, created_at, risk_level, previous_risk_level, previous_attendance_rate, recommendation, subject_id, subjects(code), ${PREDICTION_EVIDENCE_COLUMNS}`,
           )
           .eq("student_id", userId)
           .or(`created_at.gt."${lastPoll}",recommendation.not.is.null`);

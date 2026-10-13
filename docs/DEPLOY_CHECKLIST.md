@@ -29,6 +29,8 @@ Supabase Auth → URL Configuration:
 ## 3. Email (Brevo)
 
 - `BREVO_API_KEY`, `BREVO_FROM` on Supabase Edge Function secrets
+- `EDGE_RISK_EMAILS_ENABLED`: automatic risk emails from `predict-risk`. Off unless set to exactly `true`
+  (see `docs/NEW_SUPABASE_SETUP.md`, Brevo step 5).
 
 ## 4. Smoke checks after deploy
 

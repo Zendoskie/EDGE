@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { QueryClient } from '@tanstack/react-query';
 import type { Database } from '@/integrations/supabase/types';
 import { canonicalRiskLevel, type CanonicalRiskLevel } from '@/lib/risk-utils';
+import { riskDisplayStatus, type RiskEvidenceRow, type RiskEvidenceState } from '@/lib/risk-scoring';
+import type { SubjectGradingWeights } from '@/lib/weighted-grading';
 
 export async function fetchActiveEnrolledSubjectIds(
   supabase: SupabaseClient<Database>,
@@ -60,6 +62,8 @@ export interface LatestPredictionInput {
   created_at: string | null | undefined;
   recommendation?: string | null;
   subjects?: { code?: string | null; name?: string | null } | null;
+  /** The stored row's evidence columns, when the view selected them (see PREDICTION_EVIDENCE_COLUMNS). */
+  evidence?: RiskEvidenceRow | null;
 }
 
 
@@ -68,10 +72,12 @@ export function resolveStudentRiskSummary(params: {
   overallAveragePercent: number | null;
   attendanceRatePercent: number | null;
   latestPrediction: LatestPredictionInput | null;
+  weights?: SubjectGradingWeights | null;
 }): {
   resolvedLevel: StudentRiskResolutionLevel;
   riskSource: 'prediction' | 'derived';
   riskStatusLabel: string;
+  riskState: RiskEvidenceState | null;
   recommendation: string | null;
   subjectLabel: string | null;
 } {
@@ -84,15 +90,11 @@ export function resolveStudentRiskSummary(params: {
 
   const riskSource: 'prediction' | 'derived' = predLevelRaw ? 'prediction' : 'derived';
 
-  const riskStatusLabel = resolvedLevel
-    ? resolvedLevel === 'critical'
-      ? 'Crucial'
-      : resolvedLevel === 'at_risk'
-        ? 'Vulnerable'
-        : resolvedLevel === 'excelling'
-          ? 'Excelling'
-          : 'Stable'
-    : '—';
+  const status = resolvedLevel
+    ? riskDisplayStatus({ level: resolvedLevel, evidence: pred?.evidence, weights: params.weights })
+    : null;
+  const riskStatusLabel = status?.label ?? '—';
+  const riskState = status?.state ?? null;
 
   const recommendation = typeof pred?.recommendation === 'string' ? pred.recommendation : null;
   const subjects = pred?.subjects;
@@ -101,7 +103,7 @@ export function resolveStudentRiskSummary(params: {
       ? `${subjects.code}${subjects.name ? ` — ${subjects.name}` : ''}`.trim()
       : null;
 
-  return { resolvedLevel, riskSource, riskStatusLabel, recommendation, subjectLabel };
+  return { resolvedLevel, riskSource, riskStatusLabel, riskState, recommendation, subjectLabel };
 }
 
 export function pickLatestPredictionByCreatedAt<T extends { created_at?: string | null }>(rows: T[]): T | null {

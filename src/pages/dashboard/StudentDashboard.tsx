@@ -6,6 +6,8 @@ import { BookOpen, CalendarCheck, BarChart3, Brain, Bell, ChevronDown } from 'lu
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RiskBadge } from '@/components/RiskBadge';
+import { riskDisplayStatus } from '@/lib/risk-scoring';
+import type { SubjectGradingWeights } from '@/lib/weighted-grading';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -167,8 +169,7 @@ export default function StudentDashboard() {
     const subj = p?.subjects as any;
     const code = subj?.code ?? "Subject";
     const name = subj?.name ? ` — ${subj.name}` : "";
-    const level = p?.risk_level === "critical" ? "Crucial" : "Vulnerable";
-    return `${code}${name} (${level})`;
+    return `${code}${name} (${riskDisplayStatus({ level: p?.risk_level, evidence: p, weights: p?.grading_weights }).label})`;
   };
 
   const feedbackMutation = useMutation({
@@ -201,7 +202,7 @@ export default function StudentDashboard() {
   const statCards = [
     { title: 'Subjects', value: stats?.enrolledSubjects ?? '—', icon: BookOpen, color: 'text-primary' },
     { title: 'Attendance', value: stats?.attendanceRate ?? '—', icon: CalendarCheck, color: 'text-success' },
-    { title: 'Average', value: stats?.overallAverage ?? '—', icon: BarChart3, color: 'text-accent-foreground' },
+    { title: 'Unweighted avg', value: stats?.overallAverage ?? '—', icon: BarChart3, color: 'text-accent-foreground' },
     { title: 'Risk', value: stats?.riskStatus ?? '—', icon: Brain, color: 'text-muted-foreground' },
   ];
 
@@ -327,7 +328,7 @@ export default function StudentDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <Brain className="h-4 w-4 text-white/80" />
                 {stats?.riskLevel ? (
-                  <RiskBadge level={stats.riskLevel} score={stats.riskScore} />
+                  <RiskBadge level={stats.riskLevel} evidence={stats.riskEvidence} weights={stats.riskWeights} />
                 ) : (
                   <span className="text-sm text-white/75">No risk classification yet</span>
                 )}
@@ -380,11 +381,15 @@ export default function StudentDashboard() {
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium">Feedback requested</p>
               <p className="text-sm text-muted-foreground">
-                You are{" "}
+                Your risk status in {(feedbackTarget.subjects as any)?.code ?? "a subject"} is{" "}
                 <span className="font-medium text-foreground">
-                  {feedbackTarget.risk_level === "critical" ? "Crucial" : "Vulnerable"}
-                </span>{" "}
-                in {(feedbackTarget.subjects as any)?.code ?? "a subject"}. Help your instructor understand why.
+                  {riskDisplayStatus({
+                    level: feedbackTarget.risk_level,
+                    evidence: feedbackTarget,
+                    weights: (feedbackTarget as { grading_weights?: SubjectGradingWeights | null }).grading_weights,
+                  }).label}
+                </span>
+                . Help your instructor understand why.
               </p>
               {needsFeedback.length > 1 ? (
                 <Select

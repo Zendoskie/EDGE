@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
-import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
+import { PREDICTION_EVIDENCE_COLUMNS, riskDisplayStatus } from '@/lib/risk-scoring';
+import { averageOf } from '@/lib/weighted-grading';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { engagementLabel, canonicalEngagementLevel, formatActivityTypeLabel } from '@/lib/engagement-utils';
@@ -33,6 +34,7 @@ export default function Reports() {
       quiz_avg: number | null;
       assignment_avg: number | null;
       risk_level: string | null;
+      risk_status: string;
       recommendation: string;
       engagement_level?: string | null;
       participation_count?: number | null;
@@ -84,8 +86,9 @@ export default function Reports() {
           }
           const { data: predictions } = await supabase
             .from('predictions')
-            .select('student_id, risk_level, attendance_rate, quiz_average, assignment_average, recommendation')
-            .eq('subject_id', s.id);
+            .select(`student_id, risk_level, assignment_average, recommendation, ${PREDICTION_EVIDENCE_COLUMNS}`)
+            .eq('subject_id', s.id)
+            .order('created_at', { ascending: false });
 
           const rows = studentIds.map((sid) => {
             const prof = profiles?.find((p) => p.user_id === sid);
@@ -105,8 +108,9 @@ export default function Reports() {
               if (act.type === 'quiz') quizScores.push(pct);
               else if (act.type === 'assignment' || act.type === 'project') assignScores.push(pct);
             }
-            const quizAvg = quizScores.length ? quizScores.reduce((a, b) => a + b, 0) / quizScores.length : pred?.quiz_average ? pred.quiz_average * 100 : null;
-            const assignAvg = assignScores.length ? assignScores.reduce((a, b) => a + b, 0) / assignScores.length : pred?.assignment_average ? pred.assignment_average * 100 : null;
+            // Stored averages are already percentages; 0 is a real score.
+            const quizAvg = averageOf(quizScores) ?? pred?.quiz_average ?? null;
+            const assignAvg = averageOf(assignScores) ?? pred?.assignment_average ?? null;
 
             return {
               student_id: sid,
@@ -117,6 +121,8 @@ export default function Reports() {
               quiz_avg: quizAvg,
               assignment_avg: assignAvg,
               risk_level: pred?.risk_level ?? null,
+              risk_status: pred ? riskDisplayStatus({ level: pred.risk_level, evidence: pred }).label : '—',
+              risk_evidence: pred ?? null,
               recommendation: pred?.recommendation ?? '—',
             };
           });
@@ -256,8 +262,8 @@ export default function Reports() {
 
   const downloadCSV = (data: typeof allRows, filename: string) => {
     const headers = [
-      'Subject', 'Program', 'Student', 'Email', 'Student ID', 'Attendance %', 'Quiz Avg %', 'Assignment Avg %',
-      'Risk Level', 'Engagement Level', 'Participation Count', 'Recent Activity',
+      'Subject', 'Program', 'Student', 'Email', 'Student ID', 'Attendance %', 'Quiz Avg % (unweighted)',
+      'Assignment/Project Avg % (unweighted)', 'Risk Level', 'Engagement Level', 'Participation Count', 'Recent Activity',
       'Recommendation',
     ];
     const rows = data.map((r) => [
@@ -269,7 +275,7 @@ export default function Reports() {
       r.attendance != null ? r.attendance.toFixed(1) : '',
       r.quiz_avg != null ? r.quiz_avg.toFixed(1) : '',
       r.assignment_avg != null ? r.assignment_avg.toFixed(1) : '',
-      riskLabel(canonicalRiskLevel(r.risk_level ?? '')),
+      r.risk_status,
       r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '',
       r.participation_count != null ? String(r.participation_count) : '',
       (r.recent_activity_summary ?? '').replace(/,/g, ';'),
@@ -295,6 +301,7 @@ export default function Reports() {
       quiz_avg: number | null;
       assignment_avg: number | null;
       risk_level: string | null;
+      risk_status: string;
       recommendation: string;
       engagement_level?: string | null;
       participation_count?: number | null;
@@ -321,7 +328,7 @@ export default function Reports() {
             <td>${r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
             <td>${r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
             <td>${r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
-            <td>${riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
+            <td>${r.risk_status}</td>
             <td>${engagement}</td>
             <td>${r.participation_count ?? '—'}</td>
             <td>${(r.recent_activity_summary ?? '—').replace(/</g, '&lt;')}</td>
@@ -357,8 +364,8 @@ export default function Reports() {
                 <th>Email</th>
                 <th>Student ID</th>
                 <th>Attendance</th>
-                <th>Quiz Avg</th>
-                <th>Assign. Avg</th>
+                <th>Quiz Avg (unweighted)</th>
+                <th>Assign./Project Avg (unweighted)</th>
                 <th>Risk</th>
                 <th>Engagement</th>
                 <th>Participation</th>
@@ -390,6 +397,7 @@ export default function Reports() {
       quiz_avg: number | null;
       assignment_avg: number | null;
       risk_level: string | null;
+      risk_status: string;
       recommendation: string;
     }>
   ) => {
@@ -474,8 +482,8 @@ export default function Reports() {
                         <TableHead>Email</TableHead>
                         <TableHead>Student ID</TableHead>
                         <TableHead>Attendance</TableHead>
-                        <TableHead>Quiz Avg</TableHead>
-                        <TableHead>Assign. Avg</TableHead>
+                        <TableHead>Quiz Avg (unweighted)</TableHead>
+                        <TableHead>Assign./Project Avg (unweighted)</TableHead>
                         <TableHead>Risk</TableHead>
                         <TableHead>Engagement</TableHead>
                         <TableHead>Participation</TableHead>
@@ -494,7 +502,7 @@ export default function Reports() {
                           <TableCell>{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</TableCell>
                           <TableCell>{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</TableCell>
                           <TableCell>
-                            <RiskBadge level={r.risk_level} />
+                            {r.risk_level ? <RiskBadge level={r.risk_level} evidence={r.risk_evidence} /> : '—'}
                           </TableCell>
                           <TableCell>
                             {r.engagement_level ? (
@@ -569,8 +577,8 @@ export default function Reports() {
                             <TableHead>Student</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Attendance</TableHead>
-                            <TableHead>Quiz Avg</TableHead>
-                            <TableHead>Assign. Avg</TableHead>
+                            <TableHead>Quiz Avg (unweighted)</TableHead>
+                            <TableHead>Assign./Project Avg (unweighted)</TableHead>
                             <TableHead>Risk</TableHead>
                             <TableHead>Engagement</TableHead>
                             <TableHead>Participation</TableHead>
@@ -586,7 +594,7 @@ export default function Reports() {
                               <TableCell>{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</TableCell>
                               <TableCell>{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</TableCell>
                               <TableCell>
-                                <RiskBadge level={r.risk_level} />
+                                {r.risk_level ? <RiskBadge level={r.risk_level} evidence={r.risk_evidence} /> : '—'}
                               </TableCell>
                               <TableCell>
                                 {r.engagement_level ? (
@@ -705,8 +713,8 @@ export default function Reports() {
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Email</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Student ID</th>
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Attendance</th>
-                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Quiz Avg</th>
-                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Assign. Avg</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Quiz Avg (unweighted)</th>
+                      <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Assign./Project Avg (unweighted)</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Risk</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Engagement</th>
                       <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Participation</th>
@@ -730,7 +738,7 @@ export default function Reports() {
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.attendance != null ? `${r.attendance.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.quiz_avg != null ? `${r.quiz_avg.toFixed(1)}%` : '—'}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top text-right">{r.assignment_avg != null ? `${r.assignment_avg.toFixed(1)}%` : '—'}</td>
-                        <td className="border border-slate-200 px-3 py-2 align-top">{riskLabel(canonicalRiskLevel(r.risk_level ?? ''))}</td>
+                        <td className="border border-slate-200 px-3 py-2 align-top">{r.risk_status}</td>
                         <td className="border border-slate-200 px-3 py-2 align-top">
                           {r.engagement_level ? engagementLabel(canonicalEngagementLevel(r.engagement_level)) : '—'}
                         </td>

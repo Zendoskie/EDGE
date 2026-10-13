@@ -55,6 +55,8 @@ export async function runFinalGradeReleaseConcurrencyTests({ connect, prodSystem
        FROM (VALUES ($1::uuid, 'P3BC Instructor', 'instructor'), ($2::uuid, 'P3BC X', 'student'), ($3::uuid, 'P3BC Y', 'student')) u(id, n, r)`,
       [ins, X, Y],
     );
+    // Signup metadata never grants a staff role; staff roles come from a trusted path.
+    await admin.query(`INSERT INTO public.user_roles (user_id, role) VALUES ($1, 'instructor') ON CONFLICT (user_id, role) DO NOTHING`, [ins]);
     await admin.query(
       `INSERT INTO public.subjects (id, name, code, instructor_id) VALUES ($1, 'P3BC Subject', 'P3BC-1', $3), ($2, 'P3BC Other', 'P3BC-2', $3)`,
       [S, S2, ins],

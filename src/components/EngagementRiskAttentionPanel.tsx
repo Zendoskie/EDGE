@@ -5,6 +5,7 @@ import { EngagementBadge } from '@/components/EngagementBadge';
 import { RiskBadge } from '@/components/RiskBadge';
 import type { CanonicalEngagementLevel } from '@/lib/engagement-utils';
 import type { CanonicalRiskLevel } from '@/lib/risk-utils';
+import type { RiskEvidenceRow } from '@/lib/risk-scoring';
 
 export type AttentionStudent = {
   studentId: string;
@@ -13,6 +14,7 @@ export type AttentionStudent = {
   engagementScore: number;
   riskLevel: CanonicalRiskLevel | null;
   riskScore: number | null;
+  riskEvidence?: RiskEvidenceRow | null;
 };
 
 const LOW_ENGAGEMENT = new Set<CanonicalEngagementLevel>(['moderate', 'low']);
@@ -85,7 +87,7 @@ export function EngagementRiskAttentionPanel({ students, isLoading, onOpenStuden
                     <div className="flex flex-wrap items-center gap-2">
                       <EngagementBadge level={s.engagementLevel} />
                       {s.riskLevel ? (
-                        <RiskBadge level={s.riskLevel} score={s.riskScore} />
+                        <RiskBadge level={s.riskLevel} evidence={s.riskEvidence} />
                       ) : (
                         <span className="text-xs text-muted-foreground">No risk yet</span>
                       )}

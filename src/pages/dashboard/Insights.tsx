@@ -42,8 +42,17 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
-import { CanonicalRiskLevel, canonicalRiskLevel, riskLabel, riskChartColor, RISK_LEVEL_ORDER } from '@/lib/risk-utils';
+import { canonicalRiskLevel, riskLabel, riskChartColor, RISK_LEVEL_ORDER } from '@/lib/risk-utils';
 import { RiskBadge } from '@/components/RiskBadge';
+import {
+  INSUFFICIENT_CHART_COLOR,
+  INSUFFICIENT_DATA_LABEL,
+  PREDICTION_EVIDENCE_COLUMNS,
+  riskPieData,
+  riskSummaryCaption,
+  summarizeRiskStatuses,
+} from '@/lib/risk-scoring';
+import { averageOf } from '@/lib/weighted-grading';
 import {
   filterAttendanceBySubjectIds,
   filterPredictionsBySubjectIds,
@@ -79,6 +88,7 @@ const riskChartConfig = {
   at_risk: { label: 'Vulnerable', theme: { light: riskChartColor('at_risk'), dark: riskChartColor('at_risk') } },
   stable: { label: 'Stable', theme: { light: riskChartColor('stable'), dark: riskChartColor('stable') } },
   excelling: { label: 'Excelling', theme: { light: riskChartColor('excelling'), dark: riskChartColor('excelling') } },
+  insufficient: { label: INSUFFICIENT_DATA_LABEL, theme: { light: INSUFFICIENT_CHART_COLOR, dark: INSUFFICIENT_CHART_COLOR } },
 } satisfies ChartConfig;
 
 const metricsChartConfig = {
@@ -374,7 +384,7 @@ function StudentInsights({ userId }: { userId: string }) {
     { total: 0, count: 0 },
   );
 
-  const averageScore = scoreStats.count > 0 ? scoreStats.total / scoreStats.count : 0;
+  const averageScore = scoreStats.count > 0 ? scoreStats.total / scoreStats.count : null;
 
   const riskSummary = useMemo(() => {
     const latest = pickLatestPredictionByCreatedAt(predictionsScoped as any[]);
@@ -402,34 +412,23 @@ function StudentInsights({ userId }: { userId: string }) {
             created_at: latest.created_at,
             recommendation: (latest as any).recommendation ?? null,
             subjects: (latest as any).subjects ?? null,
+            evidence: latest as any,
           }
         : null,
     });
   }, [predictionsScoped, attendanceScoped, scoresScoped]);
 
-  const riskDistribution = Object.values(latestBySubject).reduce(
-    (acc: Record<CanonicalRiskLevel, number>, p: any) => {
-      const lvl = canonicalRiskLevel(p?.risk_level);
-      acc[lvl] = (acc[lvl] || 0) + 1;
-      return acc;
-    },
-    {} as Record<CanonicalRiskLevel, number>,
+  const studentRiskSummary = useMemo(
+    () => summarizeRiskStatuses(Object.values(latestBySubject) as any[]),
+    [latestBySubject],
   );
 
-  const studentRiskPieData = useMemo(
-    () =>
-      RISK_LEVEL_ORDER.map((level) => ({
-        level,
-        name: riskLabel(level),
-        value: riskDistribution[level] ?? 0,
-      })).filter((d) => d.value > 0),
-    [riskDistribution],
-  );
+  const studentRiskPieData = useMemo(() => riskPieData(studentRiskSummary), [studentRiskSummary]);
 
   const studentMetricsBarData = useMemo(
     () => [
       { metric: 'Attendance', value: Math.round(attendanceRate * 10) / 10 },
-      { metric: 'Avg score', value: Math.round(averageScore * 10) / 10 },
+      { metric: 'Unweighted avg', value: averageScore != null ? Math.round(averageScore * 10) / 10 : null },
     ],
     [attendanceRate, averageScore],
   );
@@ -462,14 +461,9 @@ function StudentInsights({ userId }: { userId: string }) {
       const subjectScores = (scoresScoped as any[]).filter(
         (s) => getActivityFromSubmission(s)?.subject_id === subject.id,
       );
-      const subjectAvg =
-        subjectScores.length > 0
-          ? subjectScores.reduce((acc, s: any) => {
-              const p = submissionScorePercent(s);
-              return p === null ? acc : acc + p;
-            }, 0) / subjectScores.length
-          : 0;
-      return { code: subject.code ?? '—', avg: Math.round(subjectAvg * 10) / 10 };
+      // Missing scores are left out, never counted as zero.
+      const subjectAvg = averageOf(subjectScores.map((s: any) => submissionScorePercent(s)));
+      return { code: subject.code ?? '—', avg: subjectAvg != null ? Math.round(subjectAvg * 10) / 10 : null };
     });
   }, [subjects, scoresScoped]);
 
@@ -531,14 +525,14 @@ function StudentInsights({ userId }: { userId: string }) {
 
             <Card className="bg-card/90 min-w-0 w-full">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Average Score</CardTitle>
+                <CardTitle className="text-sm font-medium">Unweighted average score</CardTitle>
                 <Award className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{averageScore.toFixed(1)}%</div>
-                <Progress value={averageScore} className="mt-2" />
+                <div className="text-2xl font-bold">{averageScore != null ? `${averageScore.toFixed(1)}%` : '—'}</div>
+                <Progress value={averageScore ?? 0} className="mt-2" />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Based on {scoreStats.count} submissions
+                  Simple mean of {scoreStats.count} graded submissions; not your weighted grade
                 </p>
               </CardContent>
             </Card>
@@ -596,6 +590,9 @@ function StudentInsights({ userId }: { userId: string }) {
                     </PieChart>
                   </ChartContainer>
                   </InsightsChartFrame>
+                )}
+                {riskSummaryCaption(studentRiskSummary) && (
+                  <p className="mt-2 text-xs text-muted-foreground">{riskSummaryCaption(studentRiskSummary)}</p>
                 )}
               </CardContent>
             </Card>
@@ -741,9 +738,11 @@ function StudentInsights({ userId }: { userId: string }) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Average score by subject
+                  Unweighted average score by subject
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">Mean % across graded activities per subject.</p>
+                <p className="text-sm text-muted-foreground">
+                  Simple mean % of graded activities per subject. Not the weighted grade: category weights are not applied.
+                </p>
               </CardHeader>
               <CardContent>
                 {subjects.length === 0 ? (
@@ -817,7 +816,7 @@ function StudentInsights({ userId }: { userId: string }) {
                     <div key={row.id} className="border rounded-lg p-3 sm:p-4 space-y-2 min-w-0">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <span className="font-medium text-sm sm:text-base break-words min-w-0">{(row.subjects as any)?.code} — {(row.subjects as any)?.name}</span>
-                        <RiskBadge level={row.risk_level} score={row.risk_score} className="shrink-0 self-start" />
+                        <RiskBadge level={row.risk_level} evidence={row} className="shrink-0 self-start" />
                       </div>
                       {metrics ? (
                         <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
@@ -916,7 +915,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
       if (subjectIds.length === 0) return [];
       const { data, error } = await supabase
         .from('predictions')
-        .select('id, created_at, risk_level, risk_score, recommendation, subject_id, student_id, subjects(code, name)')
+        .select(`id, created_at, risk_level, recommendation, subject_id, student_id, subjects(code, name), ${PREDICTION_EVIDENCE_COLUMNS}`)
         .in('subject_id', subjectIds)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -979,21 +978,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
     return Array.from(acc.values());
   }, [instructorPredictionsScoped]);
 
-  const distribution = useMemo(() => {
-    const d: Record<CanonicalRiskLevel, number> = { critical: 0, at_risk: 0, stable: 0, excelling: 0 };
-    for (const p of latestByStudentSubject) d[canonicalRiskLevel(p?.risk_level)]++;
-    return d;
-  }, [latestByStudentSubject]);
+  const instructorRiskSummary = useMemo(() => summarizeRiskStatuses(latestByStudentSubject), [latestByStudentSubject]);
+  const distribution = instructorRiskSummary.counts;
 
-  const instructorRiskPieData = useMemo(
-    () =>
-      RISK_LEVEL_ORDER.map(level => ({
-        level,
-        name: riskLabel(level),
-        value: distribution[level] ?? 0,
-      })).filter(d => d.value > 0),
-    [distribution],
-  );
+  const instructorRiskPieData = useMemo(() => riskPieData(instructorRiskSummary), [instructorRiskSummary]);
 
   const instructorEnrollmentBarData = useMemo(() => {
     return (subjects as any[]).map((s: any) => ({
@@ -1018,10 +1006,8 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
   const instructorConcernBarData = useMemo(() => {
     return (subjects as any[]).map((s: any) => {
       const rows = latestByStudentSubject.filter((p: any) => p.subject_id === s.id);
-      const concern = rows.filter((p: any) => {
-        const lv = canonicalRiskLevel(p.risk_level);
-        return lv === 'critical' || lv === 'at_risk';
-      }).length;
+      const { counts } = summarizeRiskStatuses(rows);
+      const concern = counts.critical + counts.at_risk;
       return { code: s.code ?? '—', concern };
     });
   }, [subjects, latestByStudentSubject]);
@@ -1136,6 +1122,9 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                   </ChartContainer>
                   </InsightsChartFrame>
                 )}
+                {riskSummaryCaption(instructorRiskSummary) && (
+                  <p className="mt-2 text-xs text-muted-foreground">{riskSummaryCaption(instructorRiskSummary)}</p>
+                )}
               </CardContent>
             </Card>
 
@@ -1216,11 +1205,10 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                   <InsightsChartFrame>
                   <ChartContainer config={riskChartConfig} className={CHART_H_MD}>
                     <BarChart
-                      data={RISK_LEVEL_ORDER.map(level => ({
-                        level,
-                        name: riskLabel(level),
-                        value: distribution[level],
-                      }))}
+                      data={[
+                        ...RISK_LEVEL_ORDER.map(level => ({ level, name: riskLabel(level), value: distribution[level] })),
+                        { level: 'insufficient', name: INSUFFICIENT_DATA_LABEL, value: instructorRiskSummary.insufficient },
+                      ]}
                       margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                       accessibilityLayer
                     >
@@ -1229,7 +1217,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="value" radius={6} name="Students">
-                        {RISK_LEVEL_ORDER.map(level => (
+                        {[...RISK_LEVEL_ORDER, 'insufficient'].map(level => (
                           <Cell key={level} fill={`var(--color-${level})`} />
                         ))}
                       </Bar>
@@ -1358,7 +1346,7 @@ function InstructorInsights({ instructorId }: { instructorId: string }) {
                           {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
                         </p>
                       </div>
-                      <RiskBadge level={p.risk_level} score={p.risk_score} className="shrink-0" />
+                      <RiskBadge level={p.risk_level} evidence={p} className="shrink-0" />
                     </li>
                   ))}
                 </ul>

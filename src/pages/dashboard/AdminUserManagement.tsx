@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { supabase } from '@/integrations/supabase/client';
+import { canonicalRiskLevel } from '@/lib/risk-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -271,9 +272,10 @@ function ProfileViewerDialog({
 
         const preds: { risk_level: string }[] = predRes.data ?? [];
         result.predictionsCount = preds.length;
-        result.highRiskCount = preds.filter(p =>
-          p.risk_level === 'high' || p.risk_level === 'very_high' || p.risk_level === 'critical'
-        ).length;
+        result.highRiskCount = preds.filter(p => {
+          const level = canonicalRiskLevel(p.risk_level);
+          return level === 'critical' || level === 'at_risk';
+        }).length;
 
         const att: { status: string }[] = attRes.data ?? [];
         result.attendanceTotal = att.length;
@@ -431,7 +433,7 @@ function ProfileViewerDialog({
                         <p className="text-xs text-muted-foreground">Risk Predictions</p>
                         <p className="mt-0.5 text-sm font-semibold">{profileData.predictionsCount ?? 0}</p>
                         <p className="text-xs text-muted-foreground">
-                          {profileData.highRiskCount ?? 0} high/critical
+                          {profileData.highRiskCount ?? 0} Crucial or Vulnerable
                         </p>
                       </div>
                       <div className="rounded-lg border border-border/50 bg-card/30 p-3">

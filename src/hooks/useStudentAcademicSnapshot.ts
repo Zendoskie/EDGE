@@ -8,6 +8,8 @@ import {
   pickLatestPredictionByCreatedAt,
   resolveStudentRiskSummary,
 } from '@/lib/student-performance-scope';
+import { PREDICTION_EVIDENCE_COLUMNS, type RiskEvidenceRow } from '@/lib/risk-scoring';
+import type { SubjectGradingWeights } from '@/lib/weighted-grading';
 import {
   buildStudentCoachingContext,
   formatAtRiskSubjectLabels,
@@ -25,6 +27,10 @@ export type StudentAcademicSnapshot = {
   subjectLabel: string | null;
   riskSource: 'prediction' | 'derived';
   riskScore: number | null;
+  /** The latest prediction row, with every PREDICTION_EVIDENCE_COLUMNS column. */
+  riskEvidence: RiskEvidenceRow | null;
+  /** That subject's saved weights; null means defaults apply, undefined means unknown. */
+  riskWeights: SubjectGradingWeights | null | undefined;
   recentActivity: Array<Record<string, unknown>>;
   atRiskSubjects: Array<Record<string, unknown>>;
   latestGradeBySubject: Record<string, string>;
@@ -56,6 +62,8 @@ function emptySnapshot(): StudentAcademicSnapshot {
     subjectLabel: null,
     riskSource: 'derived',
     riskScore: null,
+    riskEvidence: null,
+    riskWeights: undefined,
     recentActivity: [],
     atRiskSubjects: [],
     latestGradeBySubject: {},
@@ -63,7 +71,7 @@ function emptySnapshot(): StudentAcademicSnapshot {
   };
 }
 
-type PredictionRpcRow = {
+type PredictionRow = {
   id: string;
   subject_id: string;
   risk_level: string;
@@ -75,23 +83,53 @@ type PredictionRpcRow = {
   activity_average: number | null;
   activity_completion_rate: number | null;
   quiz_average: number | null;
+  project_score: number | null;
   laboratory_exam_average: number | null;
+  midterm_exam_average: number | null;
+  final_exam_average: number | null;
   comprehension_rating: number | null;
-  subject_code: string | null;
-  subject_name: string | null;
+  subjects: {
+    code: string | null;
+    name: string | null;
+    subject_grading_systems: SubjectGradingWeights | SubjectGradingWeights[] | null;
+  } | null;
 };
 
-function mapPrediction(row: PredictionRpcRow) {
-  return {
-    ...row,
-    subjects: { code: row.subject_code, name: row.subject_name },
-  };
+/**
+ * One request under the "Students can view own predictions" and enrolled-subject grading RLS policies.
+ * latest_student_predictions omits project and Midterm/Final evidence, so it cannot verify a risk status.
+ */
+const LATEST_PREDICTION_SELECT = `id, subject_id, risk_level, recommendation, created_at, confidence, activity_completion_rate, comprehension_rating, ${PREDICTION_EVIDENCE_COLUMNS}, subjects(code, name, subject_grading_systems(activity_weight, project_weight, attendance_weight, exam_weight))`;
+
+/**
+ * Latest row per subject, like the RPC's DISTINCT ON. `grading_weights`: the saved row, `null` when the
+ * subject has none (defaults apply), or `undefined` when the subject itself was not returned.
+ */
+export function latestPredictionsBySubject(rows: PredictionRow[]) {
+  const latest = new Map<string, PredictionRow>();
+  for (const row of rows) {
+    if (!row.subject_id) continue;
+    const prev = latest.get(row.subject_id);
+    if (!prev || Date.parse(row.created_at ?? '') > Date.parse(prev.created_at ?? '')) latest.set(row.subject_id, row);
+  }
+  return Array.from(latest.values()).map(({ subjects, ...row }) => {
+    const saved = subjects?.subject_grading_systems;
+    const grading_weights: SubjectGradingWeights | null | undefined = !subjects
+      ? undefined
+      : (Array.isArray(saved) ? saved[0] : saved) ?? null;
+    return { ...row, subjects: { code: subjects?.code ?? null, name: subjects?.name ?? null }, grading_weights };
+  });
 }
 
 export async function fetchLatestStudentPredictions(userId: string) {
-  const { data, error } = await supabase.rpc('latest_student_predictions', { p_student_id: userId });
+  const { data, error } = await supabase
+    .from('predictions')
+    .select(LATEST_PREDICTION_SELECT)
+    .eq('student_id', userId)
+    .not('subject_id', 'is', null)
+    .order('created_at', { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as PredictionRpcRow[]).map(mapPrediction);
+  return latestPredictionsBySubject((data ?? []) as unknown as PredictionRow[]);
 }
 
 export function useLatestStudentPredictions(userId: string | undefined, enabled: boolean) {
@@ -106,7 +144,7 @@ export function useLatestStudentPredictions(userId: string | undefined, enabled:
 async function loadSnapshot(
   userId: string,
   subjectIds: string[],
-  predictions: ReturnType<typeof mapPrediction>[],
+  predictions: ReturnType<typeof latestPredictionsBySubject>,
 ): Promise<StudentAcademicSnapshot> {
   if (subjectIds.length === 0) return emptySnapshot();
 
@@ -156,8 +194,10 @@ async function loadSnapshot(
           created_at: pred.created_at,
           recommendation: (pred as { recommendation?: string | null }).recommendation ?? null,
           subjects: (pred as { subjects?: { code?: string; name?: string | null } | null }).subjects ?? null,
+          evidence: pred,
         }
       : null,
+    weights: pred?.grading_weights,
   });
 
   const latestBySubject = new Map<string, (typeof predsScoped)[number]>();
@@ -187,22 +227,7 @@ async function loadSnapshot(
     if (typeof stamp === 'string' && stamp) latestGradeBySubject[sid] = stamp;
   }
 
-  const coachingRows = predsScoped.map((row) => ({
-    subject_id: row.subject_id,
-    risk_level: row.risk_level,
-    risk_score: row.risk_score,
-    confidence: (row as { confidence?: number | null }).confidence ?? null,
-    attendance_rate: (row as { attendance_rate?: number | null }).attendance_rate ?? null,
-    activity_average: (row as { activity_average?: number | null }).activity_average ?? null,
-    activity_completion_rate: (row as { activity_completion_rate?: number | null }).activity_completion_rate ?? null,
-    quiz_average: (row as { quiz_average?: number | null }).quiz_average ?? null,
-    laboratory_exam_average: (row as { laboratory_exam_average?: number | null }).laboratory_exam_average ?? null,
-    comprehension_rating: (row as { comprehension_rating?: number | null }).comprehension_rating ?? null,
-    recommendation: (row as { recommendation?: string | null }).recommendation ?? null,
-    created_at: row.created_at,
-    subjects: (row as { subjects?: { code?: string | null; name?: string | null } | null }).subjects ?? null,
-  }));
-  const coachingBuilt = buildStudentCoachingContext(coachingRows);
+  const coachingBuilt = buildStudentCoachingContext(predsScoped);
   const focus = coachingBuilt.focusSubject;
   const coaching = focus
     ? {
@@ -228,6 +253,8 @@ async function loadSnapshot(
     riskSource: summary.riskSource,
     riskScore:
       pred?.risk_score != null && Number.isFinite(Number(pred.risk_score)) ? Number(pred.risk_score) : null,
+    riskEvidence: pred ?? null,
+    riskWeights: pred?.grading_weights,
     recentActivity: filterSubmissionsByActiveSubjects(submissions, subjectSet).slice(0, 5) as Array<
       Record<string, unknown>
     >,

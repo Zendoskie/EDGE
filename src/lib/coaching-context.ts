@@ -1,4 +1,6 @@
-import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from '@/lib/risk-utils';
+import { canonicalRiskLevel, type CanonicalRiskLevel } from '@/lib/risk-utils';
+import { riskDisplayStatus, type RiskEvidenceRow } from '@/lib/risk-scoring';
+import type { SubjectGradingWeights } from '@/lib/weighted-grading';
 
 export type SubjectCoachingMetrics = {
   subjectId: string;
@@ -6,6 +8,10 @@ export type SubjectCoachingMetrics = {
   subjectName: string | null;
   riskClassification: CanonicalRiskLevel;
   riskScore: number | null;
+  /** The stored prediction row; decides Insufficient data / Provisional / unverified wording. */
+  riskEvidence: RiskEvidenceRow | null;
+  /** The subject's saved weights; null means defaults apply, undefined means not loaded. */
+  riskWeights?: SubjectGradingWeights | null;
   attendancePercent: number | null;
   activityScorePercent: number | null;
   quizScorePercent: number | null;
@@ -53,20 +59,17 @@ function pctDirect(value: number | null | undefined): number | null {
   return Math.round(value * 10) / 10;
 }
 
-type PredictionRow = {
+type PredictionRow = RiskEvidenceRow & {
   subject_id?: string | null;
   risk_level?: string | null;
   risk_score?: number | null;
   confidence?: number | null;
-  attendance_rate?: number | null;
-  activity_average?: number | null;
   activity_completion_rate?: number | null;
-  quiz_average?: number | null;
-  laboratory_exam_average?: number | null;
   comprehension_rating?: number | null;
   recommendation?: string | null;
   created_at?: string | null;
   subjects?: { code?: string | null; name?: string | null } | null;
+  grading_weights?: SubjectGradingWeights | null;
 };
 
 export function mapPredictionToCoachingMetrics(row: PredictionRow): SubjectCoachingMetrics | null {
@@ -92,6 +95,8 @@ export function mapPredictionToCoachingMetrics(row: PredictionRow): SubjectCoach
     subjectName: name,
     riskClassification,
     riskScore,
+    riskEvidence: row,
+    riskWeights: row.grading_weights,
     attendancePercent: pctFromRate(row.attendance_rate),
     activityScorePercent,
     quizScorePercent: pctDirect(row.quiz_average),
@@ -147,10 +152,18 @@ export function formatEngagementContextBlock(ctx: StudentEngagementContext): str
     .join('; ');
 }
 
+export function coachingRiskLabel(metrics: SubjectCoachingMetrics): string {
+  return riskDisplayStatus({
+    level: metrics.riskClassification,
+    evidence: metrics.riskEvidence,
+    weights: metrics.riskWeights,
+  }).label;
+}
+
 export function formatCoachingMetricsBlock(metrics: SubjectCoachingMetrics): string {
   const lines = [
     `Subject: ${metrics.subjectCode}${metrics.subjectName ? ` — ${metrics.subjectName}` : ''}`,
-    `Risk classification (system): ${riskLabel(metrics.riskClassification)}`,
+    `Risk classification (system): ${coachingRiskLabel(metrics)}`,
     metrics.riskScore != null ? `Risk score: ${metrics.riskScore}` : null,
     metrics.attendancePercent != null ? `Attendance: ${metrics.attendancePercent}%` : null,
     metrics.activityScorePercent != null ? `Activity scores: ${metrics.activityScorePercent}%` : null,
@@ -166,8 +179,5 @@ export function formatSubjectLabel(metrics: SubjectCoachingMetrics): string {
 }
 
 export function formatAtRiskSubjectLabels(metrics: SubjectCoachingMetrics[]): string[] {
-  return metrics.map((m) => {
-    const level = m.riskClassification === 'critical' ? 'Crucial' : 'Vulnerable';
-    return `${formatSubjectLabel(m)} (${level})`;
-  });
+  return metrics.map((m) => `${formatSubjectLabel(m)} (${coachingRiskLabel(m)})`);
 }

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requestEnrollment } from "./enroll.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,20 +13,30 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
+    if (!authHeader || !token) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !anonKey) {
+      console.error("enroll-self: missing SUPABASE_URL or SUPABASE_ANON_KEY");
+      return new Response(JSON.stringify({ error: "Enrollment failed" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // The caller's JWT, not the service role: enrollment RLS and the pending-status trigger apply.
+    const supabase = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Invalid or expired session" }), {
         status: 401,
@@ -33,39 +44,16 @@ serve(async (req) => {
       });
     }
 
-    let body: { subject_id?: string };
+    let body: unknown;
     try {
       body = await req.json();
     } catch {
       body = {};
     }
-    const subject_id = body?.subject_id;
-    if (!subject_id) {
-      return new Response(JSON.stringify({ error: "subject_id is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
-    const { error: insertError } = await supabase
-      .from("enrollments")
-      .insert({
-        student_id: user.id,
-        subject_id,
-        status: "active",
-      });
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        return new Response(JSON.stringify({ error: "already_enrolled", message: "You are already enrolled in this course." }), {
-          status: 409,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw insertError;
-    }
-
-    return new Response(JSON.stringify({ success: true }), {
+    const result = await requestEnrollment(supabase, user.id, body);
+    return new Response(JSON.stringify(result.body), {
+      status: result.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import { instructorAtRiskNotification, instructorEngagementAlertNotification, instructorEngagementFeedbackNotification } from "@/lib/notification-events";
+import { PREDICTION_EVIDENCE_COLUMNS } from "@/lib/risk-scoring";
 
 const POLL_INTERVAL_MS = 180_000;
 const POLL_KEY_PREFIX = "edge_instructor_inbox_poll_";
@@ -46,7 +47,7 @@ export function useInstructorInboxPoll(userId: string | undefined, role: string 
 
         const { data: preds } = await supabase
           .from("predictions")
-          .select("id, created_at, student_id, subject_id, risk_level, previous_risk_level")
+          .select(`id, created_at, student_id, subject_id, risk_level, previous_risk_level, ${PREDICTION_EVIDENCE_COLUMNS}`)
           .in("subject_id", subjectIds)
           .gt("created_at", lastPoll);
 

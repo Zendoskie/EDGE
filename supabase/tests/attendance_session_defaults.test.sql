@@ -44,6 +44,9 @@ BEGIN
     (s4, 'P3A S4', 'student'), (s5, 'P3A S5', 'student'), (s6, 'P3A S6', 'student'),
     (s7, 'P3A S7', 'student')
   ) AS u(id, name, role);
+  -- Signup metadata never grants a staff role; staff roles come from a trusted path.
+  INSERT INTO public.user_roles (user_id, role) VALUES (ins, 'instructor'), (ins2, 'instructor')
+  ON CONFLICT (user_id, role) DO NOTHING;
 
   INSERT INTO public.subjects (id, name, code, instructor_id)
   VALUES (subj, 'P3A Subject', 'P3A-' || left(subj::text, 8), ins);

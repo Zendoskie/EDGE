@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import type { ReferralStatus } from "@/lib/referral-utils";
+import { PREDICTION_EVIDENCE_COLUMNS, type RiskEvidenceRow } from "@/lib/risk-scoring";
 
 export type CounselingReferralRow = {
   id: string;
@@ -14,11 +15,11 @@ export type CounselingReferralRow = {
   reviewed_at: string | null;
   recommendation_message: string | null;
   counselor_remarks: string | null;
-  prediction?: {
+  prediction?: (RiskEvidenceRow & {
     risk_level: string | null;
     risk_score: number | null;
     recommendation: string | null;
-  } | null;
+  }) | null;
   latest_feedback?: {
     id: string;
     risk_level: string | null;
@@ -90,7 +91,7 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
       ? supabase.from("subjects").select("id, code, name").in("id", subjectIds)
       : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
     predictionIds.length > 0
-      ? supabase.from("predictions").select("id, risk_level, risk_score, recommendation").in("id", predictionIds)
+      ? supabase.from("predictions").select(`id, risk_level, recommendation, ${PREDICTION_EVIDENCE_COLUMNS}`).in("id", predictionIds)
       : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
   ]);
 
@@ -177,13 +178,7 @@ async function enrichReferrals(rows: Array<Record<string, unknown>>): Promise<Co
           }
         : null,
       subject: subjectMap.get(r.subject_id as string) ?? null,
-      prediction: prediction
-        ? {
-            risk_level: prediction.risk_level,
-            risk_score: prediction.risk_score,
-            recommendation: prediction.recommendation,
-          }
-        : null,
+      prediction,
       latest_feedback: feedbackMap.get(`${r.student_id}:${r.subject_id}`) ?? null,
       latest_engagement_feedback: engagementFeedbackMap.get(r.student_id as string) ?? null,
     };
