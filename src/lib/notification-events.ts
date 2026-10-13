@@ -28,7 +28,14 @@ type PredictionRowLike = {
   attendance_rate?: unknown;
   previous_attendance_rate?: unknown;
   recommendation?: unknown;
+  /** predict-risk keeps row ids stable and sets created_at on every changed write. */
+  created_at?: unknown;
 };
+
+/** Identifies one write of a stable-id prediction row, so a repeated transition is a new event. */
+function writeStamp(row: PredictionRowLike): string {
+  return typeof row.created_at === "string" ? row.created_at : "";
+}
 
 function isAtRiskBand(level: CanonicalRiskLevel): boolean {
   return level === "critical" || level === "at_risk";
@@ -58,7 +65,7 @@ export function studentPredictionNotifications(
     out.push({
       title: "Risk classification changed",
       body: `${code}: your status changed from ${riskLabel(prevRisk)} to ${riskLabel(riskLevel)}. Open Performance Insights.`,
-      dedupeKey: `risk-change:${id}:${prevRisk}->${riskLevel}`,
+      dedupeKey: `risk-change:${id}:${writeStamp(row)}:${prevRisk}->${riskLevel}`,
       sourceName: EDGE_SYSTEM_SOURCE,
     });
   } else if (!prevRisk) {
@@ -80,7 +87,7 @@ export function studentPredictionNotifications(
       out.push({
         title: "Attendance below threshold",
         body: `${code}: your attendance is ${attendancePct(attRate)}% (below ${ATTENDANCE_THRESHOLD_PCT}%). Review your attendance record.`,
-        dedupeKey: `att-threshold:${id}:${attendancePct(attRate)}`,
+        dedupeKey: `att-threshold:${id}:${writeStamp(row)}:${attendancePct(attRate)}`,
         sourceName: EDGE_SYSTEM_SOURCE,
       });
     }
@@ -111,6 +118,46 @@ export function studentCoachingRecommendationNotification(
   };
 }
 
+const COACHING_REC_SEEN_PREFIX = "edge_coaching_rec_seen_";
+
+/** Last recommendation text notified per prediction id; shared by the poll and the realtime handler. */
+export function loadCoachingRecSeen(userId: string): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(`${COACHING_REC_SEEN_PREFIX}${userId}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCoachingRecSeen(userId: string, map: Record<string, string>) {
+  try {
+    localStorage.setItem(`${COACHING_REC_SEEN_PREFIX}${userId}`, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Coaching notice for a recommendation text not yet seen for this prediction id.
+ * Updates `seen` in place when the text is new.
+ */
+export function unseenCoachingRecommendation(
+  row: PredictionRowLike,
+  subjectCode: string | null,
+  seen: Record<string, string>,
+): NotificationPayload | null {
+  const id = String(row.id ?? "");
+  const rec = typeof row.recommendation === "string" ? row.recommendation.trim() : "";
+  if (!id || !rec) return null;
+  const prev = seen[id];
+  if (prev === rec) return null;
+  seen[id] = rec;
+  return studentCoachingRecommendationNotification(row, subjectCode, prev ?? null);
+}
+
 /** Instructor inbox when a student newly enters Crucial or Vulnerable status. */
 export function instructorAtRiskNotification(
   row: PredictionRowLike,
@@ -132,7 +179,7 @@ export function instructorAtRiskNotification(
   return {
     title: `Student now ${riskLabel(riskLevel)}`,
     body: `${studentName} in ${code} is now classified as ${riskLabel(riskLevel)}. Review Risk Analysis.`,
-    dedupeKey: `instructor-at-risk:${studentId}:${subjectId}:${riskLevel}`,
+    dedupeKey: `instructor-at-risk:${studentId}:${subjectId}:${riskLevel}:${writeStamp(row)}`,
     sourceName: EDGE_SYSTEM_SOURCE,
   };
 }

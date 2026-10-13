@@ -2,12 +2,21 @@
  * Pure (no Deno / network imports) helpers that turn the signed-in student's own rows
  * into an authoritative "student record" for the AI Coach.
  *
- * - `averageOf`, `computeWeightedGrade` and the assessment-type groups mirror
- *   src/lib/weighted-grading.ts and src/lib/assessment-types.ts. They are locked to the
+ * - The grading math comes from ../_shared/weighted-grading.ts, which mirrors
+ *   src/lib/weighted-grading.ts and src/lib/assessment-types.ts. It is locked to the
  *   official implementation by a parity test (src/lib/ai-coach-context.test.ts).
  * - Risk classification and risk score are passed through exactly as stored by the
  *   official risk analysis. Nothing here recalculates them.
  */
+
+import {
+  averageOf,
+  computeSubjectWeightedGrade,
+  DEFAULT_SUBJECT_GRADING_WEIGHTS,
+  type GradeWeights,
+  isExamType,
+  roundGrade2,
+} from "../_shared/weighted-grading.ts";
 
 export type CanonicalRiskLevel = "critical" | "at_risk" | "stable" | "excelling";
 
@@ -27,44 +36,9 @@ export function riskStatusLabel(level: CanonicalRiskLevel): string {
   return "Stable";
 }
 
-/* ---------------------------------------------------------------- official grading (mirror) */
+/* ---------------------------------------------------------------- official grading (shared Edge copy) */
 
-export type GradeWeights = {
-  activity_weight?: number | string | null;
-  project_weight?: number | string | null;
-  attendance_weight?: number | string | null;
-  exam_weight?: number | string | null;
-};
-
-export type WeightedGradeInputs = {
-  activityAverage: number | null | undefined;
-  projectAverage: number | null | undefined;
-  attendancePercent: number | null | undefined;
-  examAverage: number | null | undefined;
-  weights: GradeWeights | null | undefined;
-};
-
-export function computeWeightedGrade(inputs: WeightedGradeInputs): number | null {
-  const { weights } = inputs;
-  if (!weights) return null;
-  const parts = [
-    { value: inputs.activityAverage, weight: Number(weights.activity_weight) || 0 },
-    { value: inputs.projectAverage, weight: Number(weights.project_weight) || 0 },
-    { value: inputs.attendancePercent, weight: Number(weights.attendance_weight) || 0 },
-    { value: inputs.examAverage, weight: Number(weights.exam_weight) || 0 },
-  ];
-  const available = parts.filter((p) => p.value != null && Number.isFinite(p.value) && p.weight > 0);
-  if (available.length === 0) return null;
-  const totalWeight = available.reduce((s, p) => s + p.weight, 0);
-  if (totalWeight <= 0) return null;
-  return available.reduce((s, p) => s + (p.value as number) * p.weight, 0) / totalWeight;
-}
-
-export function averageOf(values: Array<number | null | undefined>): number | null {
-  const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
-  if (nums.length === 0) return null;
-  return nums.reduce((s, v) => s + v, 0) / nums.length;
-}
+export * from "../_shared/weighted-grading.ts";
 
 const ASSESSMENT_LABELS: Record<string, string> = {
   activity: "Activity",
@@ -77,14 +51,6 @@ const ASSESSMENT_LABELS: Record<string, string> = {
   exam: "Exam",
 };
 
-const COURSEWORK_TYPES = new Set(["activity", "assignment", "quiz"]);
-const PROJECT_TYPES = new Set(["project"]);
-const EXAM_TYPES = new Set(["exam", "laboratory_exam", "midterm_exam", "final_exam"]);
-
-export const isCourseworkType = (v: string | null | undefined) => !!v && COURSEWORK_TYPES.has(v);
-export const isProjectType = (v: string | null | undefined) => !!v && PROJECT_TYPES.has(v);
-export const isExamType = (v: string | null | undefined) => !!v && EXAM_TYPES.has(v);
-
 export function assessmentTypeLabel(value: string | null | undefined): string {
   if (!value) return "Assessment";
   return ASSESSMENT_LABELS[value] ?? value.replace(/_/g, " ");
@@ -92,10 +58,47 @@ export function assessmentTypeLabel(value: string | null | undefined): string {
 
 /* ---------------------------------------------------------------- record model */
 
+/** A final_grade_releases row embedded in the enrollments request (RLS: the student's own rows). */
+export type RawFinalGradeRelease = {
+  student_id?: string | null;
+  status?: string | null;
+  final_grade?: number | string | null;
+};
+type RawEnrolledSubject = {
+  code?: string | null;
+  name?: string | null;
+  final_grade_releases?: RawFinalGradeRelease[] | RawFinalGradeRelease | null;
+};
 export type RawEnrollment = {
   subject_id?: string | null;
-  subjects?: { code?: string | null; name?: string | null } | Array<{ code?: string | null; name?: string | null }> | null;
+  subjects?: RawEnrolledSubject | RawEnrolledSubject[] | null;
 };
+
+/**
+ * Official release state. "unknown" means release rows were not loaded or were not exactly one
+ * well-formed row; the coach then calls the grade provisional and points to My Scores.
+ */
+export type FinalReleaseState =
+  | { kind: "final"; grade: number }
+  | { kind: "under_review" }
+  | { kind: "not_released" }
+  | { kind: "unknown" };
+
+export function finalReleaseFromEnrollment(e: RawEnrollment): FinalReleaseState {
+  const s = Array.isArray(e.subjects) ? e.subjects[0] : e.subjects;
+  const raw = s?.final_grade_releases;
+  if (raw === undefined || raw === null) return { kind: "unknown" };
+  const rows = Array.isArray(raw) ? raw : [raw];
+  if (rows.length === 0) return { kind: "not_released" };
+  if (rows.length > 1) return { kind: "unknown" };
+  const row = rows[0];
+  if (row?.status === "needs_review") return { kind: "under_review" };
+  if (row?.status === "released" && row.final_grade != null && row.final_grade !== "") {
+    const grade = Number(row.final_grade);
+    if (Number.isFinite(grade) && grade >= 0 && grade <= 100) return { kind: "final", grade };
+  }
+  return { kind: "unknown" };
+}
 export type RawActivity = {
   id: string;
   subject_id: string;
@@ -153,9 +156,13 @@ export type SubjectRecord = {
   projectAverage: number | null;
   examAverage: number | null;
   attendance: { total: number; present: number; late: number; absent: number; other: number; percent: number | null };
-  gradingWeights: { activity: number; project: number; attendance: number; exam: number } | null;
-  /** Official weighted grade (computeWeightedGrade). Null when it cannot be computed. */
-  officialGrade: number | null;
+  gradingWeights: { activity: number; project: number; attendance: number; exam: number };
+  /** True when the subject has no saved grading row and the default weights apply. */
+  usesDefaultWeights: boolean;
+  /** Provisional weighted grade (computeSubjectWeightedGrade); never the official final grade. Null when it cannot be computed. */
+  provisionalGrade: number | null;
+  /** Official released final grade state, from final_grade_releases. */
+  finalRelease: FinalReleaseState;
   risk: { classification: CanonicalRiskLevel; label: string; score: number | null; recordedAt: string | null } | null;
 };
 
@@ -177,10 +184,10 @@ function dueTs(value: string | null | undefined): number {
 }
 
 export function buildStudentRecord(input: StudentRecordInput): StudentRecord {
-  const subjectsMeta = new Map<string, { code: string; name: string }>();
+  const subjectsMeta = new Map<string, { code: string; name: string; finalRelease: FinalReleaseState }>();
   for (const e of input.enrollments) {
     if (!e.subject_id || subjectsMeta.has(e.subject_id)) continue;
-    subjectsMeta.set(e.subject_id, firstSubjectMeta(e));
+    subjectsMeta.set(e.subject_id, { ...firstSubjectMeta(e), finalRelease: finalReleaseFromEnrollment(e) });
   }
 
   const submissionByActivity = new Map<string, RawSubmission>();
@@ -224,24 +231,22 @@ export function buildStudentRecord(input: StudentRecordInput): StudentRecord {
     const gradedCount = assessments.filter((a) => a.percent != null).length;
     const overall = averageOf(gradedPercents);
 
-    const byGroup = (pred: (t: string | null) => boolean) =>
-      averageOf(assessments.filter((a) => pred(a.type)).map((a) => a.percent));
-    const courseworkAverage = byGroup(isCourseworkType);
-    const projectAverage = byGroup(isProjectType);
-    const examAverage = byGroup(isExamType);
-
     const att = input.attendance.filter((r) => r.subject_id === subjectId);
     const present = att.filter((r) => r.status === "present").length;
     const late = att.filter((r) => r.status === "late").length;
     const absent = att.filter((r) => r.status === "absent").length;
     const attendancePercent = att.length ? ((present + late) / att.length) * 100 : null;
 
-    const weights = input.gradingSystems.find((g) => g.subject_id === subjectId) ?? null;
-    const officialGrade = computeWeightedGrade({
+    const savedWeights = input.gradingSystems.find((g) => g.subject_id === subjectId) ?? null;
+    const weights = savedWeights ?? DEFAULT_SUBJECT_GRADING_WEIGHTS;
+    const {
       activityAverage: courseworkAverage,
       projectAverage,
-      attendancePercent,
       examAverage,
+      weightedAverage: provisionalGrade,
+    } = computeSubjectWeightedGrade({
+      items: assessments.map((a) => ({ type: a.type, score: a.score, maxScore: a.maxScore })),
+      attendancePercent,
       weights,
     });
 
@@ -267,22 +272,22 @@ export function buildStudentRecord(input: StudentRecordInput): StudentRecord {
         other: att.length - present - late - absent,
         percent: attendancePercent != null ? Math.round(attendancePercent * 10) / 10 : null,
       },
-      gradingWeights: weights
-        ? {
-            activity: Number(weights.activity_weight) || 0,
-            project: Number(weights.project_weight) || 0,
-            attendance: Number(weights.attendance_weight) || 0,
-            exam: Number(weights.exam_weight) || 0,
-          }
-        : null,
-      officialGrade,
+      gradingWeights: {
+        activity: Number(weights.activity_weight) || 0,
+        project: Number(weights.project_weight) || 0,
+        attendance: Number(weights.attendance_weight) || 0,
+        exam: Number(weights.exam_weight) || 0,
+      },
+      usesDefaultWeights: savedWeights == null,
+      provisionalGrade,
+      finalRelease: meta.finalRelease,
       risk: classification
         ? {
             classification,
             label: riskStatusLabel(classification),
             score:
               pred!.risk_score != null && Number.isFinite(Number(pred!.risk_score))
-                ? Math.round(Number(pred!.risk_score) * 10) / 10
+                ? roundGrade2(Number(pred!.risk_score))
                 : null,
             recordedAt: pred!.created_at ?? null,
           }
@@ -513,6 +518,8 @@ export function parseStudyAvailability(texts: string[]): string | null {
 /* ---------------------------------------------------------------- deterministic answers */
 
 const fmtPct = (n: number | null) => (n == null ? "n/a" : `${Math.round(n)}%`);
+/** Same two-decimal value that predict-risk stores and classifies. */
+const fmtGrade = (n: number) => `${roundGrade2(n)!.toFixed(2)}%`;
 
 function subjectTitle(s: SubjectRecord): string {
   return s.name ? `${s.code} (${s.name})` : s.code;
@@ -574,25 +581,45 @@ export function answerScoreLookup(
   return [header, ...lines].join("\n");
 }
 
+function provisionalSentence(s: SubjectRecord): string {
+  if (s.provisionalGrade == null) {
+    return "A provisional weighted grade isn't available yet because there is no graded work or attendance to calculate it from.";
+  }
+  const w = s.gradingWeights;
+  const parts = [
+    `Coursework ${fmtPct(s.courseworkAverage)} (weight ${w.activity})`,
+    `Projects ${fmtPct(s.projectAverage)} (weight ${w.project})`,
+    `Attendance ${fmtPct(s.attendance.percent)} (weight ${w.attendance})`,
+    `Exams ${fmtPct(s.examAverage)} (weight ${w.exam})`,
+  ];
+  const source = s.usesDefaultWeights
+    ? "the default grading weights, because your instructor has not customized them"
+    : "your subject's grading system";
+  return `Your provisional weighted grade is ${fmtGrade(s.provisionalGrade)}, calculated from ${source}. It is not your official final grade. Categories with no data yet are left out. ${parts.join("; ")}.`;
+}
+
 function gradeLine(s: SubjectRecord): string {
-  if (s.officialGrade != null && s.gradingWeights) {
-    const w = s.gradingWeights;
-    const parts = [
-      `Coursework ${fmtPct(s.courseworkAverage)} (weight ${w.activity})`,
-      `Projects ${fmtPct(s.projectAverage)} (weight ${w.project})`,
-      `Attendance ${fmtPct(s.attendance.percent)} (weight ${w.attendance})`,
-      `Exams ${fmtPct(s.examAverage)} (weight ${w.exam})`,
-    ];
-    return `${subjectTitle(s)}: your current grade is ${Math.round(s.officialGrade)}%. This is the official weighted grade from your subject's grading system. Categories with no data yet are left out. ${parts.join("; ")}.`;
+  const title = subjectTitle(s);
+  const fr = s.finalRelease;
+  if (fr.kind === "final") {
+    return `${title}: your official final grade is ${fmtGrade(fr.grade)}, released by your instructor.`;
   }
-  if (!s.gradingWeights) {
-    const avg =
-      s.overallGradedAveragePercent != null
-        ? ` Your average across ${s.gradedCount} graded assessment(s) is ${s.overallGradedAveragePercent}%.`
-        : " Nothing has been graded yet.";
-    return `${subjectTitle(s)}: no grading system has been set up yet, so an official weighted grade isn't available.${avg}`;
+  if (fr.kind === "under_review") {
+    return `${title}: your final grade is under review because grades, attendance, assessments or weights changed after it was released. ${provisionalSentence(s)}`;
   }
-  return `${subjectTitle(s)}: an official grade isn't available yet because there is no graded work or attendance to calculate it from.`;
+  if (fr.kind === "not_released") {
+    return `${title}: your instructor has not released a final grade yet. ${provisionalSentence(s)}`;
+  }
+  return `${title}: ${provisionalSentence(s)} Check My Scores for your official Final or Under review status.`;
+}
+
+function finalGradePromptLine(fr: FinalReleaseState): string {
+  if (fr.kind === "final") return `Official final grade: ${fmtGrade(fr.grade)} (released by the instructor)`;
+  if (fr.kind === "under_review") {
+    return "Official final grade: UNDER REVIEW (grading inputs changed after release; do not state any earlier final grade)";
+  }
+  if (fr.kind === "not_released") return "Official final grade: NOT RELEASED (the instructor has not released a final grade)";
+  return "Official final grade: UNKNOWN (tell the student to check My Scores for their Final or Under review status)";
 }
 
 export function answerGradeLookup(record: StudentRecord, text: string, focus: SubjectRecord | null): string {
@@ -619,7 +646,7 @@ export function buildFallbackSummary(record: StudentRecord, scope: SubjectRecord
     );
     bits.push(
       s.risk
-        ? `Official risk classification: ${s.risk.label}${s.risk.score != null ? ` (risk score ${s.risk.score})` : ""}.`
+        ? `Official risk classification: ${s.risk.label}${s.risk.score != null ? ` (risk score ${s.risk.score.toFixed(2)})` : ""}.`
         : "Official risk classification: not available yet.",
     );
     return bits.join("\n");
@@ -665,14 +692,16 @@ function formatSubjectBlock(s: SubjectRecord, isFocus: boolean, now: Date): stri
   const lines: string[] = [];
   lines.push(`Subject: ${subjectTitle(s)}${isFocus ? " [CURRENT FOCUS]" : ""}`);
 
-  if (s.officialGrade != null && s.gradingWeights) {
+  lines.push(finalGradePromptLine(s.finalRelease));
+  if (s.provisionalGrade != null) {
+    const source = s.usesDefaultWeights
+      ? "default grading weights (not customized by the instructor)"
+      : "the subject's grading system";
     lines.push(
-      `Official current grade: ${Math.round(s.officialGrade)}% (weighted by the subject's grading system; weights activity ${s.gradingWeights.activity}, project ${s.gradingWeights.project}, attendance ${s.gradingWeights.attendance}, exam ${s.gradingWeights.exam})`,
+      `Provisional weighted grade (NOT the official final grade): ${fmtGrade(s.provisionalGrade)} (weighted by ${source}; weights activity ${s.gradingWeights.activity}, project ${s.gradingWeights.project}, attendance ${s.gradingWeights.attendance}, exam ${s.gradingWeights.exam})`,
     );
-  } else if (!s.gradingWeights) {
-    lines.push("Official current grade: UNAVAILABLE (no grading system configured for this subject)");
   } else {
-    lines.push("Official current grade: UNAVAILABLE (no graded work or attendance yet)");
+    lines.push("Provisional weighted grade: UNAVAILABLE (no graded work or attendance yet)");
   }
   lines.push(
     `Category averages: coursework ${fmtPct(s.courseworkAverage)}, projects ${fmtPct(s.projectAverage)}, exams ${fmtPct(s.examAverage)}`,
@@ -687,7 +716,7 @@ function formatSubjectBlock(s: SubjectRecord, isFocus: boolean, now: Date): stri
   );
   lines.push(
     s.risk
-      ? `Official risk classification: ${s.risk.label}; official risk score: ${s.risk.score ?? "not recorded"}${s.risk.recordedAt ? ` (analysis ${isoDay(s.risk.recordedAt)})` : ""}`
+      ? `Official risk classification: ${s.risk.label}; official risk score: ${s.risk.score != null ? s.risk.score.toFixed(2) : "not recorded"}${s.risk.recordedAt ? ` (analysis ${isoDay(s.risk.recordedAt)})` : ""}`
       : "Official risk classification: NOT AVAILABLE (no risk analysis recorded for this subject)",
   );
 

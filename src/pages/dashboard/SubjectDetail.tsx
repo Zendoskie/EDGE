@@ -16,11 +16,25 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
-import { ASSESSMENT_TYPES, formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import {
+  SELECTABLE_ASSESSMENT_TYPES,
+  formatAssessmentTypeLabel,
+  isSelectableAssessmentType,
+} from '@/lib/assessment-types';
+import {
+  DEFAULT_SUBJECT_GRADING_WEIGHTS,
+  roundGrade2,
+  sameGradingWeights,
+  type SubjectGradingWeights,
+} from '@/lib/weighted-grading';
+import { classifyRiskScore, predictionCoverage, RISK_CATEGORIES, RISK_CATEGORY_LABELS } from '@/lib/risk-scoring';
+import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { findDuplicateActivityTitle } from '@/lib/gradebook';
 import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
 import { GradebookTable } from '@/components/GradebookTable';
-import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
+import { subjectReleaseKey } from '@/lib/final-grade-freshness';
+import { flushSubjectRiskRecalc, recalculateSubjectRisk, scheduleSubjectRiskRecalc } from '@/lib/recalculate-risk';
+import { clampAttendanceDate, manilaToday } from '@/lib/attendance-date';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
@@ -218,7 +232,7 @@ function StudentSubjectView({ subjectId, subjectCode, userId }: { subjectId: str
               <RiskBadge level={myPrediction.risk_level} score={myPrediction.risk_score} />
               {myPrediction.risk_score != null && (
                 <span className="text-muted-foreground">
-                  Score: <span className="font-medium text-foreground">{Number(myPrediction.risk_score).toFixed(1)}</span>/100
+                  Score: <span className="font-medium text-foreground">{roundGrade2(Number(myPrediction.risk_score))?.toFixed(2)}</span>/100
                 </span>
               )}
             </div>
@@ -492,8 +506,10 @@ function SubjectAttendance({
   programName?: string;
 }) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => manilaToday());
+  const today = manilaToday();
+
+  useEffect(() => () => flushSubjectRiskRecalc(subjectId), [subjectId]);
 
   const { data: enrollments = [] } = useQuery<EnrollmentListRow[]>({
     queryKey: ['enrollments', subjectId, 'active'],
@@ -511,7 +527,7 @@ function SubjectAttendance({
     },
   });
 
-  const { data: attendanceRecords = [], refetch: refetchAttendance } = useQuery({
+  const { data: attendanceRecords = [] } = useQuery({
     queryKey: ['attendance', subjectId, date],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -524,45 +540,31 @@ function SubjectAttendance({
     },
   });
 
-  const { data: attendanceHistory = [], isLoading: historyLoading } = useQuery({
-    queryKey: ['attendance-history', subjectId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('id, date, student_id, status, created_at')
-        .eq('subject_id', subjectId)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  const { data: attendanceHistory = [], isLoading: historyLoading } = useSubjectAttendanceHistory(subjectId);
 
   const markAttendance = useMutation({
     mutationFn: async ({ studentId, status }: { studentId: string; status: string }) => {
-      const existing = attendanceRecords.find(a => a.student_id === studentId);
-      if (existing) {
-        const { error } = await supabase.from('attendance').update({ status }).eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('attendance').insert({
-          student_id: studentId,
-          subject_id: subjectId,
-          date,
-          status,
-          recorded_by: user?.id,
-        });
-        if (error) throw error;
-      }
+      const { data, error } = await supabase.rpc('record_attendance', {
+        p_subject_id: subjectId,
+        p_date: date,
+        p_student_id: studentId,
+        p_status: status,
+      });
+      if (error) throw error;
+      return { markedDate: date, rows: data ?? [] };
     },
-    onSuccess: async () => {
-      refetchAttendance();
-      queryClient.invalidateQueries({ queryKey: ['attendance-history', subjectId] });
+    onSuccess: ({ markedDate, rows }) => {
+      queryClient.setQueryData(['attendance', subjectId, markedDate], rows);
+      queryClient.setQueryData<typeof attendanceHistory>(['attendance-history', subjectId], (old) =>
+        old && [...rows, ...old.filter((r) => r.date !== markedDate)].sort(
+          (a, b) => b.date.localeCompare(a.date) || (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       toast.success('Attendance updated');
-      const result = await recalculateSubjectRisk(subjectId);
-      if (result.ok) {
-        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
-      }
+      scheduleSubjectRiskRecalc(subjectId, (result) => {
+        if (result.ok) queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -593,7 +595,13 @@ function SubjectAttendance({
       <CardHeader className="space-y-2 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-lg">Attendance</CardTitle>
-          <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" />
+          <Input
+            type="date"
+            value={date}
+            max={today}
+            onChange={e => setDate(clampAttendanceDate(e.target.value, today))}
+            className="w-auto"
+          />
         </div>
       </CardHeader>
 
@@ -704,35 +712,24 @@ function SubjectAttendance({
 function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: string }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', type: 'quiz', max_score: '100' });
+  const [form, setForm] = useState({ title: '', type: 'activity', max_score: '100' });
   const [weights, setWeights] = useState({
-    activity_weight: '25',
-    project_weight: '25',
-    attendance_weight: '15',
-    exam_weight: '35',
+    activity_weight: String(DEFAULT_SUBJECT_GRADING_WEIGHTS.activity_weight),
+    project_weight: String(DEFAULT_SUBJECT_GRADING_WEIGHTS.project_weight),
+    attendance_weight: String(DEFAULT_SUBJECT_GRADING_WEIGHTS.attendance_weight),
+    exam_weight: String(DEFAULT_SUBJECT_GRADING_WEIGHTS.exam_weight),
   });
 
-  const { data: gradingSystem } = useQuery({
-    queryKey: ['subject-grading-system', subjectId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('subject_grading_systems')
-        .select('subject_id, activity_weight, project_weight, attendance_weight, exam_weight')
-        .eq('subject_id', subjectId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!subjectId,
-  });
+  const { data: gradingSystem } = useSubjectGradingSystem(subjectId);
+  const { data: attendanceHistory } = useSubjectAttendanceHistory(subjectId);
 
   useEffect(() => {
     if (!gradingSystem) return;
     setWeights({
-      activity_weight: String(gradingSystem.activity_weight ?? 25),
-      project_weight: String(gradingSystem.project_weight ?? 25),
-      attendance_weight: String(gradingSystem.attendance_weight ?? 15),
-      exam_weight: String(gradingSystem.exam_weight ?? 35),
+      activity_weight: String(gradingSystem.activity_weight ?? DEFAULT_SUBJECT_GRADING_WEIGHTS.activity_weight),
+      project_weight: String(gradingSystem.project_weight ?? DEFAULT_SUBJECT_GRADING_WEIGHTS.project_weight),
+      attendance_weight: String(gradingSystem.attendance_weight ?? DEFAULT_SUBJECT_GRADING_WEIGHTS.attendance_weight),
+      exam_weight: String(gradingSystem.exam_weight ?? DEFAULT_SUBJECT_GRADING_WEIGHTS.exam_weight),
     });
   }, [gradingSystem]);
 
@@ -750,6 +747,9 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       const title = form.title.trim();
       const maxScore = Number(form.max_score);
       if (!title) throw new Error('Enter an assessment title.');
+      if (!isSelectableAssessmentType(form.type)) {
+        throw new Error('Choose Activity, Project, Midterm Exam, or Final Exam.');
+      }
       if (!Number.isFinite(maxScore) || maxScore <= 0) {
         throw new Error('Max score must be greater than 0.');
       }
@@ -772,9 +772,10 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
+      queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       toast.success('Activity created');
       setOpen(false);
-      setForm({ title: '', type: 'quiz', max_score: '100' });
+      setForm({ title: '', type: 'activity', max_score: '100' });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -786,6 +787,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
     },
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
+      queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       toast.success('Activity deleted');
       const result = await recalculateSubjectRisk(subjectId);
       if (result.ok) {
@@ -820,14 +822,24 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
         throw new Error(`Total weight must be exactly 100%. Current total: ${total}%.`);
       }
 
+      // Unknown stored weights (query not loaded) count as changed so risk is never left stale.
+      const weightsChanged = gradingSystem === undefined || !sameGradingWeights(gradingSystem, payload);
+
       const { error } = await supabase
         .from('subject_grading_systems')
         .upsert(payload, { onConflict: 'subject_id' });
       if (error) throw error;
+      return weightsChanged;
     },
-    onSuccess: () => {
+    onSuccess: async (weightsChanged) => {
       toast.success('Grading system saved');
       queryClient.invalidateQueries({ queryKey: ['subject-grading-system', subjectId] });
+      if (!weightsChanged) return;
+      queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
+      const result = await recalculateSubjectRisk(subjectId);
+      if (result.ok) {
+        queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -856,7 +868,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
             <form className="space-y-4" onSubmit={e => { e.preventDefault(); create.mutate(); }}>
               <div className="space-y-2">
                 <Label>Title</Label>
-                <Input placeholder="e.g. Quiz 1" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
+                <Input placeholder="e.g. Activity 1" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -866,7 +878,7 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                       <SelectValue placeholder="Select assessment type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {ASSESSMENT_TYPES.map(({ value, label }) => (
+                      {SELECTABLE_ASSESSMENT_TYPES.map(({ value, label }) => (
                         <SelectItem key={value} value={value}>
                           {label}
                         </SelectItem>
@@ -990,7 +1002,13 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
                 </div>
               ))}
             </div>
-            <GradebookTable subjectId={subjectId} userId={userId} activities={activities} />
+            <GradebookTable
+              subjectId={subjectId}
+              userId={userId}
+              activities={activities}
+              gradingSystem={gradingSystem}
+              attendance={attendanceHistory}
+            />
           </>
         )}
       </CardContent>
@@ -998,37 +1016,73 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
   );
 }
 
-type RiskBreakdownItem = { label: string; percent: number | null; weight: number };
+/** Shared by the Attendance tab (kept fresh there by setQueryData) and the release preview. */
+function useSubjectAttendanceHistory(subjectId: string) {
+  return useQuery({
+    queryKey: ['attendance-history', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('id, date, student_id, status, created_at')
+        .eq('subject_id', subjectId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
 
-function RiskScoreBreakdown({ items }: { items: RiskBreakdownItem[] }) {
+function useSubjectGradingSystem(subjectId: string) {
+  return useQuery({
+    queryKey: ['subject-grading-system', subjectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subject_grading_systems')
+        .select('subject_id, activity_weight, project_weight, attendance_weight, exam_weight')
+        .eq('subject_id', subjectId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!subjectId,
+  });
+}
+
+/** Effective category weights and evidence status behind the official weighted score. */
+function RiskScoreBreakdown({ prediction, weights }: { prediction: PredictionRow; weights: SubjectGradingWeights }) {
+  const coverage = predictionCoverage(prediction, weights);
+  const band = classifyRiskScore(roundGrade2(prediction.risk_score));
+  const held = prediction.risk_score != null && band !== canonicalRiskLevel(prediction.risk_level);
+  const weightOf = {
+    activity: weights.activity_weight,
+    project: weights.project_weight,
+    attendance: weights.attendance_weight,
+    exam: weights.exam_weight,
+  };
   return (
-    <div className="space-y-2 min-w-[200px]">
-      {items.map((item) => {
-        const contrib =
-          item.percent != null && Number.isFinite(item.percent)
-            ? (item.percent * item.weight).toFixed(1)
-            : null;
-        const barWidth = item.percent != null && Number.isFinite(item.percent) ? Math.min(100, item.percent) : 0;
+    <div className="space-y-1 min-w-[200px] text-xs">
+      {RISK_CATEGORIES.map((c) => {
+        const weight = Number(weightOf[c]) || 0;
+        const missing = coverage.missing.includes(c);
         return (
-          <div key={item.label}>
-            <div className="flex items-center justify-between gap-2 text-xs mb-0.5">
-              <span className="text-muted-foreground">{item.label}</span>
-              <span className="tabular-nums text-foreground/90">
-                {item.percent != null ? `${item.percent.toFixed(0)}%` : '—'}
-                {contrib != null ? (
-                  <span className="text-muted-foreground"> · {contrib} pts</span>
-                ) : null}
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-primary/60 transition-all"
-                style={{ width: `${barWidth}%` }}
-              />
-            </div>
+          <div key={c} className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">
+              {RISK_CATEGORY_LABELS[c]} <span className="tabular-nums">({weight}%)</span>
+            </span>
+            <span className={missing ? 'text-amber-600 dark:text-amber-400' : 'text-foreground/90'}>
+              {weight === 0 ? 'Not graded' : missing ? 'No scores yet' : 'Recorded'}
+            </span>
           </div>
         );
       })}
+      {!coverage.complete && (
+        <p className="pt-1 text-muted-foreground">
+          {held
+            ? `Held at ${riskLabel(canonicalRiskLevel(prediction.risk_level))} until every weighted category has scores.`
+            : 'Provisional: not every weighted category has scores yet.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -1047,7 +1101,7 @@ function recommendationForPrediction(p: PredictionRow): string {
     .filter((item): item is { label: string; value: number } => item.value != null && Number.isFinite(item.value))
     .sort((a, b) => a.value - b.value)[0];
   const scoreText =
-    p.risk_score != null && Number.isFinite(p.risk_score) ? `${Number(p.risk_score).toFixed(1)}/100` : 'current level';
+    p.risk_score != null && Number.isFinite(p.risk_score) ? `${roundGrade2(p.risk_score)!.toFixed(2)}/100` : 'current level';
 
   if (p.risk_level === 'excelling') {
     return `Maintain excellent performance. Risk score is ${scoreText}; encourage the student to keep consistent study habits and attendance.`;
@@ -1162,6 +1216,13 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       return data.map(p => ({ ...p, profile: profiles?.find(pr => pr.user_id === p.student_id) })) as PredictionRow[];
     },
   });
+
+  const { data: gradingSystem } = useSubjectGradingSystem(subjectId);
+  const effectiveWeights: SubjectGradingWeights = gradingSystem ?? DEFAULT_SUBJECT_GRADING_WEIGHTS;
+  const noProjectEvidence =
+    Number(effectiveWeights.project_weight) > 0 &&
+    predictions.length > 0 &&
+    predictions.every((p) => p.project_score == null);
 
   const studentIdsForEngagement = useMemo(
     () => predictions.map((p) => p.student_id).filter(Boolean) as string[],
@@ -1497,6 +1558,12 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
               <div className="px-4 sm:px-6 pt-4 pb-1">
                 <AcademicDisclaimer variant="reminder" />
               </div>
+              {noProjectEvidence && (
+                <p className="mx-4 sm:mx-6 mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+                  No student has a Project score yet, so no one can be classified as Excelling or Crucial. If this
+                  subject has no project, set the Project weight to 0 in the Activities tab&apos;s grading system.
+                </p>
+              )}
               <div className="px-6 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm border-b bg-muted/30">
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block h-2 w-2 rounded-full bg-blue-600" />
@@ -1534,22 +1601,13 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                   {sorted.map((p: PredictionRow) => {
                     const engagement = p.student_id ? engagementByStudent.get(p.student_id) : undefined;
                     const recommendation = p.recommendation?.trim() || recommendationForPrediction(p);
-                    const breakdownItems: RiskBreakdownItem[] = [
-                      { label: 'Academic', percent: p.academic_performance, weight: 0.5 },
-                      {
-                        label: 'Attendance',
-                        percent: p.attendance_rate != null ? p.attendance_rate * 100 : null,
-                        weight: 0.2,
-                      },
-                      { label: 'Exam', percent: p.exam_average, weight: 0.3 },
-                    ];
                     return (
                     <TableRow key={p.id} className="align-middle">
                       <TableCell className="font-medium">{p.profile?.full_name || '—'}</TableCell>
                       <TableCell>
                         {p.risk_score != null ? (
                           <div className="flex items-baseline gap-0.5">
-                            <span className="text-xl font-semibold tabular-nums">{Number(p.risk_score).toFixed(1)}</span>
+                            <span className="text-xl font-semibold tabular-nums">{roundGrade2(p.risk_score)?.toFixed(2)}</span>
                             <span className="text-xs text-muted-foreground">/100</span>
                           </div>
                         ) : (
@@ -1557,7 +1615,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                         )}
                       </TableCell>
                       <TableCell>
-                        <RiskScoreBreakdown items={breakdownItems} />
+                        <RiskScoreBreakdown prediction={p} weights={effectiveWeights} />
                       </TableCell>
                       <TableCell>
                         <RiskBadge level={p.risk_level} />

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GradebookTable } from '@/components/GradebookTable';
 
@@ -7,15 +7,28 @@ vi.mock('@/lib/recalculate-risk', () => ({
   recalculateSubjectRisk: async () => ({ ok: true, count: 0 }),
 }));
 
-const { upsert, rpc, invoke } = vi.hoisted(() => ({
+const { upsert, rpc, invoke, fromCalls, state } = vi.hoisted(() => ({
   upsert: vi.fn(async () => ({ error: null })),
   rpc: vi.fn(async () => ({ data: [] as Array<Record<string, string>>, error: null })),
   invoke: vi.fn(async () => ({ data: { success: true }, error: null })),
+  fromCalls: [] as string[],
+  state: {
+    submissions: [] as Array<Record<string, unknown>>,
+    releases: [] as Array<Record<string, unknown>>,
+  },
 }));
+
+const DEFAULT_SUBMISSIONS = [
+  { id: 'grade-1', activity_id: 'quiz-1', student_id: 's1', score: 40, assessment_type: 'quiz' },
+];
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (table: string) => {
+      fromCalls.push(table);
+      if (table === 'final_grade_releases') {
+        return { select: () => ({ eq: async () => ({ data: state.releases, error: null }) }) };
+      }
       if (table === 'enrollments') {
         return {
           select: () => ({
@@ -60,12 +73,7 @@ vi.mock('@/integrations/supabase/client', () => ({
       }
       return {
         select: () => ({
-          in: async () => ({
-            data: [
-              { id: 'grade-1', activity_id: 'quiz-1', student_id: 's1', score: 40 },
-            ],
-            error: null,
-          }),
+          in: async () => ({ data: state.submissions, error: null }),
         }),
         upsert,
       };
@@ -94,22 +102,35 @@ const activities = [
   },
 ];
 
-function renderGradebook() {
+type GradebookExtras = {
+  gradingSystem?: { activity_weight: number; project_weight: number; attendance_weight: number; exam_weight: number } | null;
+  attendance?: Array<{ student_id: string | null; status: string }>;
+};
+
+function renderGradebook(extras: GradebookExtras = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <GradebookTable subjectId="sub-1" userId="instructor-1" activities={activities} />
+      <GradebookTable subjectId="sub-1" userId="instructor-1" activities={activities} {...extras} />
     </QueryClientProvider>,
   );
 }
+
+const ACTIVITY_ONLY = { activity_weight: 100, project_weight: 0, attendance_weight: 0, exam_weight: 0 };
+
+beforeEach(() => {
+  state.submissions = [...DEFAULT_SUBMISSIONS];
+  state.releases = [];
+  fromCalls.length = 0;
+});
 
 describe('GradebookTable', () => {
   it('shows assessments as columns and existing grades', async () => {
     renderGradebook();
     expect(await screen.findByText('Activity 1')).toBeTruthy();
     expect(screen.getByText('Quiz 1')).toBeTruthy();
-    expect(screen.getByText('Ana Cruz')).toBeTruthy();
-    expect(screen.getByText('Ben Diaz')).toBeTruthy();
+    expect(screen.getByLabelText('Ana Cruz Activity 1')).toBeTruthy();
+    expect(screen.getByLabelText('Ben Diaz Activity 1')).toBeTruthy();
     expect(screen.queryByText('Pending Student')).toBeNull();
     expect(screen.getByDisplayValue('40')).toBeTruthy();
     expect(screen.getAllByPlaceholderText('Missing').length).toBeGreaterThan(0);
@@ -210,5 +231,75 @@ describe('GradebookTable', () => {
     expect(screen.getByText(/cannot exceed 100/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /save grades/i }));
     expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('GradebookTable required-grade indicator (Phase 3B completeness rules)', () => {
+  it('counts missing rows as missing and a real zero as entered', async () => {
+    state.submissions = [
+      { id: 'g1', activity_id: 'quiz-1', student_id: 's1', score: 40, assessment_type: 'quiz' },
+      { id: 'g2', activity_id: 'act-1', student_id: 's1', score: 0, assessment_type: 'activity' },
+      { id: 'g3', activity_id: 'act-1', student_id: 's2', score: null, assessment_type: 'activity' },
+    ];
+    renderGradebook({ gradingSystem: ACTIVITY_ONLY, attendance: [] });
+    expect((await screen.findAllByText('All required grades entered')).length).toBe(1);
+    const ben = screen.getByRole('button', { name: 'Ben Diaz: 2 required grades missing' });
+    fireEvent.click(ben);
+    const popover = within(await screen.findByRole('dialog'));
+    expect(popover.getByText('Activity 1 (Activity): no score')).toBeTruthy();
+    expect(popover.getByText('Quiz 1 (Quiz): no score')).toBeTruthy();
+  });
+
+  it('applies configured weights and the exam split: zero-weight categories are not required', async () => {
+    renderGradebook({
+      gradingSystem: { activity_weight: 0, project_weight: 0, attendance_weight: 0, exam_weight: 100 },
+      attendance: [],
+    });
+    const ana = await screen.findByRole('button', { name: 'Ana Cruz: 2 required grades missing' });
+    fireEvent.click(ana);
+    const popover = within(await screen.findByRole('dialog'));
+    expect(popover.getByText('No Midterm Exam assessment yet')).toBeTruthy();
+    expect(popover.getByText('No Final Exam assessment yet')).toBeTruthy();
+    expect(screen.queryByText(/Activity 1 \(Activity\): no score/)).toBeNull();
+  });
+
+  it('requires attendance when it is weighted and ignores drafts until saved', async () => {
+    renderGradebook({
+      gradingSystem: { activity_weight: 50, project_weight: 0, attendance_weight: 50, exam_weight: 0 },
+      attendance: [{ student_id: 's1', status: 'present' }, { student_id: 's2', status: 'excused' }],
+    });
+    expect(await screen.findByRole('button', { name: 'Ana Cruz: 1 required grade missing' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ben Diaz: 3 required grades missing' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Ben Diaz Activity 1'), { target: { value: '80' } });
+    expect(screen.getByRole('button', { name: 'Ben Diaz: 3 required grades missing' })).toBeTruthy();
+    expect(screen.getByText(/Save grades first/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: /release final grades/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows no indicator while weights or attendance are still loading', async () => {
+    renderGradebook({ attendance: [] });
+    expect(await screen.findByText('Activity 1')).toBeTruthy();
+    expect(screen.queryByText('All required grades entered')).toBeNull();
+    expect(screen.queryByRole('button', { name: /required grades? missing/ })).toBeNull();
+  });
+
+  it('reads release status with one subject-scoped query, not one per student', async () => {
+    state.releases = [
+      { student_id: 's1', status: 'released', final_grade: 88.5, released_at: '2026-10-01', review_reason: null },
+      { student_id: 's2', status: 'needs_review', final_grade: null, released_at: '2026-10-01', review_reason: 'score_changed' },
+    ];
+    renderGradebook({ gradingSystem: ACTIVITY_ONLY, attendance: [] });
+    expect(await screen.findByText('Final 88.50%')).toBeTruthy();
+    expect(screen.getByText('Under review')).toBeTruthy();
+    expect(screen.getByText('A score changed')).toBeTruthy();
+    expect(fromCalls.filter((t) => t === 'final_grade_releases')).toHaveLength(1);
+  });
+
+  it('refreshes only the subject release query after grades are saved', async () => {
+    renderGradebook({ gradingSystem: ACTIVITY_ONLY, attendance: [] });
+    fireEvent.change(await screen.findByLabelText('Ben Diaz Activity 1'), { target: { value: '80' } });
+    fireEvent.click(screen.getByRole('button', { name: /save grades/i }));
+    await waitFor(() => expect(upsert).toHaveBeenCalled());
+    await waitFor(() => expect(fromCalls.filter((t) => t === 'final_grade_releases')).toHaveLength(2));
   });
 });

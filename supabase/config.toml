@@ -18,3 +18,6 @@ verify_jwt = false
 [functions.notify-missing-grades]
 verify_jwt = false
 
+[functions.release-final-grades]
+verify_jwt = false
+

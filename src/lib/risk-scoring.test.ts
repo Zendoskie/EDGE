@@ -1,396 +1,328 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
-  MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK,
-  MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK,
-  RISK_WEIGHTS,
+  RISK_BANDS,
   classifyRiskScore,
-  computeAcademicPerformance,
-  computeExamAverage,
-  computeRiskClassification,
-  computeRiskScore,
   formatOfficialRiskLabel,
-  type RiskScoreInputs,
+  predictionCoverage,
 } from '@/lib/risk-scoring';
-import { computeRiskClassification as computeEdgeRiskClassification } from '../../supabase/functions/_shared/risk-scoring';
+import {
+  computeSubjectWeightedGrade,
+  roundGrade2,
+  type GradeItem,
+  type SubjectGradingWeights,
+} from '@/lib/weighted-grading';
+import { GRADE_CASES, attendancePercentOf } from '@/lib/weighted-grading.fixtures';
+import {
+  RISK_BANDS as EDGE_RISK_BANDS,
+  classifyRiskScore as edgeClassifyRiskScore,
+  classifyStudentRisk,
+  isSubjectOwner,
+  legacyConfidence,
+  planPredictionWrites,
+  type ExistingPrediction,
+  type PredictionValues,
+} from '../../supabase/functions/_shared/risk-scoring';
+import { roundGrade2 as edgeRoundGrade2 } from '../../supabase/functions/_shared/weighted-grading';
 
-describe('risk-scoring', () => {
-  it('computes academic performance as average of activity, quiz, and project', () => {
-    expect(
-      computeAcademicPerformance({ activityAverage: 80, quizAverage: 90, projectScore: 70 }),
-    ).toBe(80);
+const item = (type: string, score: number | null, maxScore = 100): GradeItem => ({
+  type,
+  assessmentType: type,
+  score,
+  maxScore,
+});
+
+const NO_PROJECT_WEIGHTS: SubjectGradingWeights = {
+  activity_weight: 35,
+  project_weight: 0,
+  attendance_weight: 15,
+  exam_weight: 50,
+};
+
+describe('risk bands', () => {
+  it('uses 90 / 80 / 75 on both copies', () => {
+    expect(RISK_BANDS).toEqual({ excelling: 90, stable: 80, at_risk: 75 });
+    expect(EDGE_RISK_BANDS).toEqual(RISK_BANDS);
   });
 
-  it('computes exam average from laboratory, midterm, and final', () => {
-    expect(
-      computeExamAverage({ laboratoryExamAverage: 60, midtermExamAverage: 80, finalExamAverage: 70 }),
-    ).toBe(70);
+  it.each([
+    [100, 'excelling'],
+    [90, 'excelling'],
+    [89.99, 'stable'],
+    [80, 'stable'],
+    [79.99, 'at_risk'],
+    [75, 'at_risk'],
+    [74.99, 'critical'],
+    [0, 'critical'],
+    [null, 'stable'],
+  ] as const)('classifies %s as %s', (score, level) => {
+    expect(classifyRiskScore(score)).toBe(level);
+    expect(edgeClassifyRiskScore(score)).toBe(level);
   });
 
-  it('applies 50/20/30 weighted formula when all components present', () => {
-    const score = computeRiskScore({
-      activityAverage: 80,
-      quizAverage: 80,
-      projectScore: 80,
-      attendancePercent: 90,
-      laboratoryExamAverage: 70,
-      midtermExamAverage: 70,
-      finalExamAverage: 70,
-    });
-    // academic=80, attendance=90, exams=70 => 0.5*80 + 0.2*90 + 0.3*70 = 79
-    expect(score).toBe(79);
+  it.each([
+    [89.995, 90],
+    [89.994, 89.99],
+    [79.995, 80],
+    [74.995, 75],
+    [89.6, 89.6],
+  ])('rounds %s to %s on both copies', (raw, rounded) => {
+    expect(roundGrade2(raw)).toBe(rounded);
+    expect(edgeRoundGrade2(raw)).toBe(rounded);
+  });
+});
+
+describe('classifyStudentRisk', () => {
+  const full = (activity: number, project: number, exam: number) => [
+    item('activity', activity),
+    item('project', project),
+    item('midterm_exam', exam),
+  ];
+
+  it('classifies a computed 89.995 as Excelling (90.00)', () => {
+    const r = classifyStudentRisk({ items: full(89.98, 90, 90), attendancePercent: 90, weights: null });
+    expect(r.risk_score).toBe(90);
+    expect(r.risk_level).toBe('excelling');
+    expect(r.coverage.complete).toBe(true);
   });
 
-  it('uses the requested sample calculation and returns Excelling', () => {
-    const result = computeRiskClassification({
-      activityAverage: 95,
-      quizAverage: 90,
-      projectScore: 94,
-      attendancePercent: 98,
-      laboratoryExamAverage: 91,
-      midtermExamAverage: 89,
-      finalExamAverage: 93,
-    });
-
-    expect(result.academic_performance).toBe(93);
-    expect(result.exam_average).toBe(91);
-    expect(result.risk_score).toBe(93.4);
-    expect(result.risk_level).toBe('excelling');
+  it('stores the same two-decimal value it classifies', () => {
+    const r = classifyStudentRisk({ items: full(89.6, 89.6, 89.6), attendancePercent: 89.6, weights: null });
+    expect(r.risk_score).toBe(89.6);
+    expect(r.risk_level).toBe('stable');
   });
 
-  it('excludes missing assessment types from academic and exam averages', () => {
-    expect(
-      computeAcademicPerformance({ activityAverage: 95, quizAverage: 90, projectScore: null }),
-    ).toBe(92.5);
-    expect(
-      computeExamAverage({ laboratoryExamAverage: 91, midtermExamAverage: null, finalExamAverage: 93 }),
-    ).toBe(92);
+  it('holds Excelling at Stable while Project has no scores', () => {
+    const items = [item('activity', 95), item('midterm_exam', 95)];
+    const r = classifyStudentRisk({ items, attendancePercent: 100, weights: null });
+    expect(r.band).toBe('excelling');
+    expect(r.risk_level).toBe('stable');
+    expect(r.coverage.missing).toEqual(['project']);
   });
 
-  it('classifies scores into four levels', () => {
-    expect(classifyRiskScore(95)).toBe('excelling');
-    expect(classifyRiskScore(82)).toBe('stable');
-    expect(classifyRiskScore(68)).toBe('at_risk');
-    expect(classifyRiskScore(55)).toBe('critical');
-    expect(classifyRiskScore(90)).toBe('excelling');
-    expect(classifyRiskScore(89.99)).toBe('stable');
-    expect(classifyRiskScore(80)).toBe('stable');
-    expect(classifyRiskScore(75)).toBe('stable');
-    expect(classifyRiskScore(74.99)).toBe('at_risk');
-    expect(classifyRiskScore(65)).toBe('at_risk');
-    expect(classifyRiskScore(60)).toBe('at_risk');
-    expect(classifyRiskScore(59.99)).toBe('critical');
-    expect(classifyRiskScore(59)).toBe('critical');
+  it('allows Excelling when the instructor set Project weight to 0', () => {
+    const items = [item('activity', 95), item('midterm_exam', 95)];
+    const r = classifyStudentRisk({ items, attendancePercent: 100, weights: NO_PROJECT_WEIGHTS });
+    expect(r.coverage.required).toEqual(['activity', 'attendance', 'exam']);
+    expect(r.risk_level).toBe('excelling');
   });
 
-  it('keeps the official 50/20/30 weights', () => {
-    expect(RISK_WEIGHTS).toEqual({ academic: 0.5, attendance: 0.2, exams: 0.3 });
-    expect(MINIMUM_GRADED_ACTIVITIES_FOR_CONFIDENT_RISK).toBe(3);
-    expect(MINIMUM_ATTENDANCE_SESSIONS_FOR_INDEPENDENT_RISK).toBe(3);
+  it('holds Crucial at Vulnerable without full coverage', () => {
+    const r = classifyStudentRisk({ items: [item('activity', 20)], attendancePercent: null, weights: null });
+    expect(r.risk_score).toBe(20);
+    expect(r.band).toBe('critical');
+    expect(r.risk_level).toBe('at_risk');
   });
 
-  const poorGrade = {
-    activityAverage: 20,
-    quizAverage: null,
-    projectScore: null,
-    attendancePercent: null,
-    laboratoryExamAverage: null,
-    midtermExamAverage: null,
-    finalExamAverage: null,
-  };
-
-  it('A. does not fabricate a score when there are no grades', () => {
-    const result = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      gradedActivityCount: 0,
-    });
-    expect(result.academic_performance).toBeNull();
-    expect(result.risk_score).toBeNull();
-    expect(result.risk_level).toBe('stable');
+  it('classifies Crucial with full coverage', () => {
+    const r = classifyStudentRisk({ items: full(50, 50, 50), attendancePercent: 50, weights: null });
+    expect(r.risk_level).toBe('critical');
   });
 
-  it('B. does not mark one very poor grade as Crucial', () => {
-    const result = computeRiskClassification({ ...poorGrade, gradedActivityCount: 1 });
-    expect(result.risk_score).toBe(20);
-    expect(result.risk_level).toBe('stable');
+  it('attendance alone: 40% is Vulnerable, 100% is Stable', () => {
+    const low = classifyStudentRisk({ items: [], attendancePercent: 40, weights: null });
+    expect(low.risk_score).toBe(40);
+    expect(low.risk_level).toBe('at_risk');
+    const high = classifyStudentRisk({ items: [], attendancePercent: 100, weights: null });
+    expect(high.risk_level).toBe('stable');
   });
 
-  it('C. stays Stable with two very poor grades', () => {
-    const result = computeRiskClassification({ ...poorGrade, activityAverage: 15, gradedActivityCount: 2 });
-    expect(result.risk_score).toBe(15);
-    expect(result.risk_level).toBe('stable');
+  it('no evidence gives no score and Stable', () => {
+    const r = classifyStudentRisk({ items: [], attendancePercent: null, weights: null });
+    expect(r.risk_score).toBeNull();
+    expect(r.risk_level).toBe('stable');
   });
 
-  it('D. applies the existing classification once three poor grades exist', () => {
-    const result = computeRiskClassification({ ...poorGrade, gradedActivityCount: 3 });
-    expect(result.risk_score).toBe(20);
-    expect(result.risk_level).toBe('critical');
+  it('Vulnerable and Stable bands are not changed by coverage', () => {
+    const vulnerable = classifyStudentRisk({ items: [item('activity', 77)], attendancePercent: null, weights: null });
+    expect(vulnerable.risk_level).toBe('at_risk');
+    const stable = classifyStudentRisk({ items: [item('activity', 85)], attendancePercent: null, weights: null });
+    expect(stable.risk_level).toBe('stable');
   });
 
-  it('E. does not turn three good grades into Crucial', () => {
-    const result = computeRiskClassification({
-      activityAverage: 95,
-      quizAverage: 95,
-      projectScore: 95,
-      attendancePercent: 95,
-      laboratoryExamAverage: 95,
-      midtermExamAverage: 95,
-      finalExamAverage: 95,
-      gradedActivityCount: 3,
-    });
-    expect(result.risk_level).toBe('excelling');
-    expect(result.risk_score).toBe(95);
-  });
-
-  it('F. updates classification when another grade supplies enough evidence', () => {
-    const before = computeRiskClassification({ ...poorGrade, gradedActivityCount: 2 });
-    const after = computeRiskClassification({ ...poorGrade, gradedActivityCount: 3 });
-    expect(before.risk_level).toBe('stable');
-    expect(after.risk_level).toBe('critical');
-    expect(after.risk_score).toBe(before.risk_score);
-  });
-
-  it('G. uses attendance bands only after three recorded sessions', () => {
-    const oneAbsence = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: 0,
-      attendanceSessionCount: 1,
-      gradedActivityCount: 0,
-    });
-    expect(oneAbsence.risk_score).toBe(0);
-    expect(oneAbsence.risk_level).toBe('stable');
-
-    const onePresence = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: 100,
-      attendanceSessionCount: 1,
-      gradedActivityCount: 0,
-    });
-    expect(onePresence.risk_score).toBe(100);
-    expect(onePresence.risk_level).toBe('stable');
-
-    const twoOfFive = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: (2 / 5) * 100,
-      attendanceSessionCount: 5,
-      gradedActivityCount: 0,
-    });
-    expect(twoOfFive.academic_performance).toBeNull();
-    expect(twoOfFive.risk_score).toBe(40);
-    expect(twoOfFive.risk_level).toBe('critical');
-
-    const twoOfThree = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: (2 / 3) * 100,
-      attendanceSessionCount: 3,
-      gradedActivityCount: 0,
-    });
-    expect(twoOfThree.risk_score).toBe(66.7);
-    expect(twoOfThree.risk_level).toBe('at_risk');
-
-    const threeOfThree = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: 100,
-      attendanceSessionCount: 3,
-      gradedActivityCount: 0,
-    });
-    expect(threeOfThree.risk_score).toBe(100);
-    expect(threeOfThree.risk_level).toBe('stable');
-  });
-
-  it('does not let one low grade or one absence become Crucial', () => {
-    const oneLowGrade = computeRiskClassification({ ...poorGrade, gradedActivityCount: 1 });
-    expect(oneLowGrade.risk_score).toBe(20);
-    expect(oneLowGrade.risk_level).toBe('stable');
-
-    const lowGradeAndOneAbsence = computeRiskClassification({
-      ...poorGrade,
-      attendancePercent: 0,
-      attendanceSessionCount: 1,
-      gradedActivityCount: 1,
-    });
-    expect(lowGradeAndOneAbsence.risk_level).toBe('stable');
-  });
-
-  it('does not let a high grade hide supported attendance risk', () => {
-    const hidden = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: 100,
-      attendancePercent: (2 / 5) * 100,
-      attendanceSessionCount: 5,
-      gradedActivityCount: 1,
-    });
-    expect(hidden.risk_level).toBe('critical');
-
-    const lowWithSupportedAbsence = computeRiskClassification({
-      ...poorGrade,
-      attendancePercent: (2 / 5) * 100,
-      attendanceSessionCount: 5,
-      gradedActivityCount: 1,
-    });
-    expect(lowWithSupportedAbsence.risk_level).toBe('critical');
-
-    const lowWithFullAttendance = computeRiskClassification({
-      ...poorGrade,
-      attendancePercent: 100,
-      attendanceSessionCount: 3,
-      gradedActivityCount: 1,
-    });
-    expect(lowWithFullAttendance.risk_level).toBe('stable');
-  });
-
-  it('keeps one high sparse grade Excelling and follows bands once three scores exist', () => {
-    const oneHigh = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: 95,
-      gradedActivityCount: 1,
-    });
-    expect(oneHigh.risk_level).toBe('excelling');
-
-    const sparseMix = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: 65,
-      gradedActivityCount: 2,
-    });
-    const enoughMix = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: 65,
-      gradedActivityCount: 3,
-    });
-    expect(sparseMix.risk_level).toBe('stable');
-    expect(enoughMix.risk_level).toBe('at_risk');
-    expect(enoughMix.risk_score).toBe(sparseMix.risk_score);
-  });
-
-  it('does not let omitted attendance sessions override a sparse-grade hold', () => {
-    const result = computeRiskClassification({
-      ...poorGrade,
-      activityAverage: null,
-      attendancePercent: 40,
-      gradedActivityCount: 0,
-    });
-    expect(result.risk_score).toBe(40);
-    expect(result.risk_level).toBe('stable');
-  });
-
-  it('returns full classification result', () => {
-    const result = computeRiskClassification({
-      activityAverage: 95,
-      quizAverage: 95,
-      projectScore: 95,
-      attendancePercent: 95,
-      laboratoryExamAverage: 95,
-      midtermExamAverage: 95,
-      finalExamAverage: 95,
-    });
-    expect(result.risk_level).toBe('excelling');
-    expect(result.risk_score).toBe(95);
-    expect(result.confidence).toBe(0.95);
-  });
-
-  it('shows the formula score only when it matches the official label', () => {
-    expect(formatOfficialRiskLabel('stable', 20)).toBe('Stable');
-    expect(formatOfficialRiskLabel('critical', 20)).toBe('Crucial (20)');
-    expect(formatOfficialRiskLabel('critical', 79)).toBe('Crucial');
-    expect(formatOfficialRiskLabel('at_risk', 66.7)).toBe('Vulnerable (66.7)');
-    expect(classifyRiskScore(20)).toBe('critical');
-    expect(classifyRiskScore(79)).toBe('stable');
-    expect(classifyRiskScore(66.7)).toBe('at_risk');
-  });
-
-  it('keeps the Edge Function classification identical to the app copy', () => {
-    const cases: RiskScoreInputs[] = [
-      {
-        ...poorGrade,
-        activityAverage: null,
-        gradedActivityCount: 0,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: 0,
-        attendanceSessionCount: 1,
-        gradedActivityCount: 0,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: 100,
-        attendanceSessionCount: 1,
-        gradedActivityCount: 0,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: (2 / 5) * 100,
-        attendanceSessionCount: 5,
-        gradedActivityCount: 0,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: (2 / 3) * 100,
-        attendanceSessionCount: 3,
-        gradedActivityCount: 0,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: 100,
-        attendanceSessionCount: 3,
-        gradedActivityCount: 0,
-      },
-      { ...poorGrade, gradedActivityCount: 1 },
-      { ...poorGrade, activityAverage: 15, gradedActivityCount: 2 },
-      {
-        ...poorGrade,
-        attendancePercent: 0,
-        attendanceSessionCount: 1,
-        gradedActivityCount: 1,
-      },
-      {
-        ...poorGrade,
-        activityAverage: 100,
-        attendancePercent: (2 / 5) * 100,
-        attendanceSessionCount: 5,
-        gradedActivityCount: 1,
-      },
-      {
-        ...poorGrade,
-        attendancePercent: 100,
-        attendanceSessionCount: 3,
-        gradedActivityCount: 1,
-      },
-      { ...poorGrade, gradedActivityCount: 3 },
-      {
-        activityAverage: 95,
-        quizAverage: 90,
-        projectScore: 94,
-        attendancePercent: 98,
-        laboratoryExamAverage: 91,
-        midtermExamAverage: 89,
-        finalExamAverage: 93,
-        gradedActivityCount: 3,
-        attendanceSessionCount: 12,
-      },
-      {
-        ...poorGrade,
-        activityAverage: null,
-        attendancePercent: 40,
-        gradedActivityCount: 0,
-      },
-    ];
-
-    for (const inputs of cases) {
-      const app = computeRiskClassification(inputs);
-      const edge = computeEdgeRiskClassification(inputs);
-      expect(edge.risk_level).toBe(app.risk_level);
-      expect(edge.risk_score).toBe(app.risk_score);
+  it('scores every Phase 1 worked example with the official weighted grade', () => {
+    for (const c of GRADE_CASES) {
+      const attendancePercent = attendancePercentOf(c.attendance);
+      const r = classifyStudentRisk({ items: c.items, attendancePercent, weights: c.weights });
+      const app = computeSubjectWeightedGrade({ items: c.items, attendancePercent, weights: c.weights });
+      expect(r.risk_score, c.name).toBe(roundGrade2(c.expected));
+      expect(r.risk_score, c.name).toBe(roundGrade2(app.weightedAverage));
+      expect(r.band, c.name).toBe(classifyRiskScore(roundGrade2(app.weightedAverage)));
     }
+  });
+
+  it('client coverage from stored columns matches the Edge coverage', () => {
+    const weightSets: Array<SubjectGradingWeights | null> = [null, NO_PROJECT_WEIGHTS];
+    for (const c of GRADE_CASES) {
+      for (const weights of weightSets) {
+        const attendancePercent = attendancePercentOf(c.attendance);
+        const r = classifyStudentRisk({ items: c.items, attendancePercent, weights });
+        const stored = {
+          activity_average: r.grade.activityAverage,
+          project_score: r.grade.projectAverage,
+          midterm_exam_average: r.grade.examAverage,
+          attendance_rate: attendancePercent != null ? attendancePercent / 100 : null,
+        };
+        expect(predictionCoverage(stored, weights), c.name).toEqual(r.coverage);
+      }
+    }
+  });
+});
+
+describe('legacyConfidence', () => {
+  it('keeps the existing 0.95 / 0.85 / 0.7 / 0.5 meaning', () => {
+    expect(legacyConfidence({ academicPerformance: 80, attendancePercent: 90, examAverage: 70 })).toBe(0.95);
+    expect(legacyConfidence({ academicPerformance: 80, attendancePercent: null, examAverage: 70 })).toBe(0.85);
+    expect(legacyConfidence({ academicPerformance: null, attendancePercent: 90, examAverage: null })).toBe(0.7);
+    expect(legacyConfidence({ academicPerformance: null, attendancePercent: null, examAverage: null })).toBe(0.5);
+  });
+});
+
+describe('formatOfficialRiskLabel', () => {
+  it('shows the two-decimal score only on a matching band', () => {
+    expect(formatOfficialRiskLabel('stable', 89.6)).toBe('Stable (89.60)');
+    expect(formatOfficialRiskLabel('excelling', 89.995)).toBe('Excelling (90.00)');
+    expect(formatOfficialRiskLabel('stable', 92)).toBe('Stable');
+    expect(formatOfficialRiskLabel('critical', null)).toBe('Crucial');
+  });
+});
+
+describe('predict-risk ownership and persistence', () => {
+  const src = readFileSync(resolve(__dirname, '../../supabase/functions/predict-risk/index.ts'), 'utf8');
+
+  it('rejects non-owners with 403 before any other read, write or email', () => {
+    const handler = src.slice(src.indexOf('auth.getUser('));
+    const check = handler.indexOf('isSubjectOwner(subject, user.id)');
+    expect(check).toBeGreaterThan(0);
+    expect(handler.slice(check, check + 400)).toContain('status: 403');
+    for (const later of ['.from("enrollments")', '.from("predictions")', 'sendBrevoEmail(', '.from("email_notifications")']) {
+      expect(handler.indexOf(later), later).toBeGreaterThan(check);
+    }
+  });
+
+  it('upserts by primary key and never deletes a whole subject', () => {
+    expect(src).toContain('upsert(plan.upserts, { onConflict: "id" })');
+    expect(src).not.toMatch(/\.insert\(rows\)/);
+    const deletes = src.match(/\.delete\(\)[\s\S]{0,120}/g) ?? [];
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toContain('.in("id", plan.deleteIds)');
+  });
+});
+
+describe('isSubjectOwner', () => {
+  it('accepts only the owning instructor', () => {
+    expect(isSubjectOwner({ instructor_id: 'u1' }, 'u1')).toBe(true);
+    expect(isSubjectOwner({ instructor_id: 'u2' }, 'u1')).toBe(false);
+    expect(isSubjectOwner({ instructor_id: null }, 'u1')).toBe(false);
+    expect(isSubjectOwner(null, 'u1')).toBe(false);
+    expect(isSubjectOwner({ instructor_id: '' }, '')).toBe(false);
+  });
+});
+
+describe('planPredictionWrites', () => {
+  const NOW = '2026-10-13T10:00:00.000Z';
+  const values = (studentId: string, over: Partial<PredictionValues> = {}): PredictionValues => ({
+    student_id: studentId,
+    subject_id: 'sub1',
+    prediction_type: 'risk_analysis',
+    risk_level: 'stable',
+    confidence: 0.95,
+    risk_score: 82,
+    recommendation: 'Keep going.',
+    attendance_rate: 0.9,
+    quiz_average: null,
+    assignment_average: null,
+    project_score: 85,
+    activity_average: 80,
+    laboratory_exam_average: null,
+    midterm_exam_average: 80,
+    final_exam_average: null,
+    exam_average: 80,
+    academic_performance: 82.5,
+    activity_completion_rate: 1,
+    comprehension_rating: 4,
+    ...over,
+  });
+  const stored = (id: string, createdAt: string, v: PredictionValues): ExistingPrediction => ({
+    ...v,
+    id,
+    created_at: createdAt,
+  });
+  let seq = 0;
+  const newId = () => `new-${++seq}`;
+
+  it('skips an unchanged recalculation entirely', () => {
+    const existing = [stored('p1', '2026-10-01T00:00:00Z', values('s1'))];
+    const plan = planPredictionWrites(existing, [values('s1')], { now: NOW, newId });
+    expect(plan).toEqual({ upserts: [], deleteIds: [], unchanged: 1 });
+  });
+
+  it('treats numeric strings from the database as equal values', () => {
+    const existing = [
+      stored('p1', '2026-10-01T00:00:00Z', values('s1', { risk_score: '82.00', confidence: '0.95' })),
+    ];
+    const plan = planPredictionWrites(existing, [values('s1')], { now: NOW, newId });
+    expect(plan.upserts).toEqual([]);
+  });
+
+  it('keeps the id on a same-level change and records the previous values', () => {
+    const existing = [stored('p1', '2026-10-01T00:00:00Z', values('s1'))];
+    const plan = planPredictionWrites(existing, [values('s1', { risk_score: 84, attendance_rate: 0.95 })], {
+      now: NOW,
+      newId,
+    });
+    expect(plan.upserts).toHaveLength(1);
+    expect(plan.upserts[0]).toMatchObject({
+      id: 'p1',
+      created_at: NOW,
+      risk_score: 84,
+      previous_risk_level: 'stable',
+      previous_attendance_rate: 0.9,
+    });
+    expect(plan.deleteIds).toEqual([]);
+  });
+
+  it('keeps the id on a level change', () => {
+    const existing = [stored('p1', '2026-10-01T00:00:00Z', values('s1'))];
+    const plan = planPredictionWrites(existing, [values('s1', { risk_level: 'at_risk', risk_score: 77 })], {
+      now: NOW,
+      newId,
+    });
+    expect(plan.upserts[0]).toMatchObject({ id: 'p1', risk_level: 'at_risk', previous_risk_level: 'stable' });
+  });
+
+  it('creates an id only for a new student', () => {
+    const existing = [stored('p1', '2026-10-01T00:00:00Z', values('s1'))];
+    const plan = planPredictionWrites(existing, [values('s1'), values('s2')], { now: NOW, newId: () => 'fresh' });
+    expect(plan.upserts).toEqual([
+      expect.objectContaining({ id: 'fresh', student_id: 's2', previous_risk_level: null, previous_attendance_rate: null }),
+    ]);
+    expect(plan.unchanged).toBe(1);
+  });
+
+  it('deletes only stale rows and older duplicates, keeping the newest id', () => {
+    const existing = [
+      stored('old-dup', '2026-09-01T00:00:00Z', values('s1')),
+      stored('p1', '2026-10-01T00:00:00Z', values('s1')),
+      stored('gone', '2026-10-01T00:00:00Z', values('s9')),
+      { id: 'orphan', student_id: null, created_at: null },
+    ];
+    const plan = planPredictionWrites(existing, [values('s1')], { now: NOW, newId });
+    expect(plan.upserts).toEqual([]);
+    expect(plan.deleteIds.sort()).toEqual(['gone', 'old-dup']);
+  });
+
+  it('never plans a delete when every row belongs to an enrolled student once', () => {
+    const existing = [
+      stored('p1', '2026-10-01T00:00:00Z', values('s1')),
+      stored('p2', '2026-10-01T00:00:00Z', values('s2', { risk_level: 'critical' })),
+    ];
+    const plan = planPredictionWrites(existing, [values('s1', { risk_score: 90, risk_level: 'excelling' }), values('s2')], {
+      now: NOW,
+      newId,
+    });
+    expect(plan.deleteIds).toEqual([]);
+    expect(plan.upserts.map((u) => u.id).sort()).toEqual(['p1', 'p2']);
   });
 });

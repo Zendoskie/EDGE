@@ -4,6 +4,7 @@ import {
   buildStudentRecord,
   canonicalRiskLevel,
   riskStatusLabel,
+  roundGrade2,
   type CanonicalRiskLevel,
   type RawEngagement,
   type StudentRecord,
@@ -138,7 +139,7 @@ function mapPredictionRow(row: PredictionRow): SubjectCoachingMetrics | null {
     riskClassification: canonicalRiskLevel(row.risk_level),
     // Official risk score only: no substitute value is ever shown as a risk score.
     riskScore:
-      row.risk_score != null && Number.isFinite(row.risk_score) ? Math.round(row.risk_score * 10) / 10 : null,
+      row.risk_score != null && Number.isFinite(row.risk_score) ? roundGrade2(row.risk_score) : null,
     attendancePercent: pctFromRate(row.attendance_rate),
     activityScorePercent:
       pctDirect(row.activity_average) ??
@@ -176,7 +177,7 @@ function formatMetricsBlock(m: SubjectCoachingMetrics): string {
   return [
     `Subject: ${m.subjectCode}${m.subjectName ? ` — ${m.subjectName}` : ""}`,
     `Risk classification (system-computed): ${riskStatusLabel(m.riskClassification)}`,
-    m.riskScore != null ? `Risk score: ${m.riskScore}` : null,
+    m.riskScore != null ? `Risk score: ${m.riskScore.toFixed(2)}` : null,
     m.attendancePercent != null ? `Attendance: ${m.attendancePercent}%` : null,
     m.activityScorePercent != null ? `Activity scores: ${m.activityScorePercent}%` : null,
     m.quizScorePercent != null ? `Quiz scores: ${m.quizScorePercent}%` : null,
@@ -232,11 +233,14 @@ async function loadEngagement(db: Db, userId: string): Promise<RawEngagement | n
 }
 
 async function loadStudentRecord(db: Db, userId: string): Promise<StudentRecord> {
+  // Release rows ride on the same request: RLS limits them to this student's rows, and the
+  // embedded filter enforces it again.
   const enr = await db
     .from("enrollments")
-    .select("subject_id, subjects(code, name)")
+    .select("subject_id, subjects(code, name, final_grade_releases(student_id, status, final_grade))")
     .eq("student_id", userId)
-    .eq("status", "active");
+    .eq("status", "active")
+    .eq("subjects.final_grade_releases.student_id", userId);
   if (enr.error) throw new CoachDataError("enrollments");
 
   const enrollments = enr.data ?? [];

@@ -18,6 +18,18 @@ import {
 } from '@/lib/gradebook';
 import { publishMissingGradeAlerts } from '@/lib/missing-grade-notifications';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
+import { subjectReleaseKey } from '@/lib/final-grade-freshness';
+import { missingItemLabel } from '@/lib/final-grade-status';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { FinalGradeReleasePanel, type ReleasePreview } from '@/components/FinalGradeReleasePanel';
+import {
+  computeReleaseGrade,
+  effectiveWeights,
+  evaluateGradeCompleteness,
+  type ReleaseActivity,
+  type ReleaseSubmission,
+} from '../../supabase/functions/_shared/final-grade-release.ts';
+import type { GradeWeights } from '../../supabase/functions/_shared/weighted-grading.ts';
 import type { EnrollmentListRow } from '@/types/dashboard';
 
 type SubmissionRow = {
@@ -25,7 +37,11 @@ type SubmissionRow = {
   activity_id: string | null;
   student_id: string | null;
   score: number | null;
+  assessment_type: string | null;
 };
+
+/** PostgREST max rows: a list this long may be truncated, so the release preview says so. */
+const MAX_ROWS = 1000;
 
 type ActivityRow = {
   id: string;
@@ -40,10 +56,16 @@ export function GradebookTable({
   subjectId,
   userId,
   activities,
+  gradingSystem,
+  attendance,
 }: {
   subjectId: string;
   userId?: string;
   activities: ActivityRow[];
+  /** Saved weights; null means the defaults apply, undefined means still loading. */
+  gradingSystem?: GradeWeights | null;
+  /** The subject's attendance rows; undefined means still loading. */
+  attendance?: Array<{ student_id: string | null; status: string }>;
 }) {
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -104,7 +126,7 @@ export function GradebookTable({
       if (activityIds.length === 0) return [] as SubmissionRow[];
       const { data, error } = await supabase
         .from('submissions')
-        .select('id, activity_id, student_id, score')
+        .select('id, activity_id, student_id, score, assessment_type')
         .in('activity_id', activityIds);
       if (error) throw error;
       return (data ?? []) as SubmissionRow[];
@@ -130,6 +152,55 @@ export function GradebookTable({
     savedScores,
     drafts,
   });
+
+  // Saved data only: drafts are not grades until saved, and a blank cell is never a zero.
+  const releasePreview = useMemo((): Map<string, ReleasePreview> | null => {
+    if (gradingSystem === undefined || attendance === undefined) return null;
+    const releaseActivities: ReleaseActivity[] = columns.map((c) => ({
+      id: c.id,
+      title: c.title,
+      type: c.type,
+      max_score: c.maxScore,
+    }));
+    const subsByStudent = new Map<string, Map<string, ReleaseSubmission>>();
+    for (const row of submissions) {
+      if (!row.student_id || !row.activity_id) continue;
+      if (!subsByStudent.has(row.student_id)) subsByStudent.set(row.student_id, new Map());
+      subsByStudent.get(row.student_id)!.set(row.activity_id, {
+        student_id: row.student_id,
+        activity_id: row.activity_id,
+        score: row.score,
+        assessment_type: row.assessment_type,
+      });
+    }
+    const statusesByStudent = new Map<string, string[]>();
+    for (const row of attendance) {
+      if (!row.student_id) continue;
+      if (!statusesByStudent.has(row.student_id)) statusesByStudent.set(row.student_id, []);
+      statusesByStudent.get(row.student_id)!.push(row.status);
+    }
+    const weights = effectiveWeights(gradingSystem);
+    const result = new Map<string, ReleasePreview>();
+    for (const studentId of enrolledIds) {
+      const input = {
+        activities: releaseActivities,
+        submissionsByActivity: subsByStudent.get(studentId) ?? new Map<string, ReleaseSubmission>(),
+        attendanceStatuses: statusesByStudent.get(studentId) ?? [],
+      };
+      const { complete, missing } = evaluateGradeCompleteness({ ...input, weights });
+      result.set(studentId, {
+        complete,
+        missing,
+        provisionalGrade: computeReleaseGrade({ ...input, savedWeights: gradingSystem }),
+      });
+    }
+    return result;
+  }, [gradingSystem, attendance, columns, submissions, enrolledIds]);
+
+  const hasUnsavedDrafts = Object.entries(drafts).some(
+    ([key, value]) => value.trim() !== (savedScores[key] != null ? String(savedScores[key]) : ''),
+  );
+  const previewMayBeIncomplete = submissions.length >= MAX_ROWS || (attendance?.length ?? 0) >= MAX_ROWS;
 
   const saveGrades = useMutation({
     mutationFn: async () => {
@@ -217,6 +288,7 @@ export function GradebookTable({
     onSuccess: async (result) => {
       setDrafts({});
       await queryClient.invalidateQueries({ queryKey: ['gradebook-submissions', subjectId] });
+      if (result?.saved) void queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       if (!result || result.saved === 0) {
         if (result?.skippedClears) {
           toast.message('No grades saved. Blank cells do not clear existing grades.');
@@ -254,7 +326,7 @@ export function GradebookTable({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant={missingCount > 0 ? 'secondary' : 'outline'}>
-            {missingCount === 0 ? 'No missing grades' : `${missingCount} missing`}
+            {missingCount === 0 ? 'No blank cells' : `${missingCount} blank ${missingCount === 1 ? 'cell' : 'cells'}`}
           </Badge>
           <span className="text-xs text-muted-foreground">
             Enter a score from 0 through each assessment&apos;s max. Empty cells stay unsaved.
@@ -291,6 +363,10 @@ export function GradebookTable({
                   {student.profile?.student_id ? (
                     <p className="text-[11px] font-normal text-muted-foreground truncate">{student.profile.student_id}</p>
                   ) : null}
+                  <RequiredGradesIndicator
+                    name={student.profile?.full_name || 'Student'}
+                    preview={releasePreview?.get(student.student_id)}
+                  />
                 </TableCell>
                 {columns.map((activity) => {
                   const key = gradeCellKey(student.student_id, activity.id);
@@ -336,6 +412,44 @@ export function GradebookTable({
           </TableBody>
         </Table>
       </div>
+
+      <FinalGradeReleasePanel
+        subjectId={subjectId}
+        students={students.map((s) => ({ id: s.student_id, name: s.profile?.full_name || 'Student' }))}
+        preview={releasePreview}
+        hasUnsavedDrafts={hasUnsavedDrafts}
+        previewMayBeIncomplete={previewMayBeIncomplete}
+      />
     </div>
+  );
+}
+
+/** Required scores still missing under the Phase 3B release rules (saved data only). */
+function RequiredGradesIndicator({ name, preview }: { name: string; preview: ReleasePreview | undefined }) {
+  if (!preview) return null;
+  if (preview.complete) {
+    return <p className="mt-1 text-[10px] font-normal text-emerald-700 dark:text-emerald-400">All required grades entered</p>;
+  }
+  const n = preview.missing.length;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="mt-1 text-[10px] font-normal text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
+          aria-label={`${name}: ${n} required ${n === 1 ? 'grade' : 'grades'} missing`}
+        >
+          {n} required missing
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 text-xs">
+        <p className="mb-1 font-medium">Needed before this grade can be released</p>
+        <ul className="space-y-0.5 text-muted-foreground">
+          {preview.missing.map((item, i) => (
+            <li key={i}>{missingItemLabel(item)}</li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }

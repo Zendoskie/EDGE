@@ -5,13 +5,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
-import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
-import {
-  formatAssessmentTypeLabel,
-  isCourseworkAssessmentType,
-  isExamAssessmentType,
-  isProjectAssessmentType,
-} from '@/lib/assessment-types';
+import { computeSubjectWeightedGrade } from '@/lib/weighted-grading';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
+import { FinalGradeBadge } from '@/components/FinalGradeBadge';
+import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { trackStudentActivity } from '@/lib/track-activity';
@@ -148,6 +145,9 @@ export default function MyScores() {
     enabled: subjectIds.length > 0,
   });
 
+  const releases = useStudentFinalGradeReleases(user?.id);
+  const getRelease = (subjectId: string) => releases.data?.find((r) => r.subject_id === subjectId) ?? null;
+
   const getScore = (activityId: string) => submissions.find((s: any) => s.activity_id === activityId)?.score;
   const getAssessmentType = (activityId: string) =>
     submissions.find((s: any) => s.activity_id === activityId)?.assessment_type;
@@ -177,22 +177,14 @@ export default function MyScores() {
     const attendancePercent = attendanceRecords.length
       ? (attendanceRecords.filter((a: any) => a.status === 'present' || a.status === 'late').length / attendanceRecords.length) * 100
       : null;
-    const activityAverage = averageOf(
-      withScores
-        .filter((x: any) => isCourseworkAssessmentType(x.assessmentType || x.type))
-        .map((x: any) => x.pct),
-    );
-    const projectAverage = averageOf(
-      withScores.filter((x: any) => isProjectAssessmentType(x.assessmentType || x.type)).map((x: any) => x.pct),
-    );
-    const examAverage = averageOf(
-      withScores.filter((x: any) => isExamAssessmentType(x.assessmentType || x.type)).map((x: any) => x.pct),
-    );
-    const weightedAverage = computeWeightedGrade({
-      activityAverage,
-      projectAverage,
+    const { weightedAverage } = computeSubjectWeightedGrade({
+      items: withScores.map((x: any) => ({
+        type: x.type,
+        assessmentType: x.assessmentType,
+        score: x.score,
+        maxScore: x.max_score,
+      })),
       attendancePercent,
-      examAverage,
       weights: getGradingSystem(sid) ?? null,
     });
     return {
@@ -230,9 +222,17 @@ export default function MyScores() {
               <span className="font-medium text-foreground"> (sum of graded activity percentages) / (count of graded activities)</span>.
             </p>
             <p>
-              If your instructor configured a grading system for the subject, the system also computes
-              <span className="font-medium text-foreground"> Weighted %</span> using Activity, Project, Attendance, and Exam categories.
+              The system also computes
+              <span className="font-medium text-foreground"> Weighted %</span> using Activity, Project, Attendance, and Exam categories,
+              with your instructor&apos;s weights or the default weights if none were set.
               Formula: <span className="font-medium text-foreground">(Activity x w1 + Project x w2 + Attendance x w3 + Exam x w4) / (w1 + w2 + w3 + w4)</span>.
+              Assessments in the same category share its weight equally. The Midterm Exam carries the full Exam weight
+              until your Final Exam score is entered; then Midterm and Final share it equally.
+            </p>
+            <p>
+              The weighted grade is <span className="font-medium text-foreground">provisional</span>. Your official final
+              grade shows as <span className="font-medium text-foreground">Final</span> once your instructor releases it,
+              or <span className="font-medium text-foreground">Under review</span> if grades change after release.
             </p>
             <p>
               Activities marked <span className="font-medium text-foreground">—</span> are not graded yet and are excluded from the average until a score is entered.
@@ -253,10 +253,15 @@ export default function MyScores() {
                           Activity Avg: {average}%
                         </Badge>
                       )}
-                      {gradingSystem && weightedAverage != null ? (
-                        <Badge variant="secondary">
-                          Weighted: {Math.round(weightedAverage)}%
-                        </Badge>
+                      <FinalGradeBadge
+                        className=""
+                        release={getRelease(subjectId)}
+                        provisionalGrade={weightedAverage}
+                        loading={releases.isLoading}
+                        error={releases.isError}
+                      />
+                      {weightedAverage != null && !gradingSystem ? (
+                        <span className="text-xs text-muted-foreground">(default weights)</span>
                       ) : null}
                     </div>
                   </div>

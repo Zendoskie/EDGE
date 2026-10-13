@@ -593,6 +593,76 @@ export type Database = {
           },
         ]
       }
+      final_grade_input_versions: {
+        Row: {
+          last_txid: unknown | null
+          subject_id: string
+          version: number
+        }
+        Insert: {
+          last_txid?: unknown | null
+          subject_id: string
+          version?: number
+        }
+        Update: {
+          last_txid?: unknown | null
+          subject_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "final_grade_input_versions_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: true
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      final_grade_releases: {
+        Row: {
+          final_grade: number | null
+          released_at: string
+          released_by: string | null
+          review_flagged_at: string | null
+          review_reason: string | null
+          status: string
+          student_id: string
+          subject_id: string
+          weights: Json
+        }
+        Insert: {
+          final_grade?: number | null
+          released_at?: string
+          released_by?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          status: string
+          student_id: string
+          subject_id: string
+          weights: Json
+        }
+        Update: {
+          final_grade?: number | null
+          released_at?: string
+          released_by?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
+          status?: string
+          student_id?: string
+          subject_id?: string
+          weights?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "final_grade_releases_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       generated_reports: {
         Row: {
           created_by: string
@@ -1994,6 +2064,24 @@ export type Database = {
         Args: { p_student_id: string }
         Returns: undefined
       }
+      commit_final_grade_releases: {
+        Args: {
+          p_expected_version: number
+          p_released_by: string
+          p_rows: Json
+          p_subject_id: string
+        }
+        Returns: Json
+      }
+      final_grade_inputs_changed: {
+        Args: {
+          p_reason: string
+          p_student_id: string
+          p_subject_id: string
+          p_weights?: Json
+        }
+        Returns: undefined
+      }
       instructor_reply_to_feedback: {
         Args: { p_feedback_id: string; p_kind: string; p_response: string }
         Returns: undefined
@@ -2108,6 +2196,15 @@ export type Database = {
           subject_id: string
           subject_name: string | null
         }[]
+      }
+      record_attendance: {
+        Args: {
+          p_date: string
+          p_status: string
+          p_student_id: string
+          p_subject_id: string
+        }
+        Returns: Database["public"]["Tables"]["attendance"]["Row"][]
       }
       recompute_student_engagement: {
         Args: { p_student_id: string }

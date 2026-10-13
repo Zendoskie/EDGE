@@ -18,6 +18,20 @@ export async function resolveProfileSource(
   return data?.full_name?.trim() || data?.email?.trim() || fallback;
 }
 
+/** Memoized resolveProfileSource: repeated or concurrent events from one actor share a single lookup. */
+export function createProfileSourceCache(fallback = EDGE_SYSTEM_SOURCE) {
+  const cache = new Map<string, Promise<string>>();
+  return (userId: string | null | undefined): Promise<string> => {
+    if (!userId) return Promise.resolve(fallback);
+    let name = cache.get(userId);
+    if (!name) {
+      name = resolveProfileSource(userId, fallback);
+      cache.set(userId, name);
+    }
+    return name;
+  };
+}
+
 export async function resolveSubjectInstructorSource(
   subjectId: string | null | undefined,
   fallback = EDGE_SYSTEM_SOURCE,

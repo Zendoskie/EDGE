@@ -2,22 +2,38 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  DEFAULT_SUBJECT_GRADING_WEIGHTS as OFFICIAL_DEFAULT_WEIGHTS,
+  assessmentPercent as officialAssessmentPercent,
   averageOf as officialAverageOf,
+  computeExamAverage as officialComputeExamAverage,
+  computeSubjectWeightedGrade as officialComputeSubjectWeightedGrade,
   computeWeightedGrade as officialComputeWeightedGrade,
+  roundGrade2 as officialRoundGrade2,
+  type SubjectGradingWeights,
 } from '@/lib/weighted-grading';
+import { GRADE_CASES, attendancePercentOf, type GradeCase } from '@/lib/weighted-grading.fixtures';
 import {
   isCourseworkAssessmentType,
   isExamAssessmentType,
+  isFinalExamAssessmentType,
+  isMidtermSideAssessmentType,
   isProjectAssessmentType,
 } from '@/lib/assessment-types';
 import { canonicalRiskLevel as officialCanonicalRisk, riskLabel as officialRiskLabel } from '@/lib/risk-utils';
 import {
+  DEFAULT_SUBJECT_GRADING_WEIGHTS,
+  answerGradeLookup,
+  assessmentPercent,
   averageOf,
   buildStudentRecord,
+  computeExamAverage,
+  computeSubjectWeightedGrade,
   computeWeightedGrade,
   findAssessments,
   isCourseworkType,
   isExamType,
+  isFinalExamType,
+  isMidtermSideType,
   isOtherStudentRequest,
   isProjectType,
   parseAssessmentReference,
@@ -117,7 +133,7 @@ describe('A. actual quiz score question', () => {
 });
 
 describe('B. current subject grade', () => {
-  it('returns the official weighted grade, not an AI formula', async () => {
+  it('returns the Phase 1 weighted grade, labelled provisional, not an AI formula', async () => {
     const pl = record.subjects.find((s) => s.code === 'PL101')!;
     const expected = officialComputeWeightedGrade({
       activityAverage: officialAverageOf([82, 60, 90]),
@@ -126,21 +142,44 @@ describe('B. current subject grade', () => {
       examAverage: 75,
       weights: input.gradingSystems[0],
     })!;
-    expect(pl.officialGrade).toBeCloseTo(expected, 10);
+    expect(pl.provisionalGrade).toBeCloseTo(expected, 10);
 
     const { deps, callModel } = makeDeps();
     const res = await runCoachChat(deps, [user('What is my current grade in PL101?')]);
     expect(res.source).toBe('records');
-    expect(res.reply).toContain(`your current grade is ${Math.round(expected)}%`);
-    expect(res.reply).toContain('official weighted grade');
+    expect(res.reply).toContain(`Your provisional weighted grade is ${officialRoundGrade2(expected)!.toFixed(2)}%`);
+    expect(res.reply).toContain('It is not your official final grade');
+    expect(res.reply).not.toMatch(/official weighted grade|your official final grade is/i);
     expect(callModel).not.toHaveBeenCalled();
   });
 
-  it('says the grade is unavailable when no grading system exists', async () => {
+  it('says the grade is unavailable when nothing is graded and no attendance exists', async () => {
     const { deps } = makeDeps();
     const res = await runCoachChat(deps, [user('What is my current grade in CS102?')]);
-    expect(res.reply).toMatch(/no grading system has been set up/i);
-    expect(res.reply).toMatch(/nothing has been graded yet/i);
+    expect(res.reply).toMatch(/isn't available yet because there is no graded work or attendance/i);
+    expect(res.reply).not.toMatch(/no grading system/i);
+  });
+
+  it('uses and names the default weights when the subject has no saved grading row', async () => {
+    const withCsGrade = buildStudentRecord({
+      ...input,
+      submissions: [...input.submissions, { activity_id: 'b1', score: 8, assessment_type: 'quiz' }],
+    });
+    const cs = withCsGrade.subjects.find((s) => s.code === 'CS102')!;
+    expect(cs.usesDefaultWeights).toBe(true);
+    expect(cs.gradingWeights).toEqual({ activity: 25, project: 25, attendance: 15, exam: 35 });
+    expect(cs.provisionalGrade).toBeCloseTo(80, 10);
+    const reply = answerGradeLookup(withCsGrade, 'What is my current grade in CS102?', null);
+    expect(reply).toContain('Your provisional weighted grade is 80.00%');
+    expect(reply).toMatch(/default grading weights/i);
+
+    const { deps, callModel } = makeDeps({ loadRecord: vi.fn(async () => withCsGrade) });
+    await runCoachChat(deps, [user('How am I performing in CS102?')]);
+    const system = callModel.mock.calls[0][0] as string;
+    expect(system).toContain(
+      'Provisional weighted grade (NOT the official final grade): 80.00% (weighted by default grading weights (not customized by the instructor)',
+    );
+    expect(system).not.toContain('no grading system configured');
   });
 });
 
@@ -153,7 +192,7 @@ describe('C. personalised study recommendation', () => {
     expect(system).toContain('- Quiz 1 [Quiz]: 41/50 (82%)');
     expect(system).toContain('Quiz 2 (Quiz) scored 60%, below 70%');
     expect(system).toContain('Attendance: 75% (8 present, 1 late, 3 absent of 12 sessions)');
-    expect(system).toContain('Official risk classification: Vulnerable; official risk score: 61.5');
+    expect(system).toContain('Official risk classification: Vulnerable; official risk score: 61.50');
     expect(system).toContain('Engagement level: Active');
     expect(system).toContain('Project 1 (Project) has no score recorded and its due date has passed');
     expect(system).toContain('Quiz 3 [Quiz]: not graded yet, due 2026-10-09');
@@ -461,21 +500,81 @@ describe('L. official grade calculation unchanged', () => {
       expect(isCourseworkType(t)).toBe(isCourseworkAssessmentType(t));
       expect(isProjectType(t)).toBe(isProjectAssessmentType(t));
       expect(isExamType(t)).toBe(isExamAssessmentType(t));
+      expect(isMidtermSideType(t)).toBe(isMidtermSideAssessmentType(t));
+      expect(isFinalExamType(t)).toBe(isFinalExamAssessmentType(t));
+    }
+  });
+
+  it('mirrors the default weights, score normalization and Exam split', () => {
+    expect(DEFAULT_SUBJECT_GRADING_WEIGHTS).toEqual(OFFICIAL_DEFAULT_WEIGHTS);
+    const raw = [null, undefined, 0, -10, 45, 100, Number.NaN, Number.POSITIVE_INFINITY];
+    for (const s of raw) for (const m of raw) {
+      expect(assessmentPercent(s, m)).toBe(officialAssessmentPercent(s, m));
+    }
+    const sides = [[], [null], [0], [80], [90, 70]];
+    for (const mid of sides) for (const fin of sides) {
+      expect(computeExamAverage(mid, fin)).toBe(officialComputeExamAverage(mid, fin));
     }
   });
 
   it('record grade equals the My Scores computation for the same data', () => {
     const pl = record.subjects.find((s) => s.code === 'PL101')!;
-    const pct = (s: number, m: number) => Math.round((s / m) * 100);
-    const expected = officialComputeWeightedGrade({
-      activityAverage: officialAverageOf([pct(41, 50), pct(30, 50), pct(18, 20)]),
-      projectAverage: officialAverageOf([]),
+    const expected = officialComputeSubjectWeightedGrade({
+      items: input.activities
+        .filter((a) => a.subject_id === 'pl')
+        .map((a) => {
+          const sub = input.submissions.find((s) => s.activity_id === a.id);
+          return { type: a.type, assessmentType: sub?.assessment_type, score: sub?.score ?? null, maxScore: a.max_score };
+        }),
       attendancePercent: (9 / 12) * 100,
-      examAverage: officialAverageOf([pct(75, 100)]),
-      weights: input.gradingSystems[0],
-    });
-    expect(pl.officialGrade).toBe(expected);
+      weights: input.gradingSystems[0] as SubjectGradingWeights,
+    }).weightedAverage;
+    expect(pl.provisionalGrade).toBe(expected);
   });
+
+  /** Converts a shared grade case into the raw rows the AI Coach loads for one subject. */
+  function toRecordInput(c: GradeCase): StudentRecordInput {
+    const activities = c.items.map((it, i) => ({
+      id: `g${i}`,
+      subject_id: 'sx',
+      title: `Assessment ${i + 1}`,
+      type: it.type ?? null,
+      max_score: it.maxScore ?? null,
+      due_date: null,
+    }));
+    const submissions = c.items.flatMap((it, i) =>
+      it.score === undefined ? [] : [{ activity_id: `g${i}`, score: it.score, assessment_type: it.assessmentType ?? null }],
+    );
+    const attendance = c.attendance
+      ? [
+          ...Array.from({ length: c.attendance.present }, () => ({ subject_id: 'sx', status: 'present' })),
+          ...Array.from({ length: c.attendance.absent }, () => ({ subject_id: 'sx', status: 'absent' })),
+        ]
+      : [];
+    return {
+      enrollments: [{ subject_id: 'sx', subjects: { code: 'SX101', name: 'Shared Case' } }],
+      activities,
+      submissions,
+      attendance,
+      gradingSystems: c.weights ? [{ subject_id: 'sx', ...c.weights }] : [],
+      predictions: [],
+      engagement: null,
+    };
+  }
+
+  for (const c of GRADE_CASES) {
+    it(`matches My Scores and Parent Performance: ${c.name}`, () => {
+      const args = { items: c.items, attendancePercent: attendancePercentOf(c.attendance), weights: c.weights };
+      const official = officialComputeSubjectWeightedGrade(args);
+      expect(computeSubjectWeightedGrade(args)).toEqual(official);
+
+      const subject = buildStudentRecord(toRecordInput(c)).subjects[0];
+      expect(subject.provisionalGrade).toBe(official.weightedAverage);
+      if (c.expected == null) expect(subject.provisionalGrade).toBeNull();
+      else expect(subject.provisionalGrade).toBeCloseTo(c.expected, 10);
+      expect(subject.usesDefaultWeights).toBe(c.weights == null);
+    });
+  }
 });
 
 describe('repeated study-plan questions', () => {
@@ -591,5 +690,107 @@ describe('assessment reference parsing', () => {
     expect(parseAssessmentReference('what is my grade in PL101')).toBeNull();
     const pl = record.subjects.find((s) => s.code === 'PL101')!;
     expect(findAssessments(pl, { key: 'quiz', number: null, label: 'Quiz' }).map((a) => a.title)).toEqual(['Quiz 1', 'Quiz 2', 'Quiz 3']);
+  });
+});
+
+describe('Phase 3C: official final grade wording', () => {
+  type Rel = { student_id?: string; status?: string | null; final_grade?: number | string | null };
+  const withRelease = (releases: Rel[] | Rel | null | undefined) =>
+    buildStudentRecord({
+      ...input,
+      enrollments: [
+        {
+          subject_id: 'pl',
+          subjects: releases === undefined
+            ? { code: 'PL101', name: 'Programming Logic' }
+            : { code: 'PL101', name: 'Programming Logic', final_grade_releases: releases },
+        },
+        input.enrollments[1],
+      ],
+    });
+  const plOf = (r: StudentRecord) => r.subjects.find((s) => s.code === 'PL101')!;
+  const provisional = () => officialRoundGrade2(plOf(record).provisionalGrade)!.toFixed(2);
+  const systemFor = async (r: StudentRecord) => {
+    const { deps, callModel } = makeDeps({ loadRecord: vi.fn(async () => r) });
+    await runCoachChat(deps, [user('How am I performing in PL101?')]);
+    return callModel.mock.calls[0][0] as string;
+  };
+
+  it('no release row: provisional only, never official or final', async () => {
+    const r = withRelease([]);
+    expect(plOf(r).finalRelease).toEqual({ kind: 'not_released' });
+    const reply = answerGradeLookup(r, 'What is my grade in PL101?', null);
+    expect(reply).toContain(`Your provisional weighted grade is ${provisional()}%`);
+    expect(reply).toContain('has not released a final grade');
+    expect(reply).not.toMatch(/official final grade is|official weighted grade/i);
+    const system = await systemFor(r);
+    expect(system).toContain('Official final grade: NOT RELEASED');
+    expect(system).toContain('Provisional weighted grade (NOT the official final grade)');
+    expect(system).not.toContain('Official current grade');
+  });
+
+  it('released row with a valid grade: Final with the released value', async () => {
+    const r = withRelease([{ student_id: 'me', status: 'released', final_grade: '88.50' }]);
+    expect(plOf(r).finalRelease).toEqual({ kind: 'final', grade: 88.5 });
+    expect(answerGradeLookup(r, 'What is my grade in PL101?', null)).toContain('your official final grade is 88.50%');
+    expect(await systemFor(r)).toContain('Official final grade: 88.50% (released by the instructor)');
+  });
+
+  it('needs_review: Under review and never the cleared former final grade', async () => {
+    // A stray grade on a needs_review row must still never surface.
+    const r = withRelease([{ student_id: 'me', status: 'needs_review', final_grade: 91.25 }]);
+    expect(plOf(r).finalRelease).toEqual({ kind: 'under_review' });
+    const reply = answerGradeLookup(r, 'What is my grade in PL101?', null);
+    expect(reply).toMatch(/under review/i);
+    expect(reply).not.toContain('91.25');
+    expect(reply).not.toMatch(/official final grade is/i);
+    const system = await systemFor(r);
+    expect(system).toContain('Official final grade: UNDER REVIEW');
+    expect(system).not.toContain('91.25');
+  });
+
+  it('released without a valid grade, several rows, or rows not loaded: never Final, points to My Scores', () => {
+    for (const rel of [
+      [{ status: 'released', final_grade: null }],
+      [{ status: 'released', final_grade: 140 }],
+      [{ status: 'released', final_grade: 80 }, { status: 'released', final_grade: 70 }],
+      undefined,
+      null,
+    ] as Array<Rel[] | null | undefined>) {
+      const r = withRelease(rel);
+      expect(plOf(r).finalRelease).toEqual({ kind: 'unknown' });
+      const reply = answerGradeLookup(r, 'What is my grade in PL101?', null);
+      expect(reply).toContain('Check My Scores');
+      expect(reply).not.toMatch(/official final grade is/i);
+    }
+  });
+
+  it('the fallback summary uses the same wording', () => {
+    const r = withRelease([{ status: 'needs_review', final_grade: null }]);
+    const { deps } = makeDeps({ loadRecord: vi.fn(async () => r) });
+    return runCoachChat({ ...deps, callModel: async () => { throw new Error('down'); } }, [user('Recommend a study plan')]).then(
+      (res) => {
+        expect(res.source).toBe('fallback');
+        expect(res.reply).toMatch(/under review/i);
+        expect(res.reply).not.toMatch(/official weighted grade/i);
+      },
+    );
+  });
+
+  it('the prompt rule forbids calling a provisional grade official', () => {
+    const coach = readFileSync(resolve(__dirname, '../../supabase/functions/ai-coach/coach-chat.ts'), 'utf8');
+    expect(coach).toContain("the 'Provisional weighted grade' is not official");
+    expect(coach).toContain("only when the 'Official final grade' line shows a released value");
+    expect(coach).not.toContain("quote the 'Official current grade' line");
+  });
+
+  it('release rows ride on the existing enrollments request: no extra query, model call or channel', () => {
+    const index = readFileSync(resolve(__dirname, '../../supabase/functions/ai-coach/index.ts'), 'utf8');
+    expect(index).toContain('.select("subject_id, subjects(code, name, final_grade_releases(student_id, status, final_grade))")');
+    expect(index).toContain('.eq("subjects.final_grade_releases.student_id", userId)');
+    expect(index).not.toMatch(/from\(\s*["']final_grade_releases["']\s*\)/);
+    expect(index.match(/\.from\("/g)?.length).toBe(13);
+    expect(index.match(/\.rpc\(/g)?.length ?? 0).toBe(1);
+    expect(index).not.toMatch(/release-final-grades|commit_final_grade_releases|\.channel\(/);
   });
 });

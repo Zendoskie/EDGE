@@ -154,7 +154,7 @@ export default function GuidanceReferrals() {
 
       {r.prediction?.risk_score != null ? (
         <p className="text-xs text-muted-foreground">
-          Risk score: <span className="font-medium text-foreground">{Number(r.prediction.risk_score).toFixed(1)}/100</span>
+          Risk score: <span className="font-medium text-foreground">{Number(r.prediction.risk_score).toFixed(2)}/100</span>
         </p>
       ) : null}
 

@@ -16,13 +16,10 @@ import { PageHeader } from '@/components/shell/PageHeader';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { averageOf, computeWeightedGrade } from '@/lib/weighted-grading';
-import {
-  formatAssessmentTypeLabel,
-  isCourseworkAssessmentType,
-  isExamAssessmentType,
-  isProjectAssessmentType,
-} from '@/lib/assessment-types';
+import { computeSubjectWeightedGrade } from '@/lib/weighted-grading';
+import { FinalGradeBadge } from '@/components/FinalGradeBadge';
+import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
+import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
@@ -323,6 +320,9 @@ export default function ParentPerformance() {
     },
   });
 
+  // Scoped to the approved child: the parent policy alone would also return other linked children.
+  const releases = useStudentFinalGradeReleases(studentId);
+
   const allSubjectIdsKey = useMemo(() => {
     const set = new Set<string>();
     for (const s of enrolledSubjects) {
@@ -520,22 +520,14 @@ export default function ParentPerformance() {
       });
       const graded = items.filter((i) => i.pct != null);
       const average = graded.length > 0 ? Math.round(graded.reduce((acc, cur) => acc + (cur.pct ?? 0), 0) / graded.length) : null;
-      const activityAverage = averageOf(
-        items
-          .filter((i) => isCourseworkAssessmentType(i.assessmentType || i.type))
-          .map((i) => i.pct),
-      );
-      const projectAverage = averageOf(
-        items.filter((i) => isProjectAssessmentType(i.assessmentType || i.type)).map((i) => i.pct),
-      );
-      const examAverage = averageOf(
-        items.filter((i) => isExamAssessmentType(i.assessmentType || i.type)).map((i) => i.pct),
-      );
-      const weightedAverage = computeWeightedGrade({
-        activityAverage,
-        projectAverage,
+      const { weightedAverage } = computeSubjectWeightedGrade({
+        items: items.map((i) => ({
+          type: i.type,
+          assessmentType: i.assessmentType,
+          score: i.score,
+          maxScore: i.max_score,
+        })),
         attendancePercent,
-        examAverage,
         weights: gradingSystem,
       });
       return {
@@ -903,6 +895,10 @@ export default function ParentPerformance() {
                 <FileText className="h-4 w-4" />
                 Grades and activities
               </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Weighted grades are provisional. A grade shows as Final only after the instructor releases it, and as
+                Under review if grades change after release.
+              </p>
             </CardHeader>
             <CardContent className="px-4 pb-4">
               {gradesBySubject.length === 0 ? (
@@ -917,8 +913,14 @@ export default function ParentPerformance() {
                           {s.average != null ? (
                             <Badge variant="outline" className="text-xs">Avg: {s.average}%</Badge>
                           ) : null}
-                          {s.gradingSystem && s.weightedAverage != null ? (
-                            <Badge variant="secondary" className="text-xs">Weighted: {Math.round(s.weightedAverage)}%</Badge>
+                          <FinalGradeBadge
+                            release={releases.data?.find((r) => r.subject_id === s.id) ?? null}
+                            provisionalGrade={s.weightedAverage}
+                            loading={releases.isLoading}
+                            error={releases.isError}
+                          />
+                          {s.weightedAverage != null && !s.gradingSystem ? (
+                            <span className="text-[10px] text-muted-foreground">(default weights)</span>
                           ) : null}
                         </div>
                       </div>

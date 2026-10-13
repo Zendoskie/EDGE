@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { computeRiskClassification } from "../_shared/risk-scoring.ts";
+import {
+  classifyStudentRisk,
+  isSubjectOwner,
+  legacyAcademicPerformance,
+  legacyConfidence,
+  legacyExamAverage,
+  planPredictionWrites,
+  PREDICTION_VALUE_COLUMNS,
+  type ExistingPrediction,
+  type PredictionValues,
+} from "../_shared/risk-scoring.ts";
+import type { GradeItem, GradeWeights } from "../_shared/weighted-grading.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,8 +54,7 @@ interface StudentMetrics {
   final_exam_average: number | null;
   activity_completion_rate: number | null;
   comprehension_rating: number | null;
-  graded_activity_count: number;
-  attendance_session_count: number;
+  grade_items: GradeItem[];
 }
 
 type AssessmentType =
@@ -81,37 +91,6 @@ function normalizeAssessmentType(value: unknown): AssessmentType | null {
   return ASSESSMENT_TYPE_ALIASES[key] ?? null;
 }
 
-function classifyStudent(metrics: StudentMetrics): {
-  risk_level: "critical" | "at_risk" | "stable" | "excelling";
-  confidence: number;
-  risk_score: number | null;
-  academic_performance: number | null;
-  exam_average: number | null;
-} {
-  const attendancePercent =
-    metrics.attendance_rate != null ? metrics.attendance_rate * 100 : null;
-
-  const result = computeRiskClassification({
-    activityAverage: metrics.activity_average,
-    quizAverage: metrics.quiz_average,
-    projectScore: metrics.project_score,
-    attendancePercent,
-    laboratoryExamAverage: metrics.laboratory_exam_average,
-    midtermExamAverage: metrics.midterm_exam_average,
-    finalExamAverage: metrics.final_exam_average,
-    gradedActivityCount: metrics.graded_activity_count,
-    attendanceSessionCount: metrics.attendance_session_count,
-  });
-
-  return {
-    risk_level: result.risk_level,
-    confidence: result.confidence,
-    risk_score: result.risk_score,
-    academic_performance: result.academic_performance,
-    exam_average: result.exam_average,
-  };
-}
-
 function pct(value: number | null): string {
   return value != null && Number.isFinite(value) ? `${Math.round(value)}%` : "no data yet";
 }
@@ -133,7 +112,8 @@ function buildRecommendation(opts: {
     .sort((a, b) => a.value - b.value)[0];
 
   if (opts.risk_level === "excelling") {
-    return `Maintain excellent performance. Current score is ${pct(opts.risk_score)}; keep the same study habits and attendance pattern.`;
+    const score = opts.risk_score != null ? `${opts.risk_score.toFixed(2)}%` : "no data yet";
+    return `Maintain excellent performance. Current score is ${score}; keep the same study habits and attendance pattern.`;
   }
   if (opts.risk_level === "stable") {
     return lowest
@@ -224,19 +204,35 @@ serve(async (req) => {
 
     const { data: subject, error: subjectErr } = await supabase
       .from("subjects")
-      .select("code, name")
+      .select(
+        "code, name, instructor_id, subject_grading_systems(activity_weight, project_weight, attendance_weight, exam_weight)",
+      )
       .eq("id", subject_id)
-      .single();
+      .maybeSingle();
     if (subjectErr) {
       console.error("predict-risk subject fetch:", subjectErr);
       throw subjectErr;
     }
+    // Service-role client bypasses RLS, so ownership is enforced here before any other read, write or email.
+    if (!isSubjectOwner(subject, user.id)) {
+      return new Response(JSON.stringify({ error: "You can only recalculate risk for subjects you teach." }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const embeddedWeights = (subject as { subject_grading_systems?: GradeWeights | GradeWeights[] | null })
+      .subject_grading_systems;
+    // Null means no saved row: the Phase 1 default weights apply.
+    const gradingWeights: GradeWeights | null = Array.isArray(embeddedWeights)
+      ? embeddedWeights[0] ?? null
+      : embeddedWeights ?? null;
 
-    const { data: enrollments } = await supabase
+    const { data: enrollments, error: enrollmentsErr } = await supabase
       .from("enrollments")
       .select("student_id")
       .eq("subject_id", subject_id)
       .eq("status", "active");
+    if (enrollmentsErr) throw enrollmentsErr;
 
     if (!enrollments?.length) {
       return new Response(JSON.stringify({ error: "No enrolled students found" }), {
@@ -291,7 +287,7 @@ serve(async (req) => {
       const attendanceRate = totalClasses > 0 ? presentCount / totalClasses : null;
 
       const studentSubs = submissions.filter((s) => s.student_id === sid);
-      let gradedActivityCount = 0;
+      const gradeItems: GradeItem[] = [];
       const activityMap: Record<AssessmentType, { score: number; max: number }[]> = {
         activity: [],
         assignment: [],
@@ -304,11 +300,11 @@ serve(async (req) => {
       for (const sub of studentSubs) {
         const act = (activities || []).find((a) => a.id === sub.activity_id);
         if (!act || sub.score == null) continue;
+        gradeItems.push({ type: act.type, assessmentType: sub.assessment_type, score: sub.score, maxScore: act.max_score });
         const assessmentType = normalizeAssessmentType(sub.assessment_type) ?? normalizeAssessmentType(act.type);
         const score = Number(sub.score);
         const max = Number(act.max_score);
         if (!assessmentType || !Number.isFinite(score) || !Number.isFinite(max) || max <= 0) continue;
-        gradedActivityCount += 1;
         activityMap[assessmentType].push({ score, max });
       }
 
@@ -351,46 +347,47 @@ serve(async (req) => {
         final_exam_average: finalExamAvg,
         activity_completion_rate: completionRate,
         comprehension_rating: comprehensionRating,
-        graded_activity_count: gradedActivityCount,
-        attendance_session_count: totalClasses,
+        grade_items: gradeItems,
       };
     });
 
-    const { data: existingPreds } = await supabase
+    // Must succeed: without the stored rows, ids could not be kept stable.
+    const { data: existingPreds, error: existingErr } = await supabase
       .from("predictions")
-      .select("student_id, risk_level, attendance_rate")
+      .select(`id, created_at, student_id, subject_id, ${PREDICTION_VALUE_COLUMNS.join(", ")}`)
       .eq("subject_id", subject_id);
+    if (existingErr) throw existingErr;
 
-    const previousByStudent = new Map<
-      string,
-      { risk_level: string | null; attendance_rate: number | null }
-    >();
-    for (const row of existingPreds ?? []) {
-      const sid = row.student_id as string | undefined;
-      if (!sid || previousByStudent.has(sid)) continue;
-      previousByStudent.set(sid, {
-        risk_level: (row.risk_level as string | null) ?? null,
-        attendance_rate: row.attendance_rate as number | null,
+    const rows: PredictionValues[] = studentMetrics.map((metrics) => {
+      const attendancePercent = metrics.attendance_rate != null ? metrics.attendance_rate * 100 : null;
+      const { risk_score, band, risk_level, coverage, grade } = classifyStudentRisk({
+        items: metrics.grade_items,
+        attendancePercent,
+        weights: gradingWeights,
       });
-    }
-
-    await supabase.from("predictions").delete().eq("subject_id", subject_id);
-
-    const rows = studentMetrics.map((metrics) => {
-      const { risk_level, confidence, risk_score, academic_performance, exam_average } =
-        classifyStudent(metrics);
-      const previous = previousByStudent.get(metrics.student_id);
+      const academic_performance = legacyAcademicPerformance({
+        activityAverage: metrics.activity_average,
+        quizAverage: metrics.quiz_average,
+        projectScore: metrics.project_score,
+      });
+      const exam_average = legacyExamAverage({
+        laboratoryExamAverage: metrics.laboratory_exam_average,
+        midtermExamAverage: metrics.midterm_exam_average,
+        finalExamAverage: metrics.final_exam_average,
+      });
+      const confidence = legacyConfidence({ academicPerformance: academic_performance, attendancePercent, examAverage: exam_average });
       console.log("risk-score breakdown", {
         student_id: metrics.student_id,
         subject_id,
-        academic_average: academic_performance,
-        academic_contribution: academic_performance != null ? Math.round(academic_performance * 0.5 * 100) / 100 : null,
-        attendance_percent: metrics.attendance_rate != null ? Math.round(metrics.attendance_rate * 10000) / 100 : null,
-        attendance_contribution: metrics.attendance_rate != null ? Math.round(metrics.attendance_rate * 100 * 0.2 * 100) / 100 : null,
-        exam_average,
-        exam_contribution: exam_average != null ? Math.round(exam_average * 0.3 * 100) / 100 : null,
+        activity_average: grade.activityAverage,
+        project_average: grade.projectAverage,
+        attendance_percent: attendancePercent,
+        exam_average: grade.examAverage,
+        weights: gradingWeights ?? "default",
         risk_score,
+        band,
         risk_level,
+        missing_categories: coverage.missing,
       });
       return {
         student_id: metrics.student_id,
@@ -406,8 +403,6 @@ serve(async (req) => {
           exam_average,
           metrics,
         }),
-        previous_risk_level: previous?.risk_level ?? null,
-        previous_attendance_rate: previous?.attendance_rate ?? null,
         attendance_rate: metrics.attendance_rate,
         quiz_average: metrics.quiz_average,
         assignment_average: metrics.assignment_average,
@@ -423,10 +418,27 @@ serve(async (req) => {
       };
     });
 
-    const { error: insertError } = await supabase.from("predictions").insert(rows);
-    if (insertError) {
-      console.error("predict-risk predictions insert:", insertError);
-      throw insertError;
+    const plan = planPredictionWrites((existingPreds ?? []) as unknown as ExistingPrediction[], rows, {
+      now: new Date().toISOString(),
+      newId: () => crypto.randomUUID(),
+    });
+
+    if (plan.upserts.length > 0) {
+      // predictions_pkey (id) is the table's only unique key.
+      const { error: upsertError } = await supabase.from("predictions").upsert(plan.upserts, { onConflict: "id" });
+      if (upsertError) {
+        console.error("predict-risk predictions upsert:", upsertError);
+        throw upsertError;
+      }
+    }
+
+    if (plan.deleteIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("predictions")
+        .delete()
+        .eq("subject_id", subject_id)
+        .in("id", plan.deleteIds);
+      if (deleteError) console.error("predict-risk stale/duplicate cleanup:", deleteError);
     }
 
     // Auto-notify critical / at-risk students (at most once per 24h per subject+risk level)
@@ -471,7 +483,13 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, count: rows.length }), {
+    return new Response(JSON.stringify({
+        success: true,
+        count: rows.length,
+        written: plan.upserts.length,
+        unchanged: plan.unchanged,
+        removed: plan.deleteIds.length,
+      }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

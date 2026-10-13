@@ -9,6 +9,7 @@ import {
   readServerIdsToSync,
   type DurableInboxRow,
 } from "@/lib/notification-delivery";
+import { invalidateStudentReleases, isReleaseRelevantInboxTitle } from "@/lib/final-grade-freshness";
 
 /**
  * Bridges durable `user_inbox_notifications` into the dashboard bell inbox.
@@ -54,16 +55,19 @@ export function useDurableInboxNotifications(
         itemsRef.current.map((item) => item.serverId).filter((id): id is string => Boolean(id)),
       );
       let added = 0;
+      let releaseRelevant = false;
       for (const row of rows) {
         const input = durableRowToInboxInput(row);
         if (!input || shown.has(input.serverId)) continue;
         shown.add(input.serverId);
         added += 1;
+        if (isReleaseRelevantInboxTitle(row.title)) releaseRelevant = true;
         addRef.current(input);
       }
       if (added > 0 && role === "guidance_counselor") {
         void queryClient.invalidateQueries({ queryKey: ["guidance-referrals", userId] });
       }
+      if (releaseRelevant && role === "student") invalidateStudentReleases(queryClient, userId);
     };
 
     const load = async (attempt = 0) => {

@@ -126,7 +126,7 @@ export function InterventionHistory({
                       {item.baseline_risk_level
                         ? `${item.baseline_risk_level}${
                             item.baseline_risk_score != null
-                              ? ` (${Number(item.baseline_risk_score).toFixed(1)})`
+                              ? ` (${Number(item.baseline_risk_score).toFixed(2)})`
                               : ''
                           }`
                         : '—'}

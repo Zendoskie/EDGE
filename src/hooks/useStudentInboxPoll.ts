@@ -1,43 +1,23 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { invalidateStudentReleases } from "@/lib/final-grade-freshness";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
 import {
-  studentCoachingRecommendationNotification,
+  loadCoachingRecSeen,
+  saveCoachingRecSeen,
   studentEngagementDropNotification,
   studentInactivityNotification,
   studentNoParticipationNotification,
   studentPredictionNotifications,
+  unseenCoachingRecommendation,
 } from "@/lib/notification-events";
 import { resolveProfileSource } from "@/lib/notification-sources";
 
 const POLL_KEY_PREFIX = "edge_inbox_poll_";
-const COACHING_REC_SEEN_PREFIX = "edge_coaching_rec_seen_";
 
 function pollStorageKey(userId: string) {
   return `${POLL_KEY_PREFIX}${userId}`;
-}
-
-function coachingRecSeenKey(userId: string) {
-  return `${COACHING_REC_SEEN_PREFIX}${userId}`;
-}
-
-function loadCoachingRecSeen(userId: string): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(coachingRecSeenKey(userId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveCoachingRecSeen(userId: string, map: Record<string, string>) {
-  try {
-    localStorage.setItem(coachingRecSeenKey(userId), JSON.stringify(map));
-  } catch {
-    /* ignore */
-  }
 }
 
 /**
@@ -46,6 +26,7 @@ function saveCoachingRecSeen(userId: string, map: Record<string, string>) {
  */
 export function useStudentInboxPoll(userId: string | undefined, role: string | undefined) {
   const { addNotification } = useNotificationInbox();
+  const queryClient = useQueryClient();
   const addRef = useRef(addNotification);
   addRef.current = addNotification;
 
@@ -101,31 +82,21 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
         }
 
         const coachingSeen = loadCoachingRecSeen(userId);
-        const coachingRows = (predictionRows ?? []).filter((row) => Boolean(row.recommendation?.trim()));
-
-        const nextCoachingSeen = { ...coachingSeen };
-        for (const p of coachingRows ?? []) {
-          const row = p as {
-            id: string;
-            recommendation: string | null;
-            subjects: { code?: string } | null;
-          };
-          const rec = row.recommendation?.trim() ?? "";
-          if (!rec) continue;
-          const prev = coachingSeen[row.id];
-          if (prev === rec) continue;
-
-          const n = studentCoachingRecommendationNotification(row, row.subjects?.code ?? null, prev ?? null);
+        for (const p of predictionRows ?? []) {
+          const row = p as { id: string; recommendation: string | null; subjects: { code?: string } | null };
+          const n = unseenCoachingRecommendation(row, row.subjects?.code ?? null, coachingSeen);
           if (n) addRef.current(n);
-          nextCoachingSeen[row.id] = rec;
         }
-        saveCoachingRecSeen(userId, nextCoachingSeen);
+        saveCoachingRecSeen(userId, coachingSeen);
 
         const { data: attRows } = await supabase
           .from("attendance")
           .select("id, date, status, created_at, recorded_by, subjects(instructor_id)")
           .eq("student_id", userId)
           .gt("created_at", lastPoll);
+
+        // A changed prediction or a new attendance row means grade inputs changed since the last poll.
+        if (preds.length > 0 || (attRows ?? []).length > 0) invalidateStudentReleases(queryClient, userId);
 
         for (const a of attRows ?? []) {
           const row = a as {
@@ -208,5 +179,5 @@ export function useStudentInboxPoll(userId: string | undefined, role: string | u
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [userId, role]);
+  }, [userId, role, queryClient]);
 }
