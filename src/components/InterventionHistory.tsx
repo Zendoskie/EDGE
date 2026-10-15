@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { CalendarClock, CheckCircle2, History } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,12 @@ import {
   type EngagementIntervention,
 } from '@/lib/engagement-alerts';
 import { formatLastLogin } from '@/lib/engagement-format';
+import {
+  OUTCOME_EMAIL_ALREADY_SENT,
+  OUTCOME_SAVED_EMAIL_SENT,
+  canRetryOutcomeEmail,
+  retryCounselingOutcomeEmail,
+} from '@/lib/counseling-outcome-notification';
 
 type Props = {
   studentId: string;
@@ -65,6 +72,21 @@ export function InterventionHistory({
   isAdmin,
 }: Props) {
   const [completionTarget, setCompletionTarget] = useState<EngagementIntervention | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const retryEmail = async (interventionId: string) => {
+    setRetryingId(interventionId);
+    try {
+      const result = await retryCounselingOutcomeEmail(interventionId);
+      if (result.emailError) {
+        toast.message(result.emailError);
+        return;
+      }
+      toast.success(result.alreadySent ? OUTCOME_EMAIL_ALREADY_SENT : OUTCOME_SAVED_EMAIL_SENT);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   return (
     <div>
@@ -179,6 +201,17 @@ export function InterventionHistory({
                     onClick={() => setCompletionTarget(item)}
                   >
                     Complete follow-up
+                  </Button>
+                ) : null}
+                {canRetryOutcomeEmail(item, currentUserId) ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={retryingId === item.id}
+                    onClick={() => void retryEmail(item.id)}
+                  >
+                    {retryingId === item.id ? 'Sending email…' : 'Retry student email'}
                   </Button>
                 ) : null}
               </div>

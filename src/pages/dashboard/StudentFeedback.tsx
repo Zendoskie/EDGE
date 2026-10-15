@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatFeedbackStatus, formatLastLogin } from '@/lib/engagement-format';
+import { submitEngagementFeedback } from '@/lib/student-feedback-notification';
 
 type FeedbackRow = {
   id: string;
@@ -44,20 +45,15 @@ export default function StudentFeedback() {
   });
 
   const submitFeedback = useMutation({
-    mutationFn: async () => {
-      const trimmed = message.trim();
-      if (!trimmed) throw new Error('Feedback message is required.');
-
-      const { error } = await supabase.from('student_engagement_feedback').insert({
-        student_id: user!.id,
+    mutationFn: () =>
+      submitEngagementFeedback({
+        studentId: user!.id,
         subject: subject.trim() || null,
-        message: trimmed,
-        status: 'submitted',
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
+        message,
+      }),
+    onSuccess: (result) => {
       toast.success('Feedback submitted successfully.');
+      if (result.emailError) toast.message(result.emailError);
       setSubject('');
       setMessage('');
       void queryClient.invalidateQueries({ queryKey: ['student-engagement-feedback', user?.id] });

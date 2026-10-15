@@ -1,5 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  authorizeFeedbackEmail,
+  deliverEmail,
+  emailLogKey,
+  enrollmentInstructors,
+  instructorFeedbackEmail,
+  responsibleFeedbackInstructor,
+} from "../_shared/notification-channels.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,6 +88,92 @@ async function sendBrevoBatch(emails: Array<{ to: string; subject: string; html:
   };
 }
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function sendInstructorFeedbackEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  feedbackId: string | null,
+) {
+  if (!feedbackId) throw new Error("feedback_id is required");
+
+  const { data: studentRole } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", callerId)
+    .eq("role", "student")
+    .maybeSingle();
+
+  const { data: feedback, error: feedbackError } = await supabase
+    .from("student_engagement_feedback")
+    .select("id, student_id, subject")
+    .eq("id", feedbackId)
+    .maybeSingle();
+  if (feedbackError) throw feedbackError;
+
+  const authorized = authorizeFeedbackEmail({
+    callerId,
+    callerRole: studentRole?.role ?? null,
+    feedback: feedback ? { studentId: feedback.student_id, topic: feedback.subject } : null,
+  });
+  if (!authorized) throw new Error("Not allowed");
+
+  const { data: enrollmentRows, error: enrollmentError } = await supabase
+    .from("enrollments")
+    .select("subjects(instructor_id, code, name)")
+    .eq("student_id", authorized.studentId)
+    .eq("status", "active");
+  if (enrollmentError) throw enrollmentError;
+
+  const instructorId = responsibleFeedbackInstructor(
+    authorized.topic,
+    enrollmentInstructors(enrollmentRows ?? []),
+  );
+  if (!instructorId) return json({ success: true, sent: 0, failed: 0, skipped: "ambiguous_instructor" });
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, email, full_name")
+    .in("user_id", [authorized.studentId, instructorId]);
+  const instructor = profiles?.find((profile) => profile.user_id === instructorId);
+  const student = profiles?.find((profile) => profile.user_id === authorized.studentId);
+  const instructorEmail = normalizeEmail(instructor?.email);
+  if (!instructorEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+
+  const logKey = emailLogKey("instructor_feedback", feedback.id);
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", authorized.studentId)
+    .eq("risk_level", logKey)
+    .limit(1);
+  const email = instructorFeedbackEmail({
+    studentName: student?.full_name,
+    topic: authorized.topic,
+  });
+  const delivery = await deliverEmail({
+    alreadyLogged: (existing ?? []).length > 0,
+    send: () => sendBrevoEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: authorized.studentId,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+  if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+  return json({ success: true, sent: 1, failed: 0 });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -95,6 +189,11 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
+    const body = await req.json();
+    if (body?.event === "instructor_feedback") {
+      return await sendInstructorFeedbackEmail(supabase, user.id, safeString(body?.feedback_id));
+    }
+
     const { data: roleCheck } = await supabase
       .from("user_roles")
       .select("role")
@@ -102,8 +201,6 @@ serve(async (req) => {
       .eq("role", "instructor")
       .single();
     if (!roleCheck) throw new Error("Only instructors can send notifications");
-
-    const body = await req.json();
     const subjectCode = safeString(body?.subject_code);
     const subjectName = safeString(body?.subject_name);
     const message = safeString(body?.body);

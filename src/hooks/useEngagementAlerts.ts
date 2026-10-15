@@ -11,6 +11,7 @@ import {
   type EngagementOutcomeRating,
 } from '@/lib/engagement-alerts';
 import type { Json } from '@/integrations/supabase/types';
+import { recordCounselingOutcome } from '@/lib/counseling-outcome-notification';
 
 export function useInstructorEngagementAlerts(enabled = true) {
   const { user, role } = useAuth();
@@ -198,21 +199,22 @@ type CompleteInterventionInput = {
   studentId: string;
   outcomeRating: EngagementOutcomeRating;
   outcomeNote?: string;
+  actionType: string;
+  actorRole: string;
 };
 
 export function useCompleteEngagementIntervention() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: CompleteInterventionInput) => {
-      const { data, error } = await supabase.rpc('complete_engagement_intervention', {
-        p_intervention_id: input.interventionId,
-        p_outcome_rating: input.outcomeRating,
-        p_outcome_note: input.outcomeNote?.trim() || undefined,
-      });
-      if (error) throw error;
-      return data as string;
-    },
+    mutationFn: (input: CompleteInterventionInput) =>
+      recordCounselingOutcome({
+        interventionId: input.interventionId,
+        outcomeRating: input.outcomeRating,
+        outcomeNote: input.outcomeNote,
+        actionType: input.actionType,
+        actorRole: input.actorRole,
+      }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ['engagement-interventions', variables.studentId],

@@ -17,6 +17,12 @@ import {
   type EngagementIntervention,
   type EngagementOutcomeRating,
 } from '@/lib/engagement-alerts';
+import {
+  OUTCOME_EMAIL_ALREADY_SENT,
+  OUTCOME_SAVED_EMAIL_SENT,
+  retryCounselingOutcomeEmail,
+  shouldSendCounselingOutcomeEmail,
+} from '@/lib/counseling-outcome-notification';
 
 type Props = {
   intervention: EngagementIntervention | null;
@@ -32,26 +38,60 @@ export function InterventionOutcomeDialog({
   const completeIntervention = useCompleteEngagementIntervention();
   const [rating, setRating] = useState<EngagementOutcomeRating>('improved');
   const [note, setNote] = useState('');
+  const [emailFailed, setEmailFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!intervention) return;
     setRating('improved');
     setNote('');
+    setEmailFailed(false);
   }, [intervention]);
 
+  const counselingOutcome = intervention
+    ? shouldSendCounselingOutcomeEmail(intervention.action_type, intervention.actor_role)
+    : false;
+
   const submit = async () => {
-    if (!intervention) return;
+    if (!intervention || emailFailed) return;
     try {
-      await completeIntervention.mutateAsync({
+      const result = await completeIntervention.mutateAsync({
         interventionId: intervention.id,
         studentId,
         outcomeRating: rating,
         outcomeNote: note,
+        actionType: intervention.action_type,
+        actorRole: intervention.actor_role,
       });
-      toast.success('Follow-up completed and current outcomes captured.');
+      if (!counselingOutcome) {
+        toast.success('Follow-up completed and current outcomes captured.');
+        onOpenChange(false);
+        return;
+      }
+      if (result.emailError) {
+        setEmailFailed(true);
+        return;
+      }
+      toast.success(result.alreadySent ? OUTCOME_EMAIL_ALREADY_SENT : OUTCOME_SAVED_EMAIL_SENT);
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not complete follow-up');
+    }
+  };
+
+  const retryEmail = async () => {
+    if (!intervention) return;
+    setRetrying(true);
+    try {
+      const result = await retryCounselingOutcomeEmail(intervention.id);
+      if (result.emailError) {
+        toast.message(result.emailError);
+        return;
+      }
+      toast.success(result.alreadySent ? OUTCOME_EMAIL_ALREADY_SENT : OUTCOME_SAVED_EMAIL_SENT);
+      onOpenChange(false);
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -61,8 +101,9 @@ export function InterventionOutcomeDialog({
         <DialogHeader>
           <DialogTitle>Complete intervention follow-up</DialogTitle>
           <DialogDescription>
-            EDGE will capture the student&apos;s current engagement and risk metrics. Your rating
-            records the staff assessment; it does not alter the AI risk formula.
+            {emailFailed
+              ? 'Outcome saved. The student email was not sent. Retry sends the email only.'
+              : 'EDGE will capture the student\'s current engagement and risk metrics. Your rating records the staff assessment; it does not alter the AI risk formula.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -90,6 +131,7 @@ export function InterventionOutcomeDialog({
               id="intervention-outcome-rating"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               value={rating}
+              disabled={emailFailed}
               onChange={(event) => setRating(event.target.value as EngagementOutcomeRating)}
             >
               <option value="improved">Improved</option>
@@ -103,6 +145,7 @@ export function InterventionOutcomeDialog({
             <Textarea
               id="intervention-outcome-note"
               value={note}
+              disabled={emailFailed}
               onChange={(event) => setNote(event.target.value)}
               placeholder="Describe the follow-up conversation, observed response, or next recommendation…"
               className="min-h-[100px]"
@@ -118,17 +161,23 @@ export function InterventionOutcomeDialog({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={completeIntervention.isPending}
+            disabled={completeIntervention.isPending || retrying}
           >
-            Cancel
+            {emailFailed ? 'Close' : 'Cancel'}
           </Button>
-          <Button
-            type="button"
-            onClick={() => void submit()}
-            disabled={completeIntervention.isPending}
-          >
-            {completeIntervention.isPending ? 'Capturing outcomes…' : 'Complete follow-up'}
-          </Button>
+          {emailFailed ? (
+            <Button type="button" onClick={() => void retryEmail()} disabled={retrying}>
+              {retrying ? 'Sending email…' : 'Retry student email'}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => void submit()}
+              disabled={completeIntervention.isPending}
+            >
+              {completeIntervention.isPending ? 'Capturing outcomes…' : 'Complete follow-up'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
