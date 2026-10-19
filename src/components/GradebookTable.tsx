@@ -13,9 +13,15 @@ import {
   collectGradeChanges,
   countMissingGrades,
   gradeCellKey,
+  gradesPostedItemsFromSavedScores,
   sortGradebookActivities,
   type GradebookActivity,
 } from '@/lib/gradebook';
+import {
+  emailGradesPosted,
+  GRADES_EMAIL_ALREADY_SENT,
+  GRADES_EMAIL_FAILED,
+} from '@/lib/grades-posted-notification';
 import { publishMissingGradeAlerts } from '@/lib/missing-grade-notifications';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { subjectReleaseKey } from '@/lib/final-grade-freshness';
@@ -234,44 +240,15 @@ export function GradebookTable({
         .upsert(rows, { onConflict: 'activity_id,student_id' });
       if (error) throw error;
 
-      const firstGrades = changes.filter(
-        (change) => savedScores[gradeCellKey(change.studentId, change.activityId)] == null,
+      const emailed = await emailGradesPosted(
+        subjectId,
+        changes.map((change) => ({
+          activity_id: change.activityId,
+          student_id: change.studentId,
+        })),
       );
-      if (firstGrades.length > 0) {
-        try {
-          const { data: subject } = await supabase
-            .from('subjects')
-            .select('code, name')
-            .eq('id', subjectId)
-            .maybeSingle();
-          const linesByStudent = new Map<string, string[]>();
-          for (const change of firstGrades) {
-            const activity = columns.find((column) => column.id === change.activityId);
-            const line = `${activity?.title ?? 'Activity'}: ${change.score}`;
-            const existing = linesByStudent.get(change.studentId) ?? [];
-            existing.push(line);
-            linesByStudent.set(change.studentId, existing);
-          }
-          for (const [studentId, lines] of linesByStudent) {
-            const email = students.find((student) => student.student_id === studentId)?.profile?.email;
-            if (!email) continue;
-            const { error: emailError } = await supabase.functions.invoke('send-notification', {
-              body: {
-                to: email,
-                student_id: studentId,
-                subject_id: subjectId,
-                subject_code: subject?.code ?? 'EDGE',
-                subject_name: subject?.name ?? 'Course',
-                body: `A grade is now available for ${subject?.code ?? 'your subject'}.\n${lines.join('\n')}`,
-              },
-            });
-            if (emailError) {
-              toast.message('Grade saved. The email notification could not be sent.');
-            }
-          }
-        } catch {
-          toast.message('Grade saved. The email notification could not be sent.');
-        }
+      if (emailed.emailError) {
+        toast.message('Grade saved. The email notification could not be sent.');
       }
 
       try {
@@ -309,6 +286,34 @@ export function GradebookTable({
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const retryGradeEmails = useMutation({
+    mutationFn: async () => {
+      const items = gradesPostedItemsFromSavedScores({
+        subjectId,
+        enrolledStudentIds: new Set(enrolledIds),
+        activities: columns,
+        savedScores,
+      });
+      if (items.length === 0) {
+        return { emailError: null as string | null, alreadySent: false, empty: true };
+      }
+      const result = await emailGradesPosted(subjectId, items);
+      return { ...result, empty: false };
+    },
+    onSuccess: (result) => {
+      if (result.empty) {
+        toast.message('No saved scores to email yet.');
+        return;
+      }
+      if (result.emailError) {
+        toast.message(result.emailError === GRADES_EMAIL_FAILED ? GRADES_EMAIL_FAILED : result.emailError);
+        return;
+      }
+      toast.success(result.alreadySent ? GRADES_EMAIL_ALREADY_SENT : 'Grade emails sent.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   if (enrollmentsLoading || submissionsLoading) {
     return <p className="px-4 py-3 text-sm text-muted-foreground">Loading gradebook...</p>;
   }
@@ -332,10 +337,20 @@ export function GradebookTable({
             Enter a score from 0 through each assessment&apos;s max. Empty cells stay unsaved.
           </span>
         </div>
-        <Button size="sm" onClick={() => saveGrades.mutate()} disabled={saveGrades.isPending}>
-          <Save className="mr-2 h-4 w-4" />
-          {saveGrades.isPending ? 'Saving...' : 'Save grades'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => retryGradeEmails.mutate()}
+            disabled={retryGradeEmails.isPending || saveGrades.isPending}
+          >
+            {retryGradeEmails.isPending ? 'Retrying email…' : 'Retry grade emails'}
+          </Button>
+          <Button size="sm" onClick={() => saveGrades.mutate()} disabled={saveGrades.isPending}>
+            <Save className="mr-2 h-4 w-4" />
+            {saveGrades.isPending ? 'Saving...' : 'Save grades'}
+          </Button>
+        </div>
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-border/70">

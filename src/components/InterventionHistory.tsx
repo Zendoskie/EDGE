@@ -21,6 +21,10 @@ import {
   canRetryOutcomeEmail,
   retryCounselingOutcomeEmail,
 } from '@/lib/counseling-outcome-notification';
+import {
+  canRetryCounselorFollowupEmail,
+  emailCounselorFollowup,
+} from '@/lib/intervention-notification';
 
 type Props = {
   studentId: string;
@@ -83,6 +87,24 @@ export function InterventionHistory({
         return;
       }
       toast.success(result.alreadySent ? OUTCOME_EMAIL_ALREADY_SENT : OUTCOME_SAVED_EMAIL_SENT);
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  const retryFollowupEmail = async (interventionId: string) => {
+    setRetryingId(interventionId);
+    try {
+      const result = await emailCounselorFollowup(interventionId);
+      if (result.emailError) {
+        toast.message(result.emailError);
+        return;
+      }
+      toast.success(
+        result.alreadySent
+          ? 'Follow-up saved. The student email was already sent.'
+          : 'Follow-up saved. The student email was sent.',
+      );
     } finally {
       setRetryingId(null);
     }
@@ -201,6 +223,17 @@ export function InterventionHistory({
                     onClick={() => setCompletionTarget(item)}
                   >
                     Complete follow-up
+                  </Button>
+                ) : null}
+                {canRetryCounselorFollowupEmail(item, currentUserId) ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={retryingId === item.id}
+                    onClick={() => void retryFollowupEmail(item.id)}
+                  >
+                    {retryingId === item.id ? 'Sending email…' : 'Retry student email'}
                   </Button>
                 ) : null}
                 {canRetryOutcomeEmail(item, currentUserId) ? (

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { emailLoggedIntervention } from '@/lib/intervention-notification';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
@@ -1208,7 +1208,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   // email | meeting | counseling | other
   const [interventionType, setInterventionType] = useState<string>('email');
   const [interventionMessage, setInterventionMessage] = useState('');
-  const [sendEmailNotification, setSendEmailNotification] = useState(false);
   const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
   const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
   const [bulkNotifyPreparing, setBulkNotifyPreparing] = useState(false);
@@ -1387,7 +1386,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const logIntervention = useMutation({
     mutationFn: async () => {
       if (!interventionPrediction?.id || !interventionPrediction?.student_id) throw new Error('Missing prediction');
-      const studentEmail = interventionPrediction.profile?.email;
       // DB check constraint only allows: email | meeting | counseling | other.
       const dbInterventionType =
         interventionType === 'email' ||
@@ -1443,42 +1441,28 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         }
       }
 
-      if (sendEmailNotification && studentEmail) {
-        const { error: invokeError } = await supabase.functions.invoke('send-notification', {
-          body: {
-            to: studentEmail,
-            student_id: interventionPrediction.student_id,
-            subject_id: subjectId,
-            risk_level: interventionPrediction.risk_level,
-            subject_code: subjectCode,
-            subject_name: subjectName,
-            body: interventionMessage || `Your instructor has logged an intervention for ${subjectCode}. Please check the EDGE platform for details.`,
-          },
-        });
-        if (invokeError) throw new Error(invokeError.message || 'Failed to send email');
-      }
-
-      const { error } = await supabase.from('interventions').insert({
+      const { data: inserted, error } = await supabase.from('interventions').insert({
         prediction_id: interventionPrediction.id,
         student_id: interventionPrediction.student_id,
         subject_id: subjectId,
         type: dbInterventionType,
         message: interventionMessage || null,
-      });
+      }).select('id').single();
       if (error) throw error;
-      return { mode: 'intervention_logged' as const };
+      const email = await emailLoggedIntervention(inserted.id);
+      return { mode: 'intervention_logged' as const, emailError: email.emailError };
     },
     onSuccess: (result) => {
       if (result?.mode === 'referral_created') {
         toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
         invalidateReferralCaches(result.studentId);
       } else {
-        toast.success(sendEmailNotification ? 'Intervention logged and email sent' : 'Intervention logged');
+        toast.success('Intervention logged');
+        if (result?.emailError) toast.message(result.emailError);
       }
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');
-      setSendEmailNotification(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1721,7 +1705,7 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Log intervention</DialogTitle>
-            <DialogDescription>Record an intervention for this student and optionally notify them by email.</DialogDescription>
+            <DialogDescription>Record an intervention. The student is notified in EDGE and by email.</DialogDescription>
           </DialogHeader>
           {interventionPrediction && (
             <form className="space-y-4" onSubmit={e => { e.preventDefault(); logIntervention.mutate(); }}>
@@ -1748,15 +1732,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <p className="text-xs text-muted-foreground">
                   Counseling interventions require guidance counselor approval first. Saving will create a counseling referral and automatically notify the student and guidance counselors.
                 </p>
-              )}
-              <div className="flex items-center space-x-2">
-                <Checkbox id="send-email" checked={sendEmailNotification} onCheckedChange={(c) => setSendEmailNotification(!!c)} />
-                <Label htmlFor="send-email" className="text-sm font-normal cursor-pointer">
-                  Send email notification to student (Gmail/email)
-                </Label>
-              </div>
-              {sendEmailNotification && !interventionPrediction?.profile?.email && (
-                <p className="text-xs text-warning-foreground">Student has no email on file. Notification will not be sent.</p>
               )}
               <Button type="submit" disabled={logIntervention.isPending}>{logIntervention.isPending ? 'Saving...' : 'Save'}</Button>
             </form>

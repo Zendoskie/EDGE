@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   counselingOutcomeEmail,
   counselingOutcomeRecipient,
+  counselorFollowupEmail,
+  counselorFollowupRecipient,
   deliverEmail,
   emailLogKey,
 } from "../_shared/notification-channels.ts";
@@ -13,7 +15,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-type ReferralEvent = "referral_created" | "referral_decided" | "counseling_outcome";
+type ReferralEvent =
+  | "referral_created"
+  | "referral_decided"
+  | "counseling_outcome"
+  | "counselor_followup";
 
 function safeString(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
@@ -152,6 +158,86 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function sendCounselorFollowupEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  interventionId: string | null,
+) {
+  if (!interventionId) throw new Error("intervention_id is required");
+
+  const { data: roleCheck } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", callerId)
+    .eq("role", "guidance_counselor")
+    .maybeSingle();
+  if (!roleCheck) throw new Error("Only guidance counselors can send counseling follow-up notifications");
+
+  const { data: intervention, error: interventionError } = await supabase
+    .from("engagement_interventions")
+    .select("id, student_id, instructor_id, action_type, status, subject_id")
+    .eq("id", interventionId)
+    .maybeSingle();
+  if (interventionError) throw interventionError;
+  if (!intervention) throw new Error("Counseling follow-up not found");
+
+  const studentId = counselorFollowupRecipient({
+    callerIsCounselor: Boolean(roleCheck),
+    callerId,
+    intervention: {
+      studentId: intervention.student_id,
+      instructorId: intervention.instructor_id,
+      actionType: intervention.action_type,
+      status: intervention.status,
+    },
+  });
+  if (!studentId) throw new Error("Not allowed");
+
+  const { data: studentProfile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("user_id", studentId)
+    .maybeSingle();
+  const studentEmail = normalizeEmail(studentProfile?.email);
+  if (!studentEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+
+  let subjectCode: string | null = null;
+  if (intervention.subject_id) {
+    const { data: subject } = await supabase
+      .from("subjects")
+      .select("code")
+      .eq("id", intervention.subject_id)
+      .maybeSingle();
+    subjectCode = subject?.code ?? null;
+  }
+
+  const logKey = emailLogKey("counselor_followup", intervention.id);
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("risk_level", logKey)
+    .limit(1);
+  const email = counselorFollowupEmail(subjectCode);
+  const delivery = await deliverEmail({
+    alreadyLogged: (existing ?? []).length > 0,
+    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: studentId,
+        subject_id: intervention.subject_id,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+  if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+  return json({ success: true, sent: 1, failed: 0 });
+}
+
 async function sendCounselingOutcomeEmail(
   supabase: ReturnType<typeof createClient>,
   callerId: string,
@@ -252,6 +338,9 @@ serve(async (req) => {
     const referralId = safeString(body?.referral_id);
     const counselorRemarks = safeString(body?.counselor_remarks);
 
+    if (event === "counselor_followup") {
+      return await sendCounselorFollowupEmail(supabase, user.id, safeString(body?.intervention_id));
+    }
     if (event === "counseling_outcome") {
       return await sendCounselingOutcomeEmail(supabase, user.id, safeString(body?.intervention_id));
     }
