@@ -9,7 +9,10 @@ const { rpc, toastError, attendanceReads } = vi.hoisted(() => ({
   attendanceReads: { count: 0 },
 }));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastError } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastError, warning: vi.fn() } }));
+vi.mock('@/lib/attendance-update-notification', () => ({
+  emailAttendanceUpdate: vi.fn(async () => ({ emailError: null, alreadySent: false })),
+}));
 vi.mock('@/lib/recalculate-risk', () => ({
   recalculateSubjectRisk: async () => ({ ok: true, count: 0 }),
   scheduleSubjectRiskRecalc: vi.fn(),

@@ -168,6 +168,10 @@ export default function ParentAccessRequests() {
   }
 
   const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const assignedParentEmail = registeredParentEmail?.trim() || '';
+  const hasAssignedParentOnly =
+    assignedParentEmail.length > 0
+    && !requests.some((r) => parentEmailsMatch(registeredParentEmail, r.parent_email));
 
   return (
     <div className="space-y-6 animate-fade-in min-w-0">
@@ -181,6 +185,24 @@ export default function ParentAccessRequests() {
           </div>
         </div>
       </section>
+
+      {hasAssignedParentOnly ? (
+        <Card className="bg-card/90 w-full min-w-0">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5" />
+              Designated parent / guardian email
+            </CardTitle>
+            <p className="text-muted-foreground text-sm">
+              You listed this email on your profile. It does not have dashboard access until the person registers as a parent and you approve their request.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="font-medium break-all">{assignedParentEmail}</p>
+            <Badge variant="outline">Awaiting parent registration</Badge>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="bg-card/90 w-full min-w-0">
         <CardHeader>

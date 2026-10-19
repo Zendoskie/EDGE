@@ -21,7 +21,6 @@ import {
   OUTCOME_EMAIL_ALREADY_SENT,
   OUTCOME_SAVED_EMAIL_SENT,
   retryCounselingOutcomeEmail,
-  shouldSendCounselingOutcomeEmail,
 } from '@/lib/counseling-outcome-notification';
 
 type Props = {
@@ -48,10 +47,6 @@ export function InterventionOutcomeDialog({
     setEmailFailed(false);
   }, [intervention]);
 
-  const counselingOutcome = intervention
-    ? shouldSendCounselingOutcomeEmail(intervention.action_type, intervention.actor_role)
-    : false;
-
   const submit = async () => {
     if (!intervention || emailFailed) return;
     try {
@@ -63,11 +58,6 @@ export function InterventionOutcomeDialog({
         actionType: intervention.action_type,
         actorRole: intervention.actor_role,
       });
-      if (!counselingOutcome) {
-        toast.success('Follow-up completed and current outcomes captured.');
-        onOpenChange(false);
-        return;
-      }
       if (result.emailError) {
         setEmailFailed(true);
         return;
@@ -83,7 +73,11 @@ export function InterventionOutcomeDialog({
     if (!intervention) return;
     setRetrying(true);
     try {
-      const result = await retryCounselingOutcomeEmail(intervention.id);
+      const result = await retryCounselingOutcomeEmail(
+        intervention.id,
+        intervention.action_type,
+        intervention.actor_role,
+      );
       if (result.emailError) {
         toast.message(result.emailError);
         return;

@@ -6,7 +6,11 @@ const { rpc, toastSuccess } = vi.hoisted(() => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: toastSuccess, error: vi.fn(), message: vi.fn() },
+  toast: { success: toastSuccess, error: vi.fn(), message: vi.fn(), warning: vi.fn() },
+}));
+
+vi.mock('@/lib/feedback-reply-notification', () => ({
+  emailFeedbackReply: vi.fn(async () => ({ emailError: null, alreadySent: false })),
 }));
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

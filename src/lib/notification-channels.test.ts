@@ -13,7 +13,12 @@ import {
   deliverEmail,
   emailLogKey,
   enrollmentInstructors,
+  engagementInterventionEmail,
   engagementInterventionRecipient,
+  engagementOutcomeRecipient,
+  enrollmentRequestRecipient,
+  feedbackReplyRecipient,
+  attendanceUpdateRecipient,
   gradesPostedEmail,
   gradesPostedLogId,
   instructorFeedbackEmail,
@@ -158,6 +163,7 @@ describe('counseling outcome email', () => {
     expect(invoke).not.toHaveBeenCalled();
 
     rpc.mockResolvedValue({ data: 'intervention-2', error: null });
+    invoke.mockResolvedValue({ data: { sent: 1, failed: 0 }, error: null });
     const other = await recordCounselingOutcome({
       interventionId: 'intervention-2',
       outcomeRating: 'no_change',
@@ -165,7 +171,9 @@ describe('counseling outcome email', () => {
       actorRole: 'instructor',
     });
     expect(other).toEqual({ id: 'intervention-2', emailError: null, alreadySent: false });
-    expect(invoke).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('send-notification', {
+      body: { event: 'engagement_outcome', intervention_id: 'intervention-2' },
+    });
   });
 
   it('targets the student and hides counseling notes', () => {
@@ -218,10 +226,17 @@ describe('counseling outcome email', () => {
       }),
     ).toBeNull();
 
-    const email = counselingOutcomeEmail('CS101 <script>');
+    const email = counselingOutcomeEmail({
+      subjectCode: 'CS101 <script>',
+      message: 'Keep practicing',
+      outcomeRating: 'improved',
+      outcomeNote: 'Great progress',
+    });
     expect(email.subject).toContain('CS101 <script>');
     expect(email.html).toContain('CS101 &lt;script&gt;');
-    expect(email.html).toContain('does not include counseling notes');
+    expect(email.html).toContain('Keep practicing');
+    expect(email.html).toContain('Improved');
+    expect(email.html).toContain('Great progress');
     expect(email.html).not.toContain(instructor);
     expect(email.html).not.toContain(parent);
     expect(isRiskEmailLevel(emailLogKey('counseling_outcome', 'intervention-1'))).toBe(false);
@@ -241,7 +256,7 @@ describe('counseling outcome email', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
 
     invoke.mockResolvedValueOnce({ data: { sent: 1, failed: 0 }, error: null });
-    const retried = await retryCounselingOutcomeEmail('intervention-1');
+    const retried = await retryCounselingOutcomeEmail('intervention-1', 'guidance_counseling', 'guidance_counselor');
     expect(retried).toEqual({ emailError: null, alreadySent: false });
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledTimes(2);
@@ -250,7 +265,7 @@ describe('counseling outcome email', () => {
     });
 
     invoke.mockResolvedValueOnce({ data: { sent: 0, failed: 0, duplicate: true }, error: null });
-    const again = await retryCounselingOutcomeEmail('intervention-1');
+    const again = await retryCounselingOutcomeEmail('intervention-1', 'guidance_counseling', 'guidance_counselor');
     expect(again).toEqual({ emailError: null, alreadySent: true });
     expect(again.emailError).not.toBe(OUTCOME_EMAIL_ALREADY_SENT);
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -270,8 +285,26 @@ describe('counseling outcome email', () => {
     expect(canRetryOutcomeEmail(completed, parent)).toBe(false);
     expect(canRetryOutcomeEmail({ ...completed, status: 'open' }, counselor)).toBe(false);
     expect(
-      canRetryOutcomeEmail({ ...completed, action_type: 'send_reminder', actor_role: 'instructor' }, instructor),
-    ).toBe(false);
+      canRetryOutcomeEmail(
+        { ...completed, action_type: 'send_reminder', actor_role: 'instructor', instructor_id: instructor, completed_by: instructor },
+        instructor,
+      ),
+    ).toBe(true);
+  });
+
+  it('routes instructor-completed outcomes through send-notification', async () => {
+    rpc.mockResolvedValue({ data: 'intervention-2', error: null });
+    invoke.mockResolvedValueOnce({ data: { sent: 1, failed: 0 }, error: null });
+    const saved = await recordCounselingOutcome({
+      interventionId: 'intervention-2',
+      outcomeRating: 'no_change',
+      actionType: 'send_reminder',
+      actorRole: 'instructor',
+    });
+    expect(saved.emailError).toBeNull();
+    expect(invoke).toHaveBeenCalledWith('send-notification', {
+      body: { event: 'engagement_outcome', intervention_id: 'intervention-2' },
+    });
   });
 });
 
@@ -568,7 +601,8 @@ describe('counselor engagement follow-up email', () => {
         intervention: { ...stored, status: 'cancelled' },
       }),
     ).toBeNull();
-    expect(counselorFollowupEmail('CS101').html).toContain('guidance counselor');
+    expect(counselorFollowupEmail({ subjectCode: 'CS101', message: 'Check in weekly' }).html).toContain('guidance counselor');
+    expect(counselorFollowupEmail({ subjectCode: 'CS101', message: 'Check in weekly' }).html).toContain('Check in weekly');
     expect(isRiskEmailLevel(emailLogKey('counselor_followup', 'int-1'))).toBe(false);
     expect(
       canRetryCounselorFollowupEmail(
@@ -629,25 +663,62 @@ describe('instructor intervention email', () => {
     expect(shouldEmailEngagementIntervention('add_note')).toBe(false);
     expect(
       engagementInterventionRecipient({
-        callerIsInstructor: true,
         callerId: instructor,
         intervention: stored,
       }),
     ).toBe(student);
     expect(
       engagementInterventionRecipient({
-        callerIsInstructor: true,
         callerId: otherInstructor,
         intervention: stored,
       }),
     ).toBeNull();
     expect(
       engagementInterventionRecipient({
-        callerIsInstructor: true,
         callerId: instructor,
         intervention: { ...stored, actionType: 'guidance_counseling' },
       }),
     ).toBeNull();
+    expect(engagementInterventionEmail({ subjectCode: 'CS101', message: 'Please attend office hours' }).html).toContain(
+      'Please attend office hours',
+    );
+    expect(
+      enrollmentRequestRecipient({
+        callerId: student,
+        enrollment: { studentId: student, status: 'pending', instructorId: instructor },
+      }),
+    ).toBe(instructor);
+    expect(
+      enrollmentRequestRecipient({
+        callerId: student,
+        enrollment: { studentId: student, status: 'active', instructorId: instructor },
+      }),
+    ).toBeNull();
+    expect(
+      feedbackReplyRecipient({
+        callerId: instructor,
+        callerIsInstructor: true,
+        feedback: { studentId: student, instructorId: instructor },
+      }),
+    ).toBe(student);
+    expect(
+      attendanceUpdateRecipient({
+        callerId: instructor,
+        callerIsInstructor: true,
+        attendance: { studentId: student, subjectInstructorId: instructor },
+      }),
+    ).toBe(student);
+    expect(
+      engagementOutcomeRecipient({
+        callerId: instructor,
+        intervention: {
+          studentId: student,
+          instructorId: instructor,
+          status: 'completed',
+          completedBy: instructor,
+        },
+      }),
+    ).toBe(student);
     expect(
       loggedInterventionRecipient({
         callerIsInstructor: true,
@@ -750,6 +821,19 @@ describe('email delivery safety', () => {
     expect(outcomeFn.indexOf('.insert(')).toBeGreaterThan(outcomeFn.indexOf('sendBrevoEmail'));
     expect(notifyFn).toContain('Deno.env.get("BREVO_API_KEY")');
     expect(read('supabase/functions/_shared/risk-email.ts')).toContain('EDGE_RISK_EMAILS_ENABLED');
+  });
+
+  it('does not publish missing grades when an assessment is created', () => {
+    const detail = read('src/pages/dashboard/SubjectDetail.tsx');
+    const create = detail.slice(detail.indexOf('const create = useMutation'), detail.indexOf('const remove = useMutation'));
+    expect(create).not.toContain('publishMissingGradeAlerts');
+    const missing = read('supabase/functions/notify-missing-grades/index.ts');
+    expect(missing.indexOf('missingGradeAlertAllowed')).toBeLessThan(missing.indexOf('grades_published_at:'));
+    expect(missing.indexOf('missingGradeAlertAllowed')).toBeLessThan(missing.indexOf('user_inbox_notifications'));
+    const sql = read('supabase/migrations/20261018130000_missing_grade_requires_recorded_score.sql');
+    const guard = sql.indexOf('submission.score IS NOT NULL');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(sql.indexOf('grades_published_at = COALESCE'));
   });
 
   it('emails the stored intervention student after the inbox row exists', () => {

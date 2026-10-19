@@ -175,7 +175,7 @@ async function sendCounselorFollowupEmail(
 
   const { data: intervention, error: interventionError } = await supabase
     .from("engagement_interventions")
-    .select("id, student_id, instructor_id, action_type, status, subject_id")
+    .select("id, student_id, instructor_id, action_type, status, subject_id, note")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
@@ -218,7 +218,7 @@ async function sendCounselorFollowupEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = counselorFollowupEmail(subjectCode);
+  const email = counselorFollowupEmail({ subjectCode, message: intervention.note ?? null });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
@@ -255,7 +255,7 @@ async function sendCounselingOutcomeEmail(
 
   const { data: intervention, error: interventionError } = await supabase
     .from("engagement_interventions")
-    .select("id, student_id, instructor_id, action_type, actor_role, status, subject_id, completed_by")
+    .select("id, student_id, instructor_id, action_type, actor_role, status, subject_id, completed_by, note, outcome_rating")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
@@ -298,7 +298,18 @@ async function sendCounselingOutcomeEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = counselingOutcomeEmail(subjectCode);
+  const { data: staffOutcome } = await supabase
+    .from("intervention_staff_outcomes")
+    .select("outcome_note")
+    .eq("intervention_id", interventionId)
+    .maybeSingle();
+
+  const email = counselingOutcomeEmail({
+    subjectCode,
+    message: intervention.note ?? null,
+    outcomeRating: intervention.outcome_rating ?? null,
+    outcomeNote: staffOutcome?.outcome_note ?? null,
+  });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),

@@ -24,8 +24,9 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
+import { emailEnrollmentRequest } from '@/lib/enrollment-request-notification';
 
-async function submitEnrollmentRequest(studentId: string, subjectId: string) {
+async function submitEnrollmentRequest(studentId: string, subjectId: string): Promise<string> {
   const { data: existing, error: lookupError } = await supabase
     .from('enrollments')
     .select('id, status')
@@ -41,25 +42,26 @@ async function submitEnrollmentRequest(studentId: string, subjectId: string) {
   if (existing?.status === 'rejected') {
     const { error } = await supabase
       .from('enrollments')
-      .update({ status: 'pending' })
+      .update({ status: 'pending', enrolled_at: new Date().toISOString() })
       .eq('id', existing.id)
       .eq('student_id', studentId)
       .eq('status', 'rejected');
     if (error) throw error;
-    return;
+    return existing.id;
   }
 
-  const { error } = await supabase.from('enrollments').insert({
+  const { data: inserted, error } = await supabase.from('enrollments').insert({
     student_id: studentId,
     subject_id: subjectId,
     status: 'pending',
-  });
+  }).select('id').single();
   if (error) {
     if (error.code === '23505') {
       throw new Error('You already have an enrollment or pending request for this course.');
     }
     throw error;
   }
+  return inserted.id;
 }
 
 export default function MySubjects() {
@@ -208,14 +210,16 @@ export default function MySubjects() {
         }
       }
 
-      await submitEnrollmentRequest(user!.id, subject.id);
-      return subject;
+      const enrollmentId = await submitEnrollmentRequest(user!.id, subject.id);
+      const email = await emailEnrollmentRequest(enrollmentId);
+      return { subject, emailError: email.emailError };
     },
-    onSuccess: (subject) => {
+    onSuccess: ({ subject, emailError }) => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
       if (user?.id) invalidateStudentLinkedCaches(queryClient, user.id);
       toast.success(`Enrollment request sent for ${subject.code} — ${subject.name}. Waiting for instructor approval.`);
+      if (emailError) toast.warning(emailError);
       setEnrollCode('');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -290,13 +294,16 @@ export default function MySubjects() {
         }
       }
 
-      await submitEnrollmentRequest(user!.id, subjectId);
+      const enrollmentId = await submitEnrollmentRequest(user!.id, subjectId);
+      const email = await emailEnrollmentRequest(enrollmentId);
+      return email.emailError;
     },
-    onSuccess: () => {
+    onSuccess: (emailError) => {
       queryClient.invalidateQueries({ queryKey: ['my-enrollments', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['student-program', user?.id] });
       if (user?.id) invalidateStudentLinkedCaches(queryClient, user.id);
       toast.success('Enrollment request sent. Waiting for instructor approval.');
+      if (emailError) toast.warning(emailError);
     },
     onError: (e: Error) => toast.error(e.message),
   });

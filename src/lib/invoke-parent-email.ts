@@ -23,6 +23,7 @@ export type SendParentEmailInput = {
   /** Recipient email. Required for `invitation`; resolved server-side for link-based types. */
   to?: string;
   link_id?: string;
+  registration_request_id?: string;
   student_id_no?: string;
   parent_name?: string;
   student_name?: string;

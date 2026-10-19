@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  deliverEmail,
+  emailLogKey,
+  parentRegistrationDecisionLogId,
+} from "../_shared/notification-channels.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -215,6 +220,73 @@ serve(async (req) => {
         ...buildEmail("invitation", { studentName, studentIdNo: inviteStudentIdNo }),
       })
         .then(() => new Response(JSON.stringify({ success: true, type }), { headers: { ...corsHeaders, "Content-Type": "application/json" } }));
+    }
+
+    const registrationRequestId = safeString(body?.registration_request_id);
+    if (registrationRequestId) {
+      const decisionType = type as DecisionEmailType;
+      if (decisionType !== "student_approved" && decisionType !== "student_rejected") {
+        throw new Error("registration_request_id is only valid for student decision emails");
+      }
+      const { data: request, error: requestErr } = await supabase
+        .from("parent_registration_requests")
+        .select("id, student_user_id, email, full_name, student_name, status, student_decided_at")
+        .eq("id", registrationRequestId)
+        .maybeSingle();
+      if (requestErr) throw new Error("Could not verify parent registration request");
+      if (!request) throw new Error("Parent registration request not found");
+      if (request.student_user_id !== user.id) throw new Error("Forbidden");
+      const expectedStatus = decisionType === "student_approved" ? "pending_admin" : "rejected";
+      if (request.status !== expectedStatus) {
+        throw new Error("Request status does not match this notification");
+      }
+      if (!request.student_decided_at) {
+        throw new Error("Request decision timestamp is missing");
+      }
+      const parentEmail = normalizeEmail(request.email);
+      if (!parentEmail) throw new Error("Parent email not on file");
+      const emailContent = buildEmail(decisionType, {
+        parentName: request.full_name,
+        studentName: request.student_name,
+      });
+      const logKey = emailLogKey(
+        "parent_registration_decision",
+        parentRegistrationDecisionLogId(
+          request.id,
+          `${decisionType}:${request.student_decided_at}`,
+        ),
+      );
+      const { data: existing } = await supabase
+        .from("email_notifications")
+        .select("id")
+        .eq("student_id", request.student_user_id)
+        .eq("risk_level", logKey)
+        .limit(1);
+      const delivery = await deliverEmail({
+        alreadyLogged: (existing ?? []).length > 0,
+        send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+        log: async () => {
+          const { error: logError } = await supabase.from("email_notifications").insert({
+            student_id: request.student_user_id,
+            risk_level: logKey,
+            channel: "email",
+          });
+          if (logError) throw logError;
+        },
+      });
+      if (delivery === "failed") {
+        return new Response(JSON.stringify({ success: true, sent: 0, failed: 1, type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (delivery === "duplicate") {
+        return new Response(JSON.stringify({ success: true, sent: 0, failed: 0, duplicate: true, type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, sent: 1, failed: 0, type }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (!linkId) throw new Error("link_id is required");

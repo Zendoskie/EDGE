@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { emailLoggedIntervention } from '@/lib/intervention-notification';
+import { emailAttendanceUpdate } from '@/lib/attendance-update-notification';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
@@ -555,7 +556,7 @@ export function SubjectAttendance({
       if (error) throw error;
       return { markedDate, rows: data ?? [] };
     },
-    onSuccess: ({ markedDate, rows }) => {
+    onSuccess: async ({ markedDate, rows }, { studentId, status }) => {
       queryClient.setQueryData(['attendance', subjectId, markedDate], rows);
       queryClient.setQueryData<typeof attendanceHistory>(['attendance-history', subjectId], (old) =>
         old && [...rows, ...old.filter((r) => r.date !== markedDate)].sort(
@@ -564,6 +565,17 @@ export function SubjectAttendance({
       );
       queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       toast.success('Attendance updated');
+      const committedRow = (rows as { student_id?: string; status?: string }[]).find(
+        (row) => row.student_id === studentId,
+      );
+      const committedStatus = committedRow?.status ?? status;
+      const email = await emailAttendanceUpdate({
+        studentId,
+        subjectId,
+        date: markedDate,
+        status: committedStatus,
+      });
+      if (email.emailError) toast.warning(email.emailError);
       scheduleSubjectRiskRecalc(subjectId, (result) => {
         if (result.ok) queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
       });

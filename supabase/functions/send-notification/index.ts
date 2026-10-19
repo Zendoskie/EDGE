@@ -1,13 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  attendanceUpdateEmail,
+  attendanceUpdateRecipient,
   authorizeFeedbackEmail,
   authorizeGradesPostedCaller,
   authorizeRiskFeedbackEmail,
+  buildAttendanceUpdateEmailLogKey,
+  counselingOutcomeEmail,
   deliverEmail,
   emailLogKey,
+  engagementInterventionEmail,
   engagementInterventionRecipient,
+  engagementOutcomeRecipient,
   enrollmentInstructors,
+  enrollmentRequestEmail,
+  enrollmentRequestLogId,
+  enrollmentRequestRecipient,
+  feedbackReplyEmail,
+  feedbackReplyRecipient,
   gradesPostedEmail,
   gradesPostedLogId,
   instructorFeedbackEmail,
@@ -18,6 +29,8 @@ import {
   riskFeedbackEmail,
   riskFeedbackInstructor,
   selectGradesPostedLines,
+  shouldSendCounselingOutcomeEmail,
+  validateCommittedAttendanceStatus,
 } from "../_shared/notification-channels.ts";
 
 const corsHeaders = {
@@ -439,22 +452,14 @@ async function sendEngagementInterventionEmail(
 ) {
   if (!interventionId) throw new Error("intervention_id is required");
 
-  const { data: roleCheck } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", callerId)
-    .eq("role", "instructor")
-    .maybeSingle();
-
   const { data: intervention, error: interventionError } = await supabase
     .from("engagement_interventions")
-    .select("id, student_id, instructor_id, action_type, subject_id")
+    .select("id, student_id, instructor_id, action_type, subject_id, note")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
 
   const studentId = engagementInterventionRecipient({
-    callerIsInstructor: Boolean(roleCheck),
     callerId,
     intervention: intervention
       ? {
@@ -491,7 +496,10 @@ async function sendEngagementInterventionEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = interventionStudentEmail(subjectCode);
+  const email = engagementInterventionEmail({
+    subjectCode,
+    message: intervention?.note ?? null,
+  });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
@@ -499,6 +507,394 @@ async function sendEngagementInterventionEmail(
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
         subject_id: intervention?.subject_id ?? null,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+  if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+  return json({ success: true, sent: 1, failed: 0 });
+}
+
+async function sendEngagementOutcomeEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  interventionId: string | null,
+) {
+  if (!interventionId) throw new Error("intervention_id is required");
+
+  const { data: intervention, error: interventionError } = await supabase
+    .from("engagement_interventions")
+    .select("id, student_id, instructor_id, action_type, actor_role, status, subject_id, completed_by, note, outcome_rating")
+    .eq("id", interventionId)
+    .maybeSingle();
+  if (interventionError) throw interventionError;
+  if (
+    intervention &&
+    shouldSendCounselingOutcomeEmail(intervention.action_type, intervention.actor_role)
+  ) {
+    throw new Error("Not allowed");
+  }
+
+  const studentId = engagementOutcomeRecipient({
+    callerId,
+    intervention: intervention
+      ? {
+        studentId: intervention.student_id,
+        instructorId: intervention.instructor_id,
+        status: intervention.status,
+        completedBy: intervention.completed_by,
+      }
+      : null,
+  });
+  if (!studentId) throw new Error("Not allowed");
+
+  const { data: studentProfile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("user_id", studentId)
+    .maybeSingle();
+  const studentEmail = normalizeEmail(studentProfile?.email);
+  if (!studentEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+
+  let subjectCode: string | null = null;
+  if (intervention?.subject_id) {
+    const { data: subject } = await supabase
+      .from("subjects")
+      .select("code")
+      .eq("id", intervention.subject_id)
+      .maybeSingle();
+    subjectCode = subject?.code ?? null;
+  }
+
+  const { data: staffOutcome } = await supabase
+    .from("intervention_staff_outcomes")
+    .select("outcome_note")
+    .eq("intervention_id", interventionId)
+    .maybeSingle();
+
+  const logKey = emailLogKey("engagement_outcome", interventionId);
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("risk_level", logKey)
+    .limit(1);
+  const email = counselingOutcomeEmail({
+    subjectCode,
+    message: intervention?.note ?? null,
+    outcomeRating: intervention?.outcome_rating ?? null,
+    outcomeNote: staffOutcome?.outcome_note ?? null,
+  });
+  const delivery = await deliverEmail({
+    alreadyLogged: (existing ?? []).length > 0,
+    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: studentId,
+        subject_id: intervention?.subject_id ?? null,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+  if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+  return json({ success: true, sent: 1, failed: 0 });
+}
+
+async function sendEnrollmentRequestEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  enrollmentId: string | null,
+) {
+  if (!enrollmentId) throw new Error("enrollment_id is required");
+
+  const { data: enrollment, error: enrollmentError } = await supabase
+    .from("enrollments")
+    .select("id, student_id, status, enrolled_at, subject_id, subjects(code, instructor_id)")
+    .eq("id", enrollmentId)
+    .maybeSingle();
+  if (enrollmentError) throw enrollmentError;
+
+  const subject = Array.isArray(enrollment?.subjects) ? enrollment.subjects[0] : enrollment?.subjects;
+  const instructorId = enrollmentRequestRecipient({
+    callerId,
+    enrollment: enrollment
+      ? {
+        studentId: enrollment.student_id,
+        status: enrollment.status,
+        instructorId: subject?.instructor_id ?? null,
+      }
+      : null,
+  });
+  if (!instructorId) throw new Error("Not allowed");
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, email, full_name")
+    .in("user_id", [enrollment!.student_id, instructorId]);
+  const instructor = profiles?.find((p) => p.user_id === instructorId);
+  const student = profiles?.find((p) => p.user_id === enrollment!.student_id);
+  const instructorEmail = normalizeEmail(instructor?.email);
+  if (!instructorEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+
+  const logId = enrollmentRequestLogId(enrollmentId, enrollment?.enrolled_at);
+  const logKey = emailLogKey("enrollment_request", logId);
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", enrollment!.student_id)
+    .eq("risk_level", logKey)
+    .limit(1);
+  const email = enrollmentRequestEmail({
+    studentName: student?.full_name,
+    subjectCode: subject?.code ?? null,
+  });
+  const delivery = await deliverEmail({
+    alreadyLogged: (existing ?? []).length > 0,
+    send: () => sendBrevoEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: enrollment!.student_id,
+        subject_id: enrollment?.subject_id ?? null,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+  if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+  return json({ success: true, sent: 1, failed: 0 });
+}
+
+async function instructorCanViewStudent(
+  supabase: ReturnType<typeof createClient>,
+  instructorId: string,
+  studentId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("id, subjects!inner(instructor_id)")
+    .eq("student_id", studentId)
+    .eq("status", "active");
+  if (error) return false;
+  return (data ?? []).some((row: { subjects?: { instructor_id?: string } | { instructor_id?: string }[] }) => {
+    const subj = Array.isArray(row.subjects) ? row.subjects[0] : row.subjects;
+    return subj?.instructor_id === instructorId;
+  });
+}
+
+async function sendFeedbackReplyEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  kind: string | null,
+  feedbackId: string | null,
+) {
+  if (!feedbackId || !kind) throw new Error("kind and feedback_id are required");
+
+  const { data: roleCheck } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", callerId)
+    .eq("role", "instructor")
+    .maybeSingle();
+
+  if (kind === "engagement") {
+    const { data: row, error } = await supabase
+      .from("engagement_feedback")
+      .select("id, student_id, subject, instructor_response")
+      .eq("id", feedbackId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row?.instructor_response?.trim()) throw new Error("Reply not found");
+    const canView = await instructorCanViewStudent(supabase, callerId, row.student_id);
+    const studentId = feedbackReplyRecipient({
+      callerId,
+      callerIsInstructor: Boolean(roleCheck) && canView,
+      feedback: { studentId: row.student_id, instructorId: callerId },
+    });
+    if (!studentId) throw new Error("Not allowed");
+    const { data: studentProfile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("user_id", studentId)
+      .maybeSingle();
+    const studentEmail = normalizeEmail(studentProfile?.email);
+    if (!studentEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+    const logKey = emailLogKey("feedback_reply", `engagement:${feedbackId}`);
+    const { data: existing } = await supabase
+      .from("email_notifications")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("risk_level", logKey)
+      .limit(1);
+    const email = feedbackReplyEmail({
+      subjectLabel: row.subject,
+      replyPreview: row.instructor_response,
+    });
+    const delivery = await deliverEmail({
+      alreadyLogged: (existing ?? []).length > 0,
+      send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+      log: async () => {
+        const { error: logError } = await supabase.from("email_notifications").insert({
+          student_id: studentId,
+          risk_level: logKey,
+          channel: "email",
+        });
+        if (logError) throw logError;
+      },
+    });
+    if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+    if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+    return json({ success: true, sent: 1, failed: 0 });
+  }
+
+  if (kind === "struggle") {
+    const { data: row, error } = await supabase
+      .from("student_feedback")
+      .select("id, student_id, subject_id, instructor_response, subjects(code)")
+      .eq("id", feedbackId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row?.instructor_response?.trim()) throw new Error("Reply not found");
+    const subject = Array.isArray(row.subjects) ? row.subjects[0] : row.subjects;
+    const studentId = feedbackReplyRecipient({
+      callerId,
+      callerIsInstructor: Boolean(roleCheck),
+      feedback: {
+        studentId: row.student_id,
+        instructorId: subject?.instructor_id ?? callerId,
+      },
+    });
+    if (!studentId || subject?.instructor_id !== callerId) throw new Error("Not allowed");
+    const { data: studentProfile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("user_id", studentId)
+      .maybeSingle();
+    const studentEmail = normalizeEmail(studentProfile?.email);
+    if (!studentEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+    const logKey = emailLogKey("feedback_reply", `struggle:${feedbackId}`);
+    const { data: existing } = await supabase
+      .from("email_notifications")
+      .select("id")
+      .eq("student_id", studentId)
+      .eq("risk_level", logKey)
+      .limit(1);
+    const email = feedbackReplyEmail({
+      subjectLabel: subject?.code ?? "risk feedback",
+      replyPreview: row.instructor_response,
+    });
+    const delivery = await deliverEmail({
+      alreadyLogged: (existing ?? []).length > 0,
+      send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+      log: async () => {
+        const { error: logError } = await supabase.from("email_notifications").insert({
+          student_id: studentId,
+          subject_id: row.subject_id,
+          risk_level: logKey,
+          channel: "email",
+        });
+        if (logError) throw logError;
+      },
+    });
+    if (delivery === "failed") return json({ success: true, sent: 0, failed: 1 });
+    if (delivery === "duplicate") return json({ success: true, sent: 0, failed: 0, duplicate: true });
+    return json({ success: true, sent: 1, failed: 0 });
+  }
+
+  throw new Error("Invalid feedback kind");
+}
+
+async function sendAttendanceUpdateEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  studentId: string | null,
+  subjectId: string | null,
+  date: string | null,
+  committedStatus: string | null,
+) {
+  if (!studentId || !subjectId || !date) {
+    throw new Error("student_id, subject_id, and date are required");
+  }
+
+  const { data: roleCheck } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", callerId)
+    .eq("role", "instructor")
+    .maybeSingle();
+
+  const { data: subject } = await supabase
+    .from("subjects")
+    .select("code, instructor_id")
+    .eq("id", subjectId)
+    .maybeSingle();
+
+  const { data: attendance, error: attendanceError } = await supabase
+    .from("attendance")
+    .select("id, student_id, status")
+    .eq("subject_id", subjectId)
+    .eq("student_id", studentId)
+    .eq("date", date)
+    .maybeSingle();
+  if (attendanceError) throw attendanceError;
+
+  const authorizedStudentId = attendanceUpdateRecipient({
+    callerId,
+    callerIsInstructor: Boolean(roleCheck),
+    attendance: attendance && subject
+      ? { studentId: attendance.student_id, subjectInstructorId: subject.instructor_id }
+      : null,
+  });
+  if (!authorizedStudentId) throw new Error("Not allowed");
+
+  const { data: studentProfile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("user_id", authorizedStudentId)
+    .maybeSingle();
+  const studentEmail = normalizeEmail(studentProfile?.email);
+  if (!studentEmail) return json({ success: true, sent: 0, failed: 0, skipped: "no_email" });
+
+  if (!attendance?.id) throw new Error("Attendance record not found");
+  const savedStatus = validateCommittedAttendanceStatus(attendance.status, committedStatus);
+
+  const { data: priorLogs, error: priorLogsError } = await supabase
+    .from("email_notifications")
+    .select("risk_level, sent_at")
+    .eq("student_id", authorizedStudentId)
+    .like("risk_level", `attendance_update:${attendance.id}:%`)
+    .order("sent_at", { ascending: true });
+  if (priorLogsError) throw priorLogsError;
+
+  const logKey = buildAttendanceUpdateEmailLogKey(attendance.id, savedStatus, priorLogs ?? []);
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", authorizedStudentId)
+    .eq("risk_level", logKey)
+    .limit(1);
+  const email = attendanceUpdateEmail({
+    subjectCode: subject?.code ?? null,
+    date,
+    status: savedStatus,
+  });
+  const delivery = await deliverEmail({
+    alreadyLogged: (existing ?? []).length > 0,
+    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: authorizedStudentId,
+        subject_id: subjectId,
         risk_level: logKey,
         channel: "email",
       });
@@ -623,6 +1019,30 @@ serve(async (req) => {
     }
     if (body?.event === "logged_intervention") {
       return await sendLoggedInterventionEmail(supabase, user.id, safeString(body?.intervention_id));
+    }
+    if (body?.event === "engagement_outcome") {
+      return await sendEngagementOutcomeEmail(supabase, user.id, safeString(body?.intervention_id));
+    }
+    if (body?.event === "enrollment_request") {
+      return await sendEnrollmentRequestEmail(supabase, user.id, safeString(body?.enrollment_id));
+    }
+    if (body?.event === "feedback_reply") {
+      return await sendFeedbackReplyEmail(
+        supabase,
+        user.id,
+        safeString(body?.kind),
+        safeString(body?.feedback_id),
+      );
+    }
+    if (body?.event === "attendance_update") {
+      return await sendAttendanceUpdateEmail(
+        supabase,
+        user.id,
+        safeString(body?.student_id),
+        safeString(body?.subject_id),
+        safeString(body?.date),
+        safeString(body?.status),
+      );
     }
 
     const { data: roleCheck } = await supabase

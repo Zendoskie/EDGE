@@ -78,10 +78,10 @@ export function InterventionHistory({
   const [completionTarget, setCompletionTarget] = useState<EngagementIntervention | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  const retryEmail = async (interventionId: string) => {
-    setRetryingId(interventionId);
+  const retryEmail = async (item: EngagementIntervention) => {
+    setRetryingId(item.id);
     try {
-      const result = await retryCounselingOutcomeEmail(interventionId);
+      const result = await retryCounselingOutcomeEmail(item.id, item.action_type, item.actor_role);
       if (result.emailError) {
         toast.message(result.emailError);
         return;
@@ -242,7 +242,7 @@ export function InterventionHistory({
                     size="sm"
                     variant="outline"
                     disabled={retryingId === item.id}
-                    onClick={() => void retryEmail(item.id)}
+                    onClick={() => void retryEmail(item)}
                   >
                     {retryingId === item.id ? 'Sending email…' : 'Retry student email'}
                   </Button>

@@ -18,7 +18,12 @@ export function emailLogKey(
     | "logged_intervention"
     | "grades_posted"
     | "risk_feedback"
-    | "counselor_followup",
+    | "counselor_followup"
+    | "enrollment_request"
+    | "feedback_reply"
+    | "attendance_update"
+    | "engagement_outcome"
+    | "parent_registration_decision",
   id: string,
 ): string {
   const key = `${kind}:${id}`;
@@ -29,6 +34,17 @@ export function emailLogKey(
 /** Stable per-assessment/student key for grades_posted send-log rows. */
 export function gradesPostedLogId(activityId: string, studentId: string): string {
   return `${activityId}:${studentId}`;
+}
+
+/** One instructor email per pending cycle; enrolled_at is set when entering pending. */
+export function enrollmentRequestLogId(enrollmentId: string, pendingStartedAt: string | null | undefined): string {
+  const anchor = pendingStartedAt?.trim() || "unknown";
+  return `${enrollmentId}:${anchor}`;
+}
+
+/** One email per committed student decision on a registration request. */
+export function parentRegistrationDecisionLogId(requestId: string, decisionType: string): string {
+  return `${requestId}:${decisionType}`;
 }
 
 /** Caller may email grades for this subject. */
@@ -144,13 +160,20 @@ export function counselorFollowupRecipient(input: {
   return input.intervention.studentId;
 }
 
-export function counselorFollowupEmail(subjectCode?: string | null): { subject: string; html: string } {
-  const code = subjectCode?.trim() ?? "";
+export function counselorFollowupEmail(input: {
+  subjectCode?: string | null;
+  message?: string | null;
+}): { subject: string; html: string } {
+  const code = input.subjectCode?.trim() ?? "";
   const subject = code ? `EDGE: Counseling follow-up — ${code}` : "EDGE: Counseling follow-up";
   const where = code ? ` for <strong>${escapeHtml(code)}</strong>` : "";
+  const message = input.message?.trim();
+  const messageBlock = message
+    ? `<p><strong>Message:</strong> ${escapeHtml(message)}</p>`
+    : "<p>Sign in to EDGE to read the follow-up.</p>";
   return {
     subject,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your guidance counselor logged an engagement follow-up${where}.</p><p>Sign in to EDGE to read it. This message does not include private counseling notes.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your guidance counselor logged an engagement follow-up${where}.</p>${messageBlock}<p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
   };
 }
 
@@ -196,13 +219,38 @@ export function authorizeFeedbackEmail(input: {
   return { studentId: input.feedback.studentId, topic: input.feedback.topic };
 }
 
-export function counselingOutcomeEmail(subjectCode?: string | null): { subject: string; html: string } {
-  const code = subjectCode?.trim() ?? "";
-  const subject = code ? `EDGE: Counseling outcome recorded — ${code}` : "EDGE: Counseling outcome recorded";
+export function engagementOutcomeRatingLabel(rating: string | null | undefined): string {
+  const normalized = rating?.trim().toLowerCase() ?? "";
+  if (normalized === "improved") return "Improved";
+  if (normalized === "no_change") return "No change";
+  if (normalized === "declined") return "Declined";
+  if (!normalized) return "Recorded";
+  return escapeHtml(rating!.trim());
+}
+
+export function counselingOutcomeEmail(input: {
+  subjectCode?: string | null;
+  message?: string | null;
+  outcomeRating?: string | null;
+  outcomeNote?: string | null;
+}): { subject: string; html: string } {
+  const code = input.subjectCode?.trim() ?? "";
+  const subject = code ? `EDGE: Follow-up outcome recorded — ${code}` : "EDGE: Follow-up outcome recorded";
   const where = code ? ` for <strong>${escapeHtml(code)}</strong>` : "";
+  const message = input.message?.trim();
+  const outcome = engagementOutcomeRatingLabel(input.outcomeRating);
+  const note = input.outcomeNote?.trim();
+  const parts = [
+    `<p>Your follow-up outcome${where} has been recorded.</p>`,
+    message ? `<p><strong>Message:</strong> ${escapeHtml(message)}</p>` : "",
+    `<p><strong>Outcome:</strong> ${escapeHtml(outcome)}</p>`,
+    note ? `<p><strong>Note:</strong> ${escapeHtml(note)}</p>` : "",
+    "<p>Sign in to EDGE to review the details.</p>",
+    '<p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p>',
+  ].filter(Boolean);
   return {
     subject,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your counseling outcome${where} has been recorded.</p><p>Sign in to EDGE to review it. This message does not include counseling notes.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;">${parts.join("")}</div>`,
   };
 }
 
@@ -269,17 +317,53 @@ export function shouldEmailEngagementIntervention(actionType: string): boolean {
   return ENGAGEMENT_INTERVENTION_EMAIL_ACTIONS.has(actionType);
 }
 
-/** Student on the stored engagement intervention. Null for any other caller or action. */
+/** Student on the stored engagement intervention. Owner is intervention.instructor_id (not user_roles). */
 export function engagementInterventionRecipient(input: {
-  callerIsInstructor: boolean;
   callerId: string;
   intervention: { studentId: string; instructorId: string; actionType: string } | null;
+  callerIsInstructor?: boolean;
 }): string | null {
-  if (!input.callerIsInstructor || !input.intervention) return null;
+  if (input.callerIsInstructor === false || !input.intervention) return null;
   if (!input.callerId || input.callerId !== input.intervention.instructorId) return null;
   if (!shouldEmailEngagementIntervention(input.intervention.actionType)) return null;
   if (!input.intervention.studentId) return null;
   return input.intervention.studentId;
+}
+
+export function engagementInterventionEmail(input: {
+  subjectCode?: string | null;
+  message?: string | null;
+}): { subject: string; html: string } {
+  const code = input.subjectCode?.trim() ?? "";
+  const subject = code ? `EDGE: Instructor follow-up — ${code}` : "EDGE: Instructor follow-up";
+  const where = code ? ` for <strong>${escapeHtml(code)}</strong>` : "";
+  const message = input.message?.trim();
+  const messageBlock = message
+    ? `<p>${escapeHtml(message)}</p>`
+    : "<p>Sign in to EDGE to read your instructor's follow-up.</p>";
+  return {
+    subject,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your instructor logged a follow-up${where}.</p>${messageBlock}<p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+/** Instructor-completed engagement outcome (not guidance_counseling). */
+export function engagementOutcomeRecipient(input: {
+  callerId: string;
+  intervention: {
+    studentId: string;
+    instructorId: string;
+    status: string;
+    completedBy: string | null;
+  } | null;
+}): string | null {
+  if (!input.intervention) return null;
+  if (input.intervention.status !== "completed") return null;
+  const allowed =
+    input.callerId === input.intervention.instructorId ||
+    (input.intervention.completedBy && input.callerId === input.intervention.completedBy);
+  if (!allowed) return null;
+  return input.intervention.studentId || null;
 }
 
 /** Student on the stored subject intervention. Caller must own that subject. */
@@ -314,6 +398,152 @@ export function instructorFeedbackEmail(input: {
   return {
     subject: "EDGE: New student feedback",
     html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>${student} submitted new feedback: ${topic}.</p><p>Sign in to EDGE to review it.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function enrollmentRequestRecipient(input: {
+  callerId: string;
+  enrollment: { studentId: string; status: string; instructorId: string | null } | null;
+}): string | null {
+  if (!input.enrollment) return null;
+  if (input.enrollment.status !== "pending") return null;
+  if (!input.callerId || input.callerId !== input.enrollment.studentId) return null;
+  if (!input.enrollment.instructorId) return null;
+  return input.enrollment.instructorId;
+}
+
+export function enrollmentRequestEmail(input: {
+  studentName?: string | null;
+  subjectCode?: string | null;
+}): { subject: string; html: string } {
+  const student = escapeHtml(input.studentName?.trim() || "A student");
+  const code = escapeHtml(input.subjectCode?.trim() || "your course");
+  return {
+    subject: "EDGE: New enrollment request",
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>${student} requested enrollment in <strong>${code}</strong>.</p><p>Sign in to EDGE to approve or reject the request.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function feedbackReplyRecipient(input: {
+  callerId: string;
+  callerIsInstructor: boolean;
+  feedback: { studentId: string; instructorId: string } | null;
+}): string | null {
+  if (!input.callerIsInstructor || !input.feedback) return null;
+  if (!input.callerId || input.callerId !== input.feedback.instructorId) return null;
+  return input.feedback.studentId || null;
+}
+
+export function feedbackReplyEmail(input: {
+  subjectLabel?: string | null;
+  replyPreview?: string | null;
+}): { subject: string; html: string } {
+  const label = escapeHtml(input.subjectLabel?.trim() || "your feedback");
+  const preview = input.replyPreview?.trim();
+  const body = preview
+    ? `<p><strong>Reply:</strong> ${escapeHtml(preview)}</p>`
+    : "<p>Sign in to EDGE to read the full reply.</p>";
+  return {
+    subject: "EDGE: Instructor replied to your feedback",
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your instructor replied to ${label}.</p>${body}<p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function attendanceUpdateRecipient(input: {
+  callerId: string;
+  callerIsInstructor: boolean;
+  attendance: { studentId: string; subjectInstructorId: string | null } | null;
+}): string | null {
+  if (!input.callerIsInstructor || !input.attendance) return null;
+  if (!input.attendance.subjectInstructorId || input.callerId !== input.attendance.subjectInstructorId) return null;
+  return input.attendance.studentId || null;
+}
+
+export function validateCommittedAttendanceStatus(
+  persistedStatus: string | null | undefined,
+  committedStatus: string | null | undefined,
+): string {
+  if (!committedStatus?.trim()) throw new Error("status is required");
+  const savedStatus = committedStatus.trim().toLowerCase();
+  const persisted = persistedStatus?.trim().toLowerCase() || "";
+  if (persisted !== savedStatus) {
+    throw new Error("Attendance status does not match the committed change");
+  }
+  return savedStatus;
+}
+
+export type AttendanceEmailLogRow = { risk_level: string; sent_at?: string | null };
+
+export function parseAttendanceUpdateLogKey(
+  riskLevel: string,
+  attendanceId: string,
+): { status: string; revision: number } | null {
+  const head = `attendance_update:${attendanceId}:`;
+  if (!riskLevel.startsWith(head)) return null;
+  const rest = riskLevel.slice(head.length);
+  const withRevision = rest.match(/^([^:]+):r(\d+)$/);
+  if (withRevision) {
+    return {
+      status: withRevision[1].toLowerCase(),
+      revision: Number.parseInt(withRevision[2], 10),
+    };
+  }
+  if (/^[^:]+$/.test(rest)) {
+    return { status: rest.toLowerCase(), revision: 1 };
+  }
+  return null;
+}
+
+export function attendanceUpdateLogId(
+  attendanceId: string,
+  status: string,
+  priorLogs: AttendanceEmailLogRow[] = [],
+): string {
+  const normalized = status.trim().toLowerCase() || "unknown";
+  const parsed = priorLogs
+    .map((row) => {
+      const entry = parseAttendanceUpdateLogKey(row.risk_level, attendanceId);
+      if (!entry) return null;
+      return { ...entry, sent_at: row.sent_at ?? "", risk_level: row.risk_level };
+    })
+    .filter((row): row is { status: string; revision: number; sent_at: string; risk_level: string } => row !== null)
+    .sort(
+      (a, b) =>
+        a.sent_at.localeCompare(b.sent_at) ||
+        a.risk_level.localeCompare(b.risk_level) ||
+        a.revision - b.revision,
+    );
+
+  const latest = parsed[parsed.length - 1];
+  if (latest && latest.status === normalized) {
+    return `${attendanceId}:${normalized}:r${latest.revision}`;
+  }
+
+  const maxRevisionForStatus = parsed
+    .filter((row) => row.status === normalized)
+    .reduce((max, row) => Math.max(max, row.revision), 0);
+  return `${attendanceId}:${normalized}:r${maxRevisionForStatus + 1}`;
+}
+
+export function buildAttendanceUpdateEmailLogKey(
+  attendanceId: string,
+  committedStatus: string,
+  priorLogs: AttendanceEmailLogRow[] = [],
+): string {
+  return emailLogKey("attendance_update", attendanceUpdateLogId(attendanceId, committedStatus, priorLogs));
+}
+
+export function attendanceUpdateEmail(input: {
+  subjectCode?: string | null;
+  date: string;
+  status: string;
+}): { subject: string; html: string } {
+  const code = escapeHtml(input.subjectCode?.trim() || "your subject");
+  const date = escapeHtml(input.date.trim());
+  const status = escapeHtml(input.status.trim() || "recorded");
+  return {
+    subject: `EDGE: Attendance updated — ${code}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your attendance for <strong>${code}</strong> on <strong>${date}</strong> was recorded as <strong>${status}</strong>.</p><p>Sign in to EDGE to review your attendance record.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
   };
 }
 

@@ -12,19 +12,33 @@ export type OutcomeEmailResult = {
   alreadySent: boolean;
 };
 
-/** Email only. Does not complete the outcome or write another inbox row. */
-export async function retryCounselingOutcomeEmail(interventionId: string): Promise<OutcomeEmailResult> {
-  const { data: emailData, error: emailError } = await supabase.functions.invoke('send-referral-notification', {
-    body: {
-      event: 'counseling_outcome',
-      intervention_id: interventionId,
-    },
-  });
+async function invokeOutcomeEmail(
+  actionType: string,
+  actorRole: string,
+  interventionId: string,
+): Promise<OutcomeEmailResult> {
+  const useCounselorChannel = shouldSendCounselingOutcomeEmail(actionType, actorRole);
+  const { data: emailData, error: emailError } = useCounselorChannel
+    ? await supabase.functions.invoke('send-referral-notification', {
+        body: { event: 'counseling_outcome', intervention_id: interventionId },
+      })
+    : await supabase.functions.invoke('send-notification', {
+        body: { event: 'engagement_outcome', intervention_id: interventionId },
+      });
   if (emailError) return { emailError: OUTCOME_SAVED_EMAIL_FAILED, alreadySent: false };
   if (emailData?.duplicate) return { emailError: null, alreadySent: true };
   const failed = typeof emailData?.failed === 'number' ? emailData.failed : 0;
   if (failed > 0 || emailData?.skipped) return { emailError: OUTCOME_SAVED_EMAIL_FAILED, alreadySent: false };
   return { emailError: null, alreadySent: false };
+}
+
+/** Email only. Does not complete the outcome or write another inbox row. */
+export async function retryCounselingOutcomeEmail(
+  interventionId: string,
+  actionType: string,
+  actorRole: string,
+): Promise<OutcomeEmailResult> {
+  return invokeOutcomeEmail(actionType, actorRole, interventionId);
 }
 
 export function canRetryOutcomeEmail(
@@ -38,7 +52,6 @@ export function canRetryOutcomeEmail(
   userId: string | undefined,
 ): boolean {
   if (!userId || item.status !== 'completed') return false;
-  if (!shouldSendCounselingOutcomeEmail(item.action_type, item.actor_role)) return false;
   return userId === item.instructor_id || userId === item.completed_by;
 }
 
@@ -57,10 +70,6 @@ export async function recordCounselingOutcome(input: {
   if (error) throw error;
 
   const id = data as string;
-  if (!shouldSendCounselingOutcomeEmail(input.actionType, input.actorRole)) {
-    return { id, emailError: null, alreadySent: false };
-  }
-
-  const email = await retryCounselingOutcomeEmail(input.interventionId);
+  const email = await invokeOutcomeEmail(input.actionType, input.actorRole, input.interventionId);
   return { id, emailError: email.emailError, alreadySent: email.alreadySent };
 }
