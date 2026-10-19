@@ -170,13 +170,14 @@ describe('GradebookTable', () => {
       'send-notification',
       expect.objectContaining({
         body: expect.objectContaining({
-          to: 'ben@example.com',
-          student_id: 's2',
-          subject_code: 'PL101',
-          body: expect.stringContaining('A grade is now available for PL101.'),
+          event: 'grades_posted',
+          subject_id: 'sub-1',
+          items: [{ activity_id: 'act-1', student_id: 's2' }],
         }),
       }),
     );
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain('ben@example.com');
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain('A grade is now available');
   });
 
   it('notifies only the still-ungraded student after a grade is published', async () => {

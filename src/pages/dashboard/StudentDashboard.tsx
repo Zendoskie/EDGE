@@ -29,6 +29,7 @@ import { useStudentEnrolledSubjectIds } from '@/hooks/useStudentEnrolledSubjectI
 import { useStudentAcademicSnapshot } from '@/hooks/useStudentAcademicSnapshot';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { PageHeader } from '@/components/shell/PageHeader';
+import { submitRiskFeedback } from '@/lib/student-feedback-notification';
 
 interface RecentActivity {
   score: number | null;
@@ -178,18 +179,18 @@ export default function StudentDashboard() {
       if (!feedbackTarget?.subject_id) throw new Error("Missing subject");
       const reasons = reasonOptions.filter((r) => selectedReasons[r]);
       if (reasons.length === 0) throw new Error("Select at least one reason.");
-      const { error } = await supabase.from("student_feedback").insert({
-        student_id: user.id,
-        subject_id: feedbackTarget.subject_id,
-        prediction_id: feedbackTarget.id,
-        risk_level: feedbackTarget.risk_level,
+      return submitRiskFeedback({
+        studentId: user.id,
+        subjectId: feedbackTarget.subject_id,
+        predictionId: feedbackTarget.id ?? null,
+        riskLevel: feedbackTarget.risk_level,
         reasons,
         details: details.trim() ? details.trim() : null,
       });
-      if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast.success("Feedback submitted. Thank you.");
+      if (result.emailError) toast.message(result.emailError);
       setFeedbackOpen(false);
       setSelectedReasons({});
       setDetails("");

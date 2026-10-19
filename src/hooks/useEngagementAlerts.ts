@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeEngagementInvalidation } from '@/lib/engagement-cache';
 import {
-  formatEngagementFollowUpNotice,
   type EngagementAlert,
   type EngagementIntervention,
   type EngagementInterventionAction,
@@ -12,6 +11,8 @@ import {
 } from '@/lib/engagement-alerts';
 import type { Json } from '@/integrations/supabase/types';
 import { recordCounselingOutcome } from '@/lib/counseling-outcome-notification';
+import { emailCounselorFollowup, emailEngagementIntervention } from '@/lib/intervention-notification';
+import { shouldEmailEngagementIntervention } from '../../supabase/functions/_shared/notification-channels';
 
 export function useInstructorEngagementAlerts(enabled = true) {
   const { user, role } = useAuth();
@@ -115,57 +116,18 @@ type LogInterventionInput = {
   note?: string;
   alertId?: string | null;
   metadata?: Record<string, unknown>;
-  /** When true, attempt email via send-notification edge function. */
-  sendEmail?: boolean;
-  studentEmail?: string | null;
   subjectId?: string | null;
   referralId?: string | null;
   followUpDueAt?: string | null;
 };
 
 export function useLogEngagementIntervention() {
-  const { user, role } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: LogInterventionInput) => {
       if (!user?.id) throw new Error('Missing instructor session');
-
-      if (input.sendEmail && input.studentEmail) {
-        const [{ data: actorProfile }, { data: studentProfile }] = await Promise.all([
-          supabase.from('profiles').select('full_name, email').eq('user_id', user.id).maybeSingle(),
-          supabase
-            .from('profiles')
-            .select('full_name, email')
-            .eq('user_id', input.studentId)
-            .maybeSingle(),
-        ]);
-        const actorName =
-          actorProfile?.full_name?.trim() || actorProfile?.email?.trim() || 'Staff';
-        const studentName =
-          studentProfile?.full_name?.trim() || studentProfile?.email?.trim() || 'the student';
-        const followUpBody = formatEngagementFollowUpNotice({
-          actorRole: role,
-          actorName,
-          studentName,
-        });
-        const emailBody = input.note?.trim()
-          ? `${followUpBody}\n\n${input.note.trim()}`
-          : followUpBody;
-
-        const { error: emailError } = await supabase.functions.invoke('send-notification', {
-          body: {
-            to: input.studentEmail,
-            student_id: input.studentId,
-            subject_id: input.subjectId ?? undefined,
-            risk_level: 'stable',
-            subject_code: 'EDGE',
-            subject_name: 'Engagement follow-up',
-            body: emailBody,
-          },
-        });
-        if (emailError) throw new Error(emailError.message || 'Failed to send email');
-      }
 
       const { data, error } = await supabase.rpc('log_engagement_intervention', {
         p_student_id: input.studentId,
@@ -180,7 +142,16 @@ export function useLogEngagementIntervention() {
       });
       if (error) throw error;
 
-      return { id: data as string } as Pick<EngagementIntervention, 'id'>;
+      const id = data as string;
+      if (input.actionType === 'guidance_counseling') {
+        const email = await emailCounselorFollowup(id);
+        return { id, emailError: email.emailError };
+      }
+      if (!shouldEmailEngagementIntervention(input.actionType)) {
+        return { id, emailError: null as string | null };
+      }
+      const email = await emailEngagementIntervention(id);
+      return { id, emailError: email.emailError };
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({

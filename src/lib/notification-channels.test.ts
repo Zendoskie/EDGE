@@ -4,15 +4,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { canReadInboxRow, durableRowToInboxInput } from '@/lib/notification-delivery';
 import {
   authorizeFeedbackEmail,
+  authorizeGradesPostedCaller,
+  authorizeRiskFeedbackEmail,
   counselingOutcomeEmail,
   counselingOutcomeRecipient,
+  counselorFollowupEmail,
+  counselorFollowupRecipient,
   deliverEmail,
   emailLogKey,
   enrollmentInstructors,
+  engagementInterventionRecipient,
+  gradesPostedEmail,
+  gradesPostedLogId,
   instructorFeedbackEmail,
   isRiskEmailLevel,
+  loggedInterventionRecipient,
+  omitLoggedGradesPostedLines,
   responsibleFeedbackInstructor,
+  riskFeedbackEmail,
+  riskFeedbackInstructor,
+  selectGradesPostedLines,
+  shouldEmailEngagementIntervention,
 } from '../../supabase/functions/_shared/notification-channels';
+import {
+  canRetryCounselorFollowupEmail,
+  emailCounselorFollowup,
+  emailEngagementIntervention,
+  emailLoggedIntervention,
+} from '@/lib/intervention-notification';
+import { emailGradesPosted } from '@/lib/grades-posted-notification';
+import { submitRiskFeedback } from '@/lib/student-feedback-notification';
 
 const { rpc, invoke, from } = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -329,6 +350,344 @@ describe('student feedback instructor email', () => {
   });
 });
 
+describe('grades_posted email', () => {
+  it('emails only stored non-null scores for A1 and Midterm and skips missing P1', () => {
+    expect(authorizeGradesPostedCaller({
+      callerIsInstructor: true,
+      callerId: instructor,
+      subjectInstructorId: instructor,
+    })).toBe(true);
+    expect(authorizeGradesPostedCaller({
+      callerIsInstructor: true,
+      callerId: otherInstructor,
+      subjectInstructorId: instructor,
+    })).toBe(false);
+    expect(authorizeGradesPostedCaller({
+      callerIsInstructor: false,
+      callerId: instructor,
+      subjectInstructorId: instructor,
+    })).toBe(false);
+
+    const subjectId = 'sub-1';
+    const a1 = 'act-a1';
+    const p1 = 'act-p1';
+    const mid = 'act-mid';
+    const lines = selectGradesPostedLines({
+      subjectId,
+      items: [
+        { activityId: a1, studentId: student },
+        { activityId: p1, studentId: student },
+        { activityId: mid, studentId: student },
+      ],
+      activitySubjectId: new Map([
+        [a1, subjectId],
+        [p1, subjectId],
+        [mid, subjectId],
+        ['foreign', 'other-sub'],
+      ]),
+      scoreByPair: new Map([
+        [gradesPostedLogId(a1, student), 16],
+        [gradesPostedLogId(p1, student), null],
+        [gradesPostedLogId(mid, student), 45],
+      ]),
+      titleByActivityId: new Map([
+        [a1, 'Activity A1'],
+        [p1, 'Project P1'],
+        [mid, 'Midterm Exam'],
+      ]),
+    });
+    expect(lines).toEqual([
+      { studentId: student, activityId: a1, title: 'Activity A1', score: 16 },
+      { studentId: student, activityId: mid, title: 'Midterm Exam', score: 45 },
+    ]);
+    expect(lines.some((line) => line.activityId === p1 || line.score === 0 && line.title.includes('P1'))).toBe(false);
+
+    const zeroKept = selectGradesPostedLines({
+      subjectId,
+      items: [{ activityId: a1, studentId: student }],
+      activitySubjectId: new Map([[a1, subjectId]]),
+      scoreByPair: new Map([[gradesPostedLogId(a1, student), 0]]),
+      titleByActivityId: new Map([[a1, 'Activity A1']]),
+    });
+    expect(zeroKept).toEqual([{ studentId: student, activityId: a1, title: 'Activity A1', score: 0 }]);
+
+    const email = gradesPostedEmail('PL101', lines.map((line) => ({ title: line.title, score: line.score })));
+    expect(email.html).toContain('Activity A1: 16');
+    expect(email.html).toContain('Midterm Exam: 45');
+    expect(email.html).not.toContain('Project P1');
+    expect(isRiskEmailLevel(emailLogKey('grades_posted', gradesPostedLogId(a1, student)))).toBe(false);
+
+    const pending = omitLoggedGradesPostedLines(lines, new Set([gradesPostedLogId(a1, student)]));
+    expect(pending).toEqual([
+      { studentId: student, activityId: mid, title: 'Midterm Exam', score: 45 },
+    ]);
+    const mixedEmail = gradesPostedEmail(
+      'PL101',
+      pending.map((line) => ({ title: line.title, score: line.score })),
+    );
+    expect(mixedEmail.html).toContain('Midterm Exam: 45');
+    expect(mixedEmail.html).not.toContain('Activity A1');
+    expect(omitLoggedGradesPostedLines(lines, new Set([
+      gradesPostedLogId(a1, student),
+      gradesPostedLogId(mid, student),
+    ]))).toEqual([]);
+  });
+
+  it('retries grades_posted without writing another submission', async () => {
+    invoke.mockReset();
+    from.mockReset();
+    rpc.mockReset();
+    invoke.mockResolvedValue({ data: { sent: 0, failed: 1 }, error: null });
+    const failed = await emailGradesPosted('sub-1', [
+      { activity_id: 'a1', student_id: student },
+      { activity_id: 'mid', student_id: student },
+    ]);
+    expect(failed.emailError).toBeTruthy();
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+
+    invoke.mockResolvedValue({ data: { sent: 1, failed: 0 }, error: null });
+    const sent = await emailGradesPosted('sub-1', [
+      { activity_id: 'a1', student_id: student },
+      { activity_id: 'mid', student_id: student },
+    ]);
+    expect(sent).toEqual({ emailError: null, alreadySent: false });
+    expect(invoke).toHaveBeenLastCalledWith('send-notification', {
+      body: {
+        event: 'grades_posted',
+        subject_id: 'sub-1',
+        items: [
+          { activity_id: 'a1', student_id: student },
+          { activity_id: 'mid', student_id: student },
+        ],
+      },
+    });
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain('"to"');
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe('risk feedback instructor email', () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    from.mockReset();
+  });
+
+  it('authorizes only the owning student and fails closed without an instructor', () => {
+    const owned = { studentId: student, subjectId: 'sub-1' };
+    expect(authorizeRiskFeedbackEmail({ callerId: student, callerRole: 'student', feedback: owned })).toEqual(owned);
+    expect(
+      authorizeRiskFeedbackEmail({ callerId: 'student-2', callerRole: 'student', feedback: owned }),
+    ).toBeNull();
+    expect(authorizeRiskFeedbackEmail({ callerId: student, callerRole: 'instructor', feedback: owned })).toBeNull();
+    expect(riskFeedbackInstructor(instructor)).toBe(instructor);
+    expect(riskFeedbackInstructor(null)).toBeNull();
+    expect(riskFeedbackInstructor('')).toBeNull();
+    const email = riskFeedbackEmail({ studentName: 'Ana', subjectCode: 'CS101' });
+    expect(email.html).toContain('Ana submitted risk feedback');
+    expect(email.html).toContain('CS101');
+    expect(isRiskEmailLevel(emailLogKey('risk_feedback', 'feedback-1'))).toBe(false);
+  });
+
+  it('keeps the risk feedback row when the instructor email fails', async () => {
+    from.mockReturnValue({
+      insert: () => ({
+        select: () => ({
+          single: async () => ({ data: { id: 'risk-1' }, error: null }),
+        }),
+      }),
+    });
+    invoke.mockResolvedValue({ data: { sent: 0, failed: 1 }, error: null });
+
+    const result = await submitRiskFeedback({
+      studentId: student,
+      subjectId: 'sub-1',
+      predictionId: 'pred-1',
+      riskLevel: 'at_risk',
+      reasons: ['Lack of motivation'],
+      details: null,
+    });
+    expect(result).toEqual({
+      id: 'risk-1',
+      emailError: 'Feedback saved. The instructor email could not be sent.',
+    });
+    expect(invoke).toHaveBeenCalledWith('send-notification', {
+      body: { event: 'risk_feedback', feedback_id: 'risk-1' },
+    });
+    expect(JSON.stringify(from.mock.calls)).not.toContain('delete');
+  });
+});
+
+describe('counselor engagement follow-up email', () => {
+  const stored = {
+    studentId: student,
+    instructorId: counselor,
+    actionType: 'guidance_counseling',
+    status: 'open',
+  };
+
+  beforeEach(() => {
+    invoke.mockReset();
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('emails only the stored student for an owned guidance_counseling follow-up', () => {
+    expect(
+      counselorFollowupRecipient({
+        callerIsCounselor: true,
+        callerId: counselor,
+        intervention: stored,
+      }),
+    ).toBe(student);
+    expect(
+      counselorFollowupRecipient({
+        callerIsCounselor: true,
+        callerId: instructor,
+        intervention: stored,
+      }),
+    ).toBeNull();
+    expect(
+      counselorFollowupRecipient({
+        callerIsCounselor: false,
+        callerId: counselor,
+        intervention: stored,
+      }),
+    ).toBeNull();
+    expect(
+      counselorFollowupRecipient({
+        callerIsCounselor: true,
+        callerId: counselor,
+        intervention: { ...stored, actionType: 'send_reminder' },
+      }),
+    ).toBeNull();
+    expect(
+      counselorFollowupRecipient({
+        callerIsCounselor: true,
+        callerId: counselor,
+        intervention: { ...stored, status: 'cancelled' },
+      }),
+    ).toBeNull();
+    expect(counselorFollowupEmail('CS101').html).toContain('guidance counselor');
+    expect(isRiskEmailLevel(emailLogKey('counselor_followup', 'int-1'))).toBe(false);
+    expect(
+      canRetryCounselorFollowupEmail(
+        {
+          status: 'open',
+          action_type: 'guidance_counseling',
+          actor_role: 'guidance_counselor',
+          instructor_id: counselor,
+        },
+        counselor,
+      ),
+    ).toBe(true);
+    expect(
+      canRetryCounselorFollowupEmail(
+        {
+          status: 'completed',
+          action_type: 'guidance_counseling',
+          actor_role: 'guidance_counselor',
+          instructor_id: counselor,
+        },
+        counselor,
+      ),
+    ).toBe(false);
+  });
+
+  it('retries counselor follow-up email without logging another intervention', async () => {
+    invoke.mockResolvedValue({ data: { sent: 0, failed: 1 }, error: null });
+    const failed = await emailCounselorFollowup('intervention-c1');
+    expect(failed.emailError).toBe('Intervention saved. The student email could not be sent.');
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+    invoke.mockResolvedValue({ data: { sent: 1, failed: 0 }, error: null });
+    const sent = await emailCounselorFollowup('intervention-c1');
+    expect(sent).toEqual({ emailError: null, alreadySent: false });
+    expect(invoke).toHaveBeenLastCalledWith('send-referral-notification', {
+      body: { event: 'counselor_followup', intervention_id: 'intervention-c1' },
+    });
+  });
+});
+
+describe('instructor intervention email', () => {
+  const stored = {
+    studentId: student,
+    instructorId: instructor,
+    actionType: 'send_reminder',
+  };
+
+  beforeEach(() => {
+    invoke.mockReset();
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('emails only the student stored on the intervention', () => {
+    expect(shouldEmailEngagementIntervention('send_reminder')).toBe(true);
+    expect(shouldEmailEngagementIntervention('send_email_reminder')).toBe(true);
+    expect(shouldEmailEngagementIntervention('guidance_counseling')).toBe(false);
+    expect(shouldEmailEngagementIntervention('add_note')).toBe(false);
+    expect(
+      engagementInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: instructor,
+        intervention: stored,
+      }),
+    ).toBe(student);
+    expect(
+      engagementInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: otherInstructor,
+        intervention: stored,
+      }),
+    ).toBeNull();
+    expect(
+      engagementInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: instructor,
+        intervention: { ...stored, actionType: 'guidance_counseling' },
+      }),
+    ).toBeNull();
+    expect(
+      loggedInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: instructor,
+        intervention: { studentId: student, subjectInstructorId: instructor },
+      }),
+    ).toBe(student);
+    expect(
+      loggedInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: instructor,
+        intervention: { studentId: 'student-2', subjectInstructorId: otherInstructor },
+      }),
+    ).toBeNull();
+    expect(
+      loggedInterventionRecipient({
+        callerIsInstructor: true,
+        callerId: instructor,
+        intervention: { studentId: student, subjectInstructorId: null },
+      }),
+    ).toBeNull();
+  });
+
+  it('retries the email without writing another intervention', async () => {
+    invoke.mockResolvedValue({ data: { sent: 0, failed: 1 }, error: null });
+    const failed = await emailEngagementIntervention('intervention-1');
+    expect(failed.emailError).toBe('Intervention saved. The student email could not be sent.');
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+
+    invoke.mockResolvedValue({ data: { sent: 1, failed: 0 }, error: null });
+    const sent = await emailLoggedIntervention('intervention-2');
+    expect(sent).toEqual({ emailError: null, alreadySent: false });
+    expect(invoke).toHaveBeenLastCalledWith('send-notification', {
+      body: { event: 'logged_intervention', intervention_id: 'intervention-2' },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
 describe('email delivery safety', () => {
   it('does not log a failed send and does not send a duplicate', async () => {
     const log = vi.fn();
@@ -391,5 +750,115 @@ describe('email delivery safety', () => {
     expect(outcomeFn.indexOf('.insert(')).toBeGreaterThan(outcomeFn.indexOf('sendBrevoEmail'));
     expect(notifyFn).toContain('Deno.env.get("BREVO_API_KEY")');
     expect(read('supabase/functions/_shared/risk-email.ts')).toContain('EDGE_RISK_EMAILS_ENABLED');
+  });
+
+  it('emails the stored intervention student after the inbox row exists', () => {
+    const hook = read('src/hooks/useEngagementAlerts.ts');
+    const log = hook.slice(hook.indexOf('mutationFn: async (input: LogInterventionInput)'), hook.indexOf('onSuccess: (_data, variables)'));
+    expect(log.indexOf("rpc('log_engagement_intervention'")).toBeLessThan(log.indexOf('emailEngagementIntervention'));
+    expect(log.indexOf("rpc('log_engagement_intervention'")).toBeLessThan(log.indexOf('emailCounselorFollowup'));
+    expect(log).not.toContain('input.studentEmail');
+    const detail = read('src/pages/dashboard/SubjectDetail.tsx');
+    const saveStart = detail.indexOf('const logIntervention = useMutation');
+    const save = detail.slice(saveStart, detail.indexOf('onSuccess: (result)', saveStart));
+    expect(save.indexOf(".from('interventions')")).toBeLessThan(save.indexOf('emailLoggedIntervention'));
+    expect(save).not.toContain('sendEmailNotification');
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const engagement = notifyFn.slice(
+      notifyFn.indexOf('async function sendEngagementInterventionEmail'),
+      notifyFn.indexOf('async function sendLoggedInterventionEmail'),
+    );
+    expect(engagement).not.toContain('user_inbox_notifications');
+    expect(engagement).not.toContain('log_engagement_intervention');
+    expect(engagement.indexOf('engagementInterventionRecipient')).toBeLessThan(engagement.indexOf('sendBrevoEmail'));
+    const logged = notifyFn.slice(
+      notifyFn.indexOf('async function sendLoggedInterventionEmail'),
+      notifyFn.indexOf('serve(async'),
+    );
+    expect(logged).not.toContain('user_inbox_notifications');
+    expect(logged.indexOf('loggedInterventionRecipient')).toBeLessThan(logged.indexOf('sendBrevoEmail'));
+    expect(logged).not.toContain('body?.to');
+  });
+
+  it('writes the instructor engagement-feedback inbox before the feedback email', () => {
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const feedbackFn = notifyFn.slice(
+      notifyFn.indexOf('async function sendInstructorFeedbackEmail'),
+      notifyFn.indexOf('async function sendEngagementInterventionEmail'),
+    );
+    expect(feedbackFn.indexOf('ambiguous_instructor')).toBeLessThan(feedbackFn.indexOf('user_inbox_notifications'));
+    expect(feedbackFn.indexOf('user_inbox_notifications')).toBeLessThan(feedbackFn.indexOf('sendBrevoEmail'));
+    expect(feedbackFn).toContain('engagement-feedback:');
+    expect(feedbackFn).toContain('dedupe_key');
+    expect(feedbackFn).toContain('23505');
+  });
+
+  it('uses grades_posted without client score lines or a second grade inbox writer', () => {
+    const table = read('src/components/GradebookTable.tsx');
+    const save = table.slice(table.indexOf('const saveGrades = useMutation'), table.indexOf('onSuccess: async (result)'));
+    expect(save).toContain('emailGradesPosted');
+    expect(save).not.toContain("to: email");
+    expect(save).not.toContain('A grade is now available');
+    expect(save.indexOf('emailGradesPosted')).toBeLessThan(save.indexOf('publishMissingGradeAlerts'));
+    expect(table).toContain('retryGradeEmails');
+    expect(table).toContain('gradesPostedItemsFromSavedScores');
+    expect(table.indexOf('gradesPostedItemsFromSavedScores')).toBeLessThan(table.indexOf('emailGradesPosted(subjectId, items)'));
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const gradesFn = notifyFn.slice(
+      notifyFn.indexOf('async function sendGradesPostedEmail'),
+      notifyFn.indexOf('async function sendRiskFeedbackEmail'),
+    );
+    expect(gradesFn).toContain('authorizeGradesPostedCaller');
+    expect(gradesFn).toContain('selectGradesPostedLines');
+    expect(gradesFn).toContain('omitLoggedGradesPostedLines');
+    expect(gradesFn).not.toContain('user_inbox_notifications');
+    expect(gradesFn).not.toContain('body?.to');
+  });
+
+  it('keeps risk feedback email-only on the edge and does not duplicate the inbox write', () => {
+    const dashboard = read('src/pages/dashboard/StudentDashboard.tsx');
+    expect(dashboard).toContain('submitRiskFeedback');
+    const client = read('src/lib/student-feedback-notification.ts');
+    const riskClient = client.slice(
+      client.indexOf('export async function submitRiskFeedback'),
+      client.indexOf('export async function submitEngagementFeedback'),
+    );
+    expect(riskClient).toContain("event: 'risk_feedback'");
+    expect(riskClient).toContain('feedback_id: data.id');
+    expect(riskClient).not.toContain('user_inbox_notifications');
+    expect(riskClient).not.toContain('risk-feedback:');
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const riskFn = notifyFn.slice(
+      notifyFn.indexOf('async function sendRiskFeedbackEmail'),
+      notifyFn.indexOf('async function sendInstructorFeedbackEmail'),
+    );
+    expect(riskFn).toContain('authorizeRiskFeedbackEmail');
+    expect(riskFn).toContain('sendBrevoEmail');
+    expect(riskFn).not.toContain('user_inbox_notifications');
+    expect(riskFn).not.toContain('risk-feedback:');
+    expect(riskFn).not.toContain('body?.to');
+    // Inbox for risk feedback is owned by the already-applied production DB trigger
+    // (notify_instructor_risk_feedback / risk-feedback:<id>), not by this Edge handler.
+  });
+
+  it('emails counselor follow-up after the log RPC and retries without another inbox row', () => {
+    const hook = read('src/hooks/useEngagementAlerts.ts');
+    const log = hook.slice(hook.indexOf('mutationFn: async (input: LogInterventionInput)'), hook.indexOf('onSuccess: (_data, variables)'));
+    expect(log).toContain('emailCounselorFollowup');
+    expect(log.indexOf("rpc('log_engagement_intervention'")).toBeLessThan(log.indexOf('emailCounselorFollowup'));
+    expect(log).toContain("input.actionType === 'guidance_counseling'");
+    const history = read('src/components/InterventionHistory.tsx');
+    expect(history).toContain('canRetryCounselorFollowupEmail');
+    expect(history).toContain('emailCounselorFollowup');
+    const referralFn = read('supabase/functions/send-referral-notification/index.ts');
+    expect(referralFn).toContain('counselor_followup');
+    const followFn = referralFn.slice(
+      referralFn.indexOf('async function sendCounselorFollowupEmail'),
+      referralFn.indexOf('async function sendCounselingOutcomeEmail'),
+    );
+    expect(followFn).toContain('counselorFollowupRecipient');
+    expect(followFn).not.toContain('user_inbox_notifications');
+    expect(followFn).not.toContain('log_engagement_intervention');
+    expect(followFn).not.toContain('complete_engagement_intervention');
   });
 });

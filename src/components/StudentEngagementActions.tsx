@@ -29,9 +29,9 @@ type Props = {
   variant?: 'instructor' | 'guidance';
 };
 
-const ACTIONS: { type: EngagementInterventionAction; label: string; needsEmail?: boolean }[] = [
+const ACTIONS: { type: EngagementInterventionAction; label: string }[] = [
   { type: 'send_reminder', label: 'Send Reminder' },
-  { type: 'send_email_reminder', label: 'Send Email Reminder', needsEmail: true },
+  { type: 'send_email_reminder', label: 'Send Email Reminder' },
   { type: 'schedule_consultation', label: 'Schedule Consultation' },
   { type: 'parent_contact', label: 'Contact Parent' },
   { type: 'provide_learning_materials', label: 'Provide Learning Materials' },
@@ -51,7 +51,6 @@ function defaultFollowUpDate(): string {
 
 export function StudentEngagementActions({
   studentId,
-  studentEmail,
   subjectId,
   referralId,
   variant = 'instructor',
@@ -75,20 +74,18 @@ export function StudentEngagementActions({
         ]
       : ACTIONS;
 
-  const runAction = async (actionType: EngagementInterventionAction, needsEmail?: boolean) => {
+  const runAction = async (actionType: EngagementInterventionAction) => {
     try {
       if (actionType !== 'add_note' && !followUpDate) {
         toast.error('Choose a follow-up date.');
         return;
       }
 
-      await logIntervention.mutateAsync({
+      const result = await logIntervention.mutateAsync({
         studentId,
         actionType,
         note,
         alertId: selectedAlertId !== 'none' ? selectedAlertId : openAlerts[0]?.id ?? null,
-        sendEmail: Boolean(needsEmail),
-        studentEmail,
         subjectId,
         referralId,
         followUpDueAt:
@@ -101,6 +98,7 @@ export function StudentEngagementActions({
           ? 'Engagement note logged'
           : `${engagementInterventionActionLabel(actionType)} logged with a follow-up`,
       );
+      if (result.emailError) toast.message(result.emailError);
       setNote('');
       setFollowUpDate(defaultFollowUpDate());
     } catch (e) {
@@ -192,16 +190,13 @@ export function StudentEngagementActions({
               type="button"
               size="sm"
               variant={action.type === 'mark_contacted' ? 'default' : 'outline'}
-              disabled={logIntervention.isPending || (action.needsEmail && !studentEmail)}
-              onClick={() => void runAction(action.type, action.needsEmail)}
+              disabled={logIntervention.isPending}
+              onClick={() => void runAction(action.type)}
             >
               {action.label}
             </Button>
           ))}
         </div>
-        {actions.some((a) => a.needsEmail) && !studentEmail ? (
-          <p className="text-xs text-muted-foreground">Email reminder unavailable — student email not found.</p>
-        ) : null}
       </div>
 
       <InterventionHistory

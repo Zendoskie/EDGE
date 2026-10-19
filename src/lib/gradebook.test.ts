@@ -7,6 +7,7 @@ import {
   studentIdsMissingScore,
   findDuplicateActivityTitle,
   gradeCellKey,
+  gradesPostedItemsFromSavedScores,
   sortGradebookActivities,
 } from './gradebook';
 
@@ -64,6 +65,50 @@ describe('gradebook', () => {
     expect(result.changes).toEqual([
       { studentId: 'student-a', activityId: 'quiz', score: 20, assessmentType: 'quiz' },
     ]);
+  });
+
+  it('saves A1 and Midterm without treating blank P1 as zero', () => {
+    const a1 = { id: 'a1', title: 'Activity A1', type: 'activity', maxScore: 20, subjectId };
+    const p1 = { id: 'p1', title: 'Project P1', type: 'project', maxScore: 100, subjectId };
+    const mid = { id: 'mid', title: 'Midterm Exam', type: 'midterm_exam', maxScore: 50, subjectId };
+    const result = collectGradeChanges({
+      subjectId,
+      enrolledStudentIds: new Set(['student-a']),
+      activities: [a1, p1, mid],
+      savedScores: {},
+      drafts: {
+        [gradeCellKey('student-a', 'a1')]: '16',
+        [gradeCellKey('student-a', 'p1')]: '',
+        [gradeCellKey('student-a', 'mid')]: '45',
+      },
+    });
+    expect(result.invalid).toEqual([]);
+    expect(result.changes).toEqual([
+      { studentId: 'student-a', activityId: 'a1', score: 16, assessmentType: 'activity' },
+      { studentId: 'student-a', activityId: 'mid', score: 45, assessmentType: 'midterm_exam' },
+    ]);
+    expect(result.changes.some((change) => change.activityId === 'p1')).toBe(false);
+  });
+
+  it('builds a grades_posted retry payload from saved scores without inventing P1 as zero', () => {
+    const a1 = { id: 'a1', title: 'Activity A1', type: 'activity', maxScore: 20, subjectId };
+    const p1 = { id: 'p1', title: 'Project P1', type: 'project', maxScore: 100, subjectId };
+    const mid = { id: 'mid', title: 'Midterm Exam', type: 'midterm_exam', maxScore: 50, subjectId };
+    const items = gradesPostedItemsFromSavedScores({
+      subjectId,
+      enrolledStudentIds: new Set(['student-a']),
+      activities: [a1, p1, mid],
+      savedScores: {
+        [gradeCellKey('student-a', 'a1')]: 16,
+        [gradeCellKey('student-a', 'p1')]: null,
+        [gradeCellKey('student-a', 'mid')]: 45,
+      },
+    });
+    expect(items).toEqual([
+      { activity_id: 'a1', student_id: 'student-a' },
+      { activity_id: 'mid', student_id: 'student-a' },
+    ]);
+    expect(items.some((item) => item.activity_id === 'p1')).toBe(false);
   });
 
   it('does not treat an unchanged grade or a blank cell as a new save', () => {

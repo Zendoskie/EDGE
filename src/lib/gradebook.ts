@@ -110,6 +110,28 @@ export function collectGradeChanges(input: {
   return { changes, invalid, skippedClears };
 }
 
+/**
+ * Non-null saved scores for a subject — used to retry grades_posted without
+ * upserting again. Missing/null cells are omitted; a recorded 0 is included.
+ */
+export function gradesPostedItemsFromSavedScores(input: {
+  subjectId: string;
+  enrolledStudentIds: ReadonlySet<string>;
+  activities: GradebookActivity[];
+  savedScores: Readonly<Record<string, number | null>>;
+}): Array<{ activity_id: string; student_id: string }> {
+  const items: Array<{ activity_id: string; student_id: string }> = [];
+  const activitiesForSubject = input.activities.filter((activity) => activity.subjectId === input.subjectId);
+  for (const activity of activitiesForSubject) {
+    for (const studentId of input.enrolledStudentIds) {
+      const score = input.savedScores[gradeCellKey(studentId, activity.id)];
+      if (score == null || !Number.isFinite(Number(score))) continue;
+      items.push({ activity_id: activity.id, student_id: studentId });
+    }
+  }
+  return items;
+}
+
 /** Inbox and email copy for a published activity that still has no score. */
 export function missingGradeNotificationBody(activityTitle: string, subjectCode: string): string {
   const activity = activityTitle.trim() || 'an activity';
