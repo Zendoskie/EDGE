@@ -18,6 +18,7 @@ vi.mock('sonner', () => ({
   toast: { message: vi.fn() },
 }));
 
+import { toast } from 'sonner';
 import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
 
 describe('missing grade alerts', () => {
@@ -25,6 +26,7 @@ describe('missing grade alerts', () => {
     rpc.mockReset();
     invoke.mockReset();
     from.mockReset();
+    vi.mocked(toast.message).mockReset();
   });
 
   it('notifies every returned student when an activity has no saved scores', async () => {
@@ -47,7 +49,7 @@ describe('missing grade alerts', () => {
       ],
       error: null,
     });
-    invoke.mockResolvedValue({ error: null });
+    invoke.mockResolvedValue({ data: { success: true, mode: 'single' }, error: null });
 
     await publishMissingGradeAlerts('sub-1', ['activity-1']);
 
@@ -74,5 +76,69 @@ describe('missing grade alerts', () => {
     expect(rpc).toHaveBeenNthCalledWith(1, 'notify_missing_activity_grades', { p_activity_id: 'activity-1' });
     expect(rpc).toHaveBeenNthCalledWith(2, 'notify_missing_activity_grades', { p_activity_id: 'activity-2' });
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('toasts when invoke succeeds but no email was sent', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          student_id: 'student-1',
+          email: 'ana@example.com',
+          notification_body: 'Missing grade',
+          subject_code: 'PL101',
+          subject_name: 'Programming Logic',
+        },
+      ],
+      error: null,
+    });
+    invoke.mockResolvedValue({ data: { success: true, sent: 0, failed: 0 }, error: null });
+
+    await publishMissingGradeAlerts('sub-1', ['activity-1']);
+
+    expect(toast.message).toHaveBeenCalledWith(
+      'Missing-grade alert saved. The email notification could not be sent.',
+    );
+  });
+
+  it('does not toast on legacy single-send success', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          student_id: 'student-1',
+          email: 'ana@example.com',
+          notification_body: 'Missing grade',
+          subject_code: 'PL101',
+          subject_name: 'Programming Logic',
+        },
+      ],
+      error: null,
+    });
+    invoke.mockResolvedValue({ data: { success: true, mode: 'single' }, error: null });
+
+    await publishMissingGradeAlerts('sub-1', ['activity-1']);
+
+    expect(toast.message).not.toHaveBeenCalled();
+  });
+
+  it('toasts on invoke transport errors', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          student_id: 'student-1',
+          email: 'ana@example.com',
+          notification_body: 'Missing grade',
+          subject_code: 'PL101',
+          subject_name: 'Programming Logic',
+        },
+      ],
+      error: null,
+    });
+    invoke.mockResolvedValue({ data: null, error: { message: 'down' } });
+
+    await publishMissingGradeAlerts('sub-1', ['activity-1']);
+
+    expect(toast.message).toHaveBeenCalledWith(
+      'Missing-grade alert saved. The email notification could not be sent.',
+    );
   });
 });

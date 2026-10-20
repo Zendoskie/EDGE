@@ -7,6 +7,7 @@ export function interpretNotificationInvokeResult(data: unknown): NotificationIn
   if (body.error) return 'failed';
   if (body.duplicate === true) return 'duplicate';
   if (body.skipped) return 'failed';
+  if (body.mode === 'single' && body.success === true) return 'sent';
   const failed = typeof body.failed === 'number' ? body.failed : 0;
   if (failed > 0) return 'failed';
   const sent = typeof body.sent === 'number' ? body.sent : 0;

@@ -26,4 +26,8 @@ describe('interpretNotificationInvokeResult', () => {
     expect(interpretNotificationInvokeResult({ sent: 0, failed: 1 })).toBe('failed');
     expect(interpretNotificationInvokeResult({ sent: 0, skipped: 'no_email' })).toBe('failed');
   });
+
+  it('treats legacy instructor single-send success as sent', () => {
+    expect(interpretNotificationInvokeResult({ success: true, mode: 'single' })).toBe('sent');
+  });
 });
