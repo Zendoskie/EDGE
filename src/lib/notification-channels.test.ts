@@ -22,6 +22,7 @@ import {
   gradesPostedEmail,
   gradesPostedLogId,
   instructorFeedbackEmail,
+  interventionStudentEmail,
   isRiskEmailLevel,
   loggedInterventionRecipient,
   omitLoggedGradesPostedLines,
@@ -682,6 +683,7 @@ describe('instructor intervention email', () => {
     expect(engagementInterventionEmail({ subjectCode: 'CS101', message: 'Please attend office hours' }).html).toContain(
       'Please attend office hours',
     );
+    expect(interventionStudentEmail({ subjectCode: 'CS101', message: 'Meet after class' }).html).toContain('Meet after class');
     expect(
       enrollmentRequestRecipient({
         callerId: student,
@@ -862,6 +864,8 @@ describe('email delivery safety', () => {
     expect(logged).not.toContain('user_inbox_notifications');
     expect(logged.indexOf('loggedInterventionRecipient')).toBeLessThan(logged.indexOf('sendBrevoEmail'));
     expect(logged).not.toContain('body?.to');
+    expect(logged).toContain('message');
+    expect(logged).toContain('interventionStudentEmail({');
   });
 
   it('writes the instructor engagement-feedback inbox before the feedback email', () => {

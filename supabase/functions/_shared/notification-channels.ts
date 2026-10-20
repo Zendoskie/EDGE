@@ -379,13 +379,20 @@ export function loggedInterventionRecipient(input: {
   return input.intervention.studentId;
 }
 
-export function interventionStudentEmail(subjectCode?: string | null): { subject: string; html: string } {
-  const code = subjectCode?.trim() ?? "";
+export function interventionStudentEmail(input?: {
+  subjectCode?: string | null;
+  message?: string | null;
+}): { subject: string; html: string } {
+  const code = input?.subjectCode?.trim() ?? "";
+  const message = input?.message?.trim() ?? "";
   const subject = code ? `EDGE: Intervention logged — ${code}` : "EDGE: Intervention logged";
   const where = code ? ` for <strong>${escapeHtml(code)}</strong>` : "";
+  const messageBlock = message
+    ? `<p><strong>Message:</strong> ${escapeHtml(message)}</p>`
+    : "";
   return {
     subject,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your instructor logged an intervention${where}.</p><p>Sign in to EDGE to read it.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your instructor logged an intervention${where}.</p>${messageBlock}<p>Sign in to EDGE to read it.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
   };
 }
 

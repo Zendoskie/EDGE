@@ -920,7 +920,7 @@ async function sendLoggedInterventionEmail(
 
   const { data: intervention, error: interventionError } = await supabase
     .from("interventions")
-    .select("id, student_id, subject_id")
+    .select("id, student_id, subject_id, message")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
@@ -961,7 +961,8 @@ async function sendLoggedInterventionEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = interventionStudentEmail(subjectCode);
+  const interventionMessage = safeString((intervention as { message?: string | null } | null)?.message);
+  const email = interventionStudentEmail({ subjectCode, message: interventionMessage });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),

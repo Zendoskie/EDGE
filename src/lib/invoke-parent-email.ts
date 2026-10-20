@@ -135,3 +135,67 @@ export function notifyStudentOnParentRegistrationBestEffort(
     console.warn("notify-student-on-parent-registration (best effort):", e?.message ?? e);
   });
 }
+
+export type ParentRegistrationWelcomeResult = {
+  sent: boolean;
+  failed: boolean;
+  duplicate: boolean;
+  error: string | null;
+};
+
+/**
+ * Sends the access-active welcome email after registration completion.
+ * Uses the one-time invitation token (no user session). Does not affect RPC success.
+ */
+export async function sendParentRegistrationWelcomeEmail(
+  input: { completion_token: string },
+): Promise<ParentRegistrationWelcomeResult> {
+  if (!SUPABASE_URL || !ANON_KEY) {
+    return { sent: false, failed: true, duplicate: false, error: "Missing Supabase client configuration." };
+  }
+  if (!input.completion_token?.trim()) {
+    return { sent: false, failed: true, duplicate: false, error: "completion_token is required" };
+  }
+
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  const res = await fetch(`${base}/functions/v1/send-parent-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: ANON_KEY,
+    },
+    body: JSON.stringify({
+      type: "registration_access_activated",
+      completion_token: input.completion_token.trim(),
+    }),
+  });
+
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: unknown;
+    sent?: number;
+    failed?: number;
+    duplicate?: boolean;
+  };
+
+  if (!res.ok) {
+    const err = json.error;
+    const msg = typeof err === "string" ? err : `Welcome email request failed (${res.status})`;
+    return { sent: false, failed: true, duplicate: false, error: msg };
+  }
+  if (json.duplicate) {
+    return { sent: false, failed: false, duplicate: true, error: null };
+  }
+  if ((json.sent ?? 0) > 0) {
+    return { sent: true, failed: false, duplicate: false, error: null };
+  }
+  if ((json.failed ?? 0) > 0) {
+    return { sent: false, failed: true, duplicate: false, error: "Welcome email could not be delivered." };
+  }
+  return { sent: false, failed: false, duplicate: false, error: null };
+}
+
+export function sendParentRegistrationWelcomeBestEffort(input: { completion_token: string }): void {
+  sendParentRegistrationWelcomeEmail(input).catch((e: Error) => {
+    console.warn("send-parent-email registration_access_activated (best effort):", e?.message ?? e);
+  });
+}
