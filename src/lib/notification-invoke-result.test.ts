@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
+import {
+  interpretNotificationInvokeResult,
+  parseBulkNotificationInvokeResult,
+} from '@/lib/notification-invoke-result';
 
 describe('interpretNotificationInvokeResult', () => {
   it('treats sent:1 as success', () => {
@@ -29,5 +32,33 @@ describe('interpretNotificationInvokeResult', () => {
 
   it('treats legacy instructor single-send success as sent', () => {
     expect(interpretNotificationInvokeResult({ success: true, mode: 'single' })).toBe('sent');
+  });
+});
+
+describe('parseBulkNotificationInvokeResult', () => {
+  it('parses bulk delivery counts', () => {
+    expect(
+      parseBulkNotificationInvokeResult({
+        success: true,
+        mode: 'bulk',
+        sent: 2,
+        failed: 1,
+        errors: [{ index: 0, message: 'fail' }],
+      }),
+    ).toEqual({
+      valid: true,
+      sent: 2,
+      failed: 1,
+      errors: [{ index: 0, message: 'fail' }],
+    });
+  });
+
+  it('rejects bare success without counts', () => {
+    expect(parseBulkNotificationInvokeResult({ success: true })).toEqual({
+      valid: false,
+      sent: 0,
+      failed: 0,
+      errors: [],
+    });
   });
 });

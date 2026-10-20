@@ -42,12 +42,12 @@ import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { sendReferralNotification } from '@/lib/referral-notifications';
+import { sendBulkVulnerableNotifications } from '@/lib/bulk-vulnerable-notification';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
   PredictionRow,
-  SendNotificationResponse,
   SubjectWithInstructor,
 } from '@/types/dashboard';
 
@@ -1505,32 +1505,38 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     setBulkNotifyPreparing(true);
     const msg = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('send-notification', {
-        body: {
-          subject_code: subjectCode,
-          subject_name: subjectName,
-          body: msg,
-          recipients: withEmail.map((p: PredictionRow) => ({
-            to: p.profile?.email,
-            student_id: p.student_id,
-            subject_id: subjectId,
-            risk_level: p.risk_level,
-          })),
-        },
+      const result = await sendBulkVulnerableNotifications({
+        subjectCode,
+        subjectName,
+        body: msg,
+        recipients: withEmail.map((p: PredictionRow) => ({
+          to: p.profile!.email!,
+          student_id: p.student_id,
+          subject_id: subjectId,
+          risk_level: p.risk_level,
+        })),
       });
-      if (invokeError) throw new Error(invokeError.message || 'Failed to send emails');
-
-      const payload = data as SendNotificationResponse | null;
-      const sent = payload?.sent ?? 0;
-      const failed = payload?.failed ?? 0;
-      const errors = payload?.errors;
+      if (result.kind === 'invoke_error') throw new Error(result.message);
+      if (result.kind === 'invalid_response') {
+        toast.error('Bulk email failed: unexpected response from the notification service.');
+        return;
+      }
 
       setBulkNotifyOpen(false);
       setBulkNotifyMessage('');
-      toast.success(`Sent notifications to ${sent} of ${withEmail.length} vulnerable students`);
-      if (failed > 0) {
-        const first = errors?.[0]?.message;
-        toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check Resend settings.');
+      if (result.sent === 0) {
+        const first = result.errors[0]?.message;
+        toast.error(
+          first
+            ? `No emails were sent. ${first}`
+            : 'No emails were sent. Check email configuration and try again.',
+        );
+        return;
+      }
+      toast.success(`Sent notifications to ${result.sent} of ${result.total} vulnerable students`);
+      if (result.failed > 0) {
+        const first = result.errors[0]?.message;
+        toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check email settings.');
       }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Bulk email failed');
