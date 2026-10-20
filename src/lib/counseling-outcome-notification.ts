@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 import { shouldSendCounselingOutcomeEmail } from '../../supabase/functions/_shared/notification-channels';
 
 export { shouldSendCounselingOutcomeEmail };
@@ -26,10 +27,10 @@ async function invokeOutcomeEmail(
         body: { event: 'engagement_outcome', intervention_id: interventionId },
       });
   if (emailError) return { emailError: OUTCOME_SAVED_EMAIL_FAILED, alreadySent: false };
-  if (emailData?.duplicate) return { emailError: null, alreadySent: true };
-  const failed = typeof emailData?.failed === 'number' ? emailData.failed : 0;
-  if (failed > 0 || emailData?.skipped) return { emailError: OUTCOME_SAVED_EMAIL_FAILED, alreadySent: false };
-  return { emailError: null, alreadySent: false };
+  const outcome = interpretNotificationInvokeResult(emailData);
+  if (outcome === 'duplicate') return { emailError: null, alreadySent: true };
+  if (outcome === 'sent') return { emailError: null, alreadySent: false };
+  return { emailError: OUTCOME_SAVED_EMAIL_FAILED, alreadySent: false };
 }
 
 /** Email only. Does not complete the outcome or write another inbox row. */

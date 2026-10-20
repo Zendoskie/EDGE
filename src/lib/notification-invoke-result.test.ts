@@ -6,6 +6,10 @@ describe('interpretNotificationInvokeResult', () => {
     expect(interpretNotificationInvokeResult({ success: true, sent: 1, failed: 0 })).toBe('sent');
   });
 
+  it('treats bulk sent counts as success when nothing failed', () => {
+    expect(interpretNotificationInvokeResult({ success: true, sent: 2, failed: 0 })).toBe('sent');
+  });
+
   it('treats duplicate as idempotent success', () => {
     expect(
       interpretNotificationInvokeResult({ success: true, sent: 0, failed: 0, duplicate: true }),

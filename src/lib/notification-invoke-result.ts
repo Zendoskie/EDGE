@@ -10,6 +10,6 @@ export function interpretNotificationInvokeResult(data: unknown): NotificationIn
   const failed = typeof body.failed === 'number' ? body.failed : 0;
   if (failed > 0) return 'failed';
   const sent = typeof body.sent === 'number' ? body.sent : 0;
-  if (sent === 1) return 'sent';
+  if (sent >= 1) return 'sent';
   return 'failed';
 }
