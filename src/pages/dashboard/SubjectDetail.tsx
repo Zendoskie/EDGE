@@ -1338,15 +1338,21 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       if (referralError) throw referralError;
 
-      await sendReferralNotification({
+      const email = await sendReferralNotification({
         event: 'referral_created',
         referralId: inserted.id,
       });
 
-      return { referralId: inserted.id, studentId: prediction.student_id };
+      return {
+        referralId: inserted.id,
+        studentId: prediction.student_id,
+        emailError: email.emailError,
+      };
     },
     onSuccess: (result) => {
-      toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+      toast.success('Counseling referral submitted.');
+      if (result.emailError) toast.message(result.emailError);
+      else toast.message('Student and guidance counselors have been notified.');
       invalidateReferralCaches(result.studentId);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1444,12 +1450,16 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
             .single();
           if (referralError) throw referralError;
 
-          await sendReferralNotification({
+          const email = await sendReferralNotification({
             event: 'referral_created',
             referralId: inserted.id,
           });
 
-          return { mode: 'referral_created' as const, studentId: interventionPrediction.student_id };
+          return {
+            mode: 'referral_created' as const,
+            studentId: interventionPrediction.student_id,
+            emailError: email.emailError,
+          };
         }
       }
 
@@ -1466,7 +1476,9 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     },
     onSuccess: (result) => {
       if (result?.mode === 'referral_created') {
-        toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+        toast.success('Counseling referral submitted.');
+        if (result.emailError) toast.message(result.emailError);
+        else toast.message('Student and guidance counselors have been notified.');
         invalidateReferralCaches(result.studentId);
       } else {
         toast.success('Intervention logged');
