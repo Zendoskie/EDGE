@@ -945,4 +945,14 @@ describe('email delivery safety', () => {
     expect(followFn).not.toContain('log_engagement_intervention');
     expect(followFn).not.toContain('complete_engagement_intervention');
   });
+
+  it('loads engagement feedback replies from student_engagement_feedback', () => {
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const replyFn = notifyFn.slice(
+      notifyFn.indexOf('async function sendFeedbackReplyEmail'),
+      notifyFn.indexOf('async function sendAttendanceUpdateEmail'),
+    );
+    expect(replyFn).toContain('student_engagement_feedback');
+    expect(replyFn).not.toContain('.from("engagement_feedback")');
+  });
 });

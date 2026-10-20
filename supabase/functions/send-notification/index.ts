@@ -709,7 +709,7 @@ async function sendFeedbackReplyEmail(
 
   if (kind === "engagement") {
     const { data: row, error } = await supabase
-      .from("engagement_feedback")
+      .from("student_engagement_feedback")
       .select("id, student_id, subject, instructor_response")
       .eq("id", feedbackId)
       .maybeSingle();
