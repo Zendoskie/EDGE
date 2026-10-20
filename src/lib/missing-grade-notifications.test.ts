@@ -63,18 +63,61 @@ describe('missing grade alerts', () => {
     });
   });
 
-  it('asks for alerts for every activity in a subject after a student becomes active', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: async () => ({ data: [{ id: 'activity-1' }, { id: 'activity-2' }], error: null }),
-      }),
+  it('only calls the RPC for activities that already have a recorded score', async () => {
+    from.mockImplementation((table: string) => {
+      if (table === 'activities') {
+        return {
+          select: () => ({
+            eq: async () => ({
+              data: [{ id: 'activity-1' }, { id: 'activity-2' }],
+              error: null,
+            }),
+          }),
+        };
+      }
+      if (table === 'submissions') {
+        return {
+          select: () => ({
+            in: async () => ({
+              data: [{ activity_id: 'activity-2', score: 72 }],
+              error: null,
+            }),
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
     });
     rpc.mockResolvedValue({ data: [], error: null });
 
     await publishMissingGradeAlertsForSubject('sub-1');
 
-    expect(rpc).toHaveBeenNthCalledWith(1, 'notify_missing_activity_grades', { p_activity_id: 'activity-1' });
-    expect(rpc).toHaveBeenNthCalledWith(2, 'notify_missing_activity_grades', { p_activity_id: 'activity-2' });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('notify_missing_activity_grades', { p_activity_id: 'activity-2' });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('skips enrollment-wide publish when no activity has a recorded score', async () => {
+    from.mockImplementation((table: string) => {
+      if (table === 'activities') {
+        return {
+          select: () => ({
+            eq: async () => ({ data: [{ id: 'activity-1' }], error: null }),
+          }),
+        };
+      }
+      if (table === 'submissions') {
+        return {
+          select: () => ({
+            in: async () => ({ data: [{ activity_id: 'activity-1', score: null }], error: null }),
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await publishMissingGradeAlertsForSubject('sub-1');
+
+    expect(rpc).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 

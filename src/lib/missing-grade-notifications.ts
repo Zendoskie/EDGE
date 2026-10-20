@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { activityIdsWithAtLeastOneRecordedScore } from '@/lib/missing-grade-eligibility';
 import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 import { toast } from 'sonner';
 
@@ -33,8 +34,17 @@ export async function publishMissingGradeAlerts(subjectId: string, activityIds: 
 export async function publishMissingGradeAlertsForSubject(subjectId: string) {
   const { data, error } = await supabase.from('activities').select('id').eq('subject_id', subjectId);
   if (error) throw error;
-  await publishMissingGradeAlerts(
-    subjectId,
-    (data ?? []).map((activity) => activity.id),
-  );
+  const activityIds = (data ?? []).map((activity) => activity.id).filter(Boolean);
+  if (activityIds.length === 0) return;
+
+  const { data: submissions, error: submissionsError } = await supabase
+    .from('submissions')
+    .select('activity_id, score')
+    .in('activity_id', activityIds);
+  if (submissionsError) throw submissionsError;
+
+  const eligibleActivityIds = activityIdsWithAtLeastOneRecordedScore(submissions ?? []);
+  if (eligibleActivityIds.length === 0) return;
+
+  await publishMissingGradeAlerts(subjectId, eligibleActivityIds);
 }
