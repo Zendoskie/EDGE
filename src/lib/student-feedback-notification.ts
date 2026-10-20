@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 
 export async function submitRiskFeedback(input: {
   studentId: string;
@@ -37,8 +38,7 @@ export async function submitRiskFeedback(input: {
       emailError: 'Feedback saved. No subject instructor could be determined, so no email was sent.',
     };
   }
-  const failed = typeof emailData?.failed === 'number' ? emailData.failed : 0;
-  if (failed > 0) {
+  if (interpretNotificationInvokeResult(emailData) !== 'sent') {
     return { id: data.id, emailError: 'Feedback saved. The instructor email could not be sent.' };
   }
   return { id: data.id, emailError: null };
@@ -79,8 +79,7 @@ export async function submitEngagementFeedback(input: {
       emailError: 'Feedback saved. No single subject instructor could be determined, so no email was sent.',
     };
   }
-  const failed = typeof emailData?.failed === 'number' ? emailData.failed : 0;
-  if (failed > 0) {
+  if (interpretNotificationInvokeResult(emailData) !== 'sent') {
     return { id: data.id, emailError: 'Feedback saved. The instructor email could not be sent.' };
   }
   return { id: data.id, emailError: null };

@@ -955,4 +955,15 @@ describe('email delivery safety', () => {
     expect(replyFn).toContain('student_engagement_feedback');
     expect(replyFn).not.toContain('.from("engagement_feedback")');
   });
+
+  it('authorizes engagement feedback replies like instructor_reply_to_feedback', () => {
+    const notifyFn = read('supabase/functions/send-notification/index.ts');
+    const engagementBranch = notifyFn.slice(
+      notifyFn.indexOf('if (kind === "engagement")'),
+      notifyFn.indexOf('if (kind === "struggle")'),
+    );
+    expect(engagementBranch).toContain('instructorCanViewStudent');
+    expect(engagementBranch).toContain('const studentId = row.student_id');
+    expect(engagementBranch).not.toContain('feedbackReplyRecipient');
+  });
 });

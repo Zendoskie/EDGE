@@ -104,38 +104,41 @@ export default function InstructorFeedback() {
     const response = reply.trim();
     if (!response) return;
     setSavingReply(true);
-    const { error } = await supabase.rpc('instructor_reply_to_feedback', {
-      p_kind: selected.kind === 'engagement' ? 'engagement' : 'struggle',
-      p_feedback_id: selected.row.id,
-      p_response: response,
-    });
-    setSavingReply(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    const email = await emailFeedbackReply({
-      kind: selected.kind === 'engagement' ? 'engagement' : 'struggle',
-      feedbackId: selected.row.id,
-    });
-    toast.success('Reply saved');
-    if (email.emailError) toast.warning(email.emailError);
-    if (selected.kind === 'engagement') {
-      setSelected({
-        kind: 'engagement',
-        row: {
-          ...selected.row,
-          instructor_response: response,
-          status: selected.row.status === 'submitted' ? 'reviewed' : selected.row.status,
-        },
+    try {
+      const { error } = await supabase.rpc('instructor_reply_to_feedback', {
+        p_kind: selected.kind === 'engagement' ? 'engagement' : 'struggle',
+        p_feedback_id: selected.row.id,
+        p_response: response,
       });
-    } else {
-      setSelected({
-        kind: 'risk',
-        row: { ...selected.row, instructor_response: response },
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      const email = await emailFeedbackReply({
+        kind: selected.kind === 'engagement' ? 'engagement' : 'struggle',
+        feedbackId: selected.row.id,
       });
+      toast.success('Reply saved');
+      if (email.emailError) toast.warning(email.emailError);
+      if (selected.kind === 'engagement') {
+        setSelected({
+          kind: 'engagement',
+          row: {
+            ...selected.row,
+            instructor_response: response,
+            status: selected.row.status === 'submitted' ? 'reviewed' : selected.row.status,
+          },
+        });
+      } else {
+        setSelected({
+          kind: 'risk',
+          row: { ...selected.row, instructor_response: response },
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['instructor-feedback-page', user?.id] });
+    } finally {
+      setSavingReply(false);
     }
-    await queryClient.invalidateQueries({ queryKey: ['instructor-feedback-page', user?.id] });
   }
 
   const { data, isLoading, error } = useQuery({

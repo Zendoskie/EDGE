@@ -715,13 +715,10 @@ async function sendFeedbackReplyEmail(
       .maybeSingle();
     if (error) throw error;
     if (!row?.instructor_response?.trim()) throw new Error("Reply not found");
+    if (!roleCheck) throw new Error("Not allowed");
     const canView = await instructorCanViewStudent(supabase, callerId, row.student_id);
-    const studentId = feedbackReplyRecipient({
-      callerId,
-      callerIsInstructor: Boolean(roleCheck) && canView,
-      feedback: { studentId: row.student_id, instructorId: callerId },
-    });
-    if (!studentId) throw new Error("Not allowed");
+    if (!canView) throw new Error("Not allowed");
+    const studentId = row.student_id;
     const { data: studentProfile } = await supabase
       .from("profiles")
       .select("email")
