@@ -167,10 +167,14 @@ describe('Instructor feedback section', () => {
       p_response: 'Let us review Activity 1 together.',
     });
     await waitFor(() => {
+      expect(rpc).toHaveBeenCalled();
       expect(emailFeedbackReply).toHaveBeenCalledWith({
         kind: 'engagement',
         feedbackId: 'eng-1',
       });
+      expect(rpc.mock.invocationCallOrder[0]).toBeLessThan(
+        emailFeedbackReply.mock.invocationCallOrder[0],
+      );
     });
     expect(await screen.findByText(/Reviewed/)).toBeTruthy();
     expect(toastSuccess).toHaveBeenCalledWith('Reply saved');

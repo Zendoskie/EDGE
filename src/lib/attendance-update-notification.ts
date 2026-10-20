@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 
 export const ATTENDANCE_UPDATE_EMAIL_FAILED = 'Attendance saved. The student email could not be sent.';
 
@@ -19,8 +20,8 @@ export async function emailAttendanceUpdate(input: {
     },
   });
   if (error) return { emailError: ATTENDANCE_UPDATE_EMAIL_FAILED, alreadySent: false };
-  if (data?.duplicate) return { emailError: null, alreadySent: true };
-  const failed = typeof data?.failed === 'number' ? data.failed : 0;
-  if (failed > 0 || data?.skipped) return { emailError: ATTENDANCE_UPDATE_EMAIL_FAILED, alreadySent: false };
-  return { emailError: null, alreadySent: false };
+  const outcome = interpretNotificationInvokeResult(data);
+  if (outcome === 'duplicate') return { emailError: null, alreadySent: true };
+  if (outcome === 'sent') return { emailError: null, alreadySent: false };
+  return { emailError: ATTENDANCE_UPDATE_EMAIL_FAILED, alreadySent: false };
 }
