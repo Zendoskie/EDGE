@@ -31,7 +31,7 @@ import {
 import { classifyRiskScore, predictionCoverage, RISK_CATEGORIES, RISK_CATEGORY_LABELS } from '@/lib/risk-scoring';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { findDuplicateActivityTitle } from '@/lib/gradebook';
-import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
+import { publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
 import { GradebookTable } from '@/components/GradebookTable';
 import { subjectReleaseKey } from '@/lib/final-grade-freshness';
 import { flushSubjectRiskRecalc, recalculateSubjectRisk, scheduleSubjectRiskRecalc } from '@/lib/recalculate-risk';
@@ -784,19 +784,14 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       if (findDuplicateActivityTitle(activities, title)) {
         throw new Error('An assessment with this title already exists for this subject.');
       }
-      const { data: created, error } = await supabase.from('activities').insert({
+      const { error } = await supabase.from('activities').insert({
         title,
         type: form.type,
         max_score: maxScore,
         subject_id: subjectId,
         created_by: userId,
-      }).select('id').single();
+      });
       if (error) throw error;
-      try {
-        await publishMissingGradeAlerts(subjectId, [created.id]);
-      } catch {
-        toast.message('Activity created. Missing-grade notifications could not be created.');
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
