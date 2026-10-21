@@ -19,6 +19,7 @@ vi.mock('sonner', () => ({
 }));
 
 import { toast } from 'sonner';
+import { activityIdsWithAtLeastOneRecordedScore } from '@/lib/missing-grade-eligibility';
 import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
 
 describe('missing grade alerts', () => {
@@ -161,6 +162,22 @@ describe('missing grade alerts', () => {
     await publishMissingGradeAlerts('sub-1', ['activity-1']);
 
     expect(toast.message).not.toHaveBeenCalled();
+  });
+
+  it('A1 and ME recorded, P1 ungraded — P1 is not eligible for missing-grade RPC', () => {
+    const eligible = activityIdsWithAtLeastOneRecordedScore([
+      { activity_id: 'a1', score: 16 },
+      { activity_id: 'p1', score: null },
+      { activity_id: 'me', score: 45 },
+    ]);
+    expect(eligible.sort()).toEqual(['a1', 'me']);
+  });
+
+  it('P1 becomes eligible once any student has a recorded score of zero', () => {
+    const eligible = activityIdsWithAtLeastOneRecordedScore([
+      { activity_id: 'p1', score: 0 },
+    ]);
+    expect(eligible).toEqual(['p1']);
   });
 
   it('toasts on invoke transport errors', async () => {
