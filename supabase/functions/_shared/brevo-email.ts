@@ -1,30 +1,39 @@
-export const RESEND_API_KEY_ENV = "RESEND_API_KEY";
-export const RESEND_FROM_ENV = "RESEND_FROM";
-export const RESEND_API_URL = "https://api.resend.com/emails";
+export const BREVO_API_KEY_ENV = "BREVO_API_KEY";
+export const BREVO_FROM_ENV = "BREVO_FROM";
+export const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
-export type ResendEmailPayload = {
+export type BrevoEmailPayload = {
   to: string;
   subject: string;
   html: string;
   text?: string;
 };
 
-export type ResendDeps = {
+export type BrevoSender = {
+  name: string;
+  email: string;
+};
+
+export type BrevoDeps = {
   getEnv: (key: string) => string | undefined;
   fetchFn: typeof fetch;
 };
 
-/** Format `Name <email@domain>` or a bare email for Resend's `from` field. */
-export function formatResendFromAddress(fromRaw: string): string {
+/**
+ * Parse `EDGE <notify@example.com>` or a bare email into Brevo sender fields.
+ * Preserves the configured display name when present.
+ */
+export function parseBrevoFromAddress(fromRaw: string): BrevoSender {
   const trimmed = fromRaw.trim();
-  if (!trimmed) throw new Error(`${RESEND_FROM_ENV} is empty`);
+  if (!trimmed) throw new Error(`${BREVO_FROM_ENV} is empty`);
   const match = trimmed.match(/^(.*)<(.+)>$/);
   if (match) {
     const name = match[1].trim();
     const email = match[2].trim();
-    return name ? `${name} <${email}>` : email;
+    if (!email) throw new Error(`${BREVO_FROM_ENV} is invalid`);
+    return { name: name || "EDGE", email };
   }
-  return trimmed;
+  return { name: "EDGE", email: trimmed };
 }
 
 export function htmlToPlainText(html: string): string {
@@ -40,31 +49,31 @@ export function htmlToPlainText(html: string): string {
     .trim();
 }
 
-export function createResendEmailSender(deps: ResendDeps) {
-  async function sendResendEmail(opts: ResendEmailPayload): Promise<{ id?: string }> {
-    const apiKey = deps.getEnv(RESEND_API_KEY_ENV);
+export function createBrevoEmailSender(deps: BrevoDeps) {
+  async function sendBrevoEmail(opts: BrevoEmailPayload): Promise<{ messageId?: string }> {
+    const apiKey = deps.getEnv(BREVO_API_KEY_ENV);
     if (!apiKey?.trim()) {
-      throw new Error(`Email not configured. Add ${RESEND_API_KEY_ENV} to Edge Function secrets.`);
+      throw new Error(`Email not configured. Add ${BREVO_API_KEY_ENV} to Edge Function secrets.`);
     }
-    const fromRaw = deps.getEnv(RESEND_FROM_ENV);
+    const fromRaw = deps.getEnv(BREVO_FROM_ENV);
     if (!fromRaw?.trim()) {
-      throw new Error(`Email not configured. Add ${RESEND_FROM_ENV} to Edge Function secrets.`);
+      throw new Error(`Email not configured. Add ${BREVO_FROM_ENV} to Edge Function secrets.`);
     }
-    const from = formatResendFromAddress(fromRaw);
-    const text = opts.text ?? htmlToPlainText(opts.html);
+    const sender = parseBrevoFromAddress(fromRaw);
+    const textContent = opts.text ?? htmlToPlainText(opts.html);
 
-    const res = await deps.fetchFn(RESEND_API_URL, {
+    const res = await deps.fetchFn(BREVO_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey.trim()}`,
+        "api-key": apiKey.trim(),
       },
       body: JSON.stringify({
-        from,
-        to: [opts.to],
+        sender,
+        to: [{ email: opts.to }],
         subject: opts.subject,
-        html: opts.html,
-        text,
+        htmlContent: opts.html,
+        textContent,
       }),
     });
 
@@ -75,20 +84,20 @@ export function createResendEmailSender(deps: ResendDeps) {
           ? result.message
           : typeof result.error === "string"
             ? result.error
-            : `Resend error (${res.status})`;
+            : `Brevo error (${res.status})`;
       throw new Error(msg);
     }
-    const id = typeof result.id === "string" ? result.id : undefined;
-    return { id };
+    const messageId = typeof result.messageId === "string" ? result.messageId : undefined;
+    return { messageId };
   }
 
-  async function sendResendEmailBatch(emails: ResendEmailPayload[]) {
+  async function sendBrevoEmailBatch(emails: BrevoEmailPayload[]) {
     const results: { index: number; success: boolean; error?: string }[] = [];
 
     for (let i = 0; i < emails.length; i++) {
       const e = emails[i];
       try {
-        await sendResendEmail(e);
+        await sendBrevoEmail(e);
         results.push({ index: i, success: true });
       } catch (err) {
         results.push({
@@ -110,7 +119,7 @@ export function createResendEmailSender(deps: ResendDeps) {
     return { data, errors, sent, failed: errors.length };
   }
 
-  return { sendResendEmail, sendResendEmailBatch };
+  return { sendBrevoEmail, sendBrevoEmailBatch };
 }
 
 function edgeGetEnv(key: string): string | undefined {
@@ -118,12 +127,12 @@ function edgeGetEnv(key: string): string | undefined {
   return Deno.env.get(key);
 }
 
-const defaultSender = createResendEmailSender({
+const defaultSender = createBrevoEmailSender({
   getEnv: edgeGetEnv,
   fetchFn: fetch,
 });
 
-export const sendResendEmail = defaultSender.sendResendEmail;
-export const sendResendEmailBatch = defaultSender.sendResendEmailBatch;
+export const sendBrevoEmail = defaultSender.sendBrevoEmail;
+export const sendBrevoEmailBatch = defaultSender.sendBrevoEmailBatch;
 
-export type SendAppEmail = typeof sendResendEmail;
+export type SendAppEmail = typeof sendBrevoEmail;

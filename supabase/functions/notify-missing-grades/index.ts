@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendResendEmailBatch } from "../_shared/resend-email.ts";
+import { sendBrevoEmailBatch } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -187,7 +187,7 @@ serve(async (req) => {
       ].join("");
     };
 
-    const batch = await sendResendEmailBatch(
+    const batch = await sendBrevoEmailBatch(
       withEmail.map((r) => ({
         to: r.email,
         subject: emailSubject,

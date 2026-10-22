@@ -419,7 +419,7 @@ describe('release-final-grades source checks', () => {
 
   it('has no email, prediction, AI, invoke, delete or direct upsert side effects', () => {
     for (const src of [index, shared]) {
-      expect(src).not.toMatch(/sendResendEmail|predictions|functions\.invoke|\.delete\(|\.upsert\(|ai-coach|channel\(/);
+      expect(src).not.toMatch(/sendBrevoEmail|predictions|functions\.invoke|\.delete\(|\.upsert\(|ai-coach|channel\(/);
     }
     expect(shared).toContain('db.rpc("commit_final_grade_releases"');
   });

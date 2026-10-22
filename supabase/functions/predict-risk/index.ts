@@ -22,7 +22,7 @@ import {
   type RiskEmailCandidate,
 } from "../_shared/risk-email.ts";
 import { emailLinkedParentsRiskTransitions } from "../_shared/parent-linked-email.ts";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -426,7 +426,7 @@ serve(async (req) => {
         }));
       if (parentTransitions.length > 0) {
         try {
-          await emailLinkedParentsRiskTransitions(supabase, sendResendEmail, parentTransitions);
+          await emailLinkedParentsRiskTransitions(supabase, sendBrevoEmail, parentTransitions);
         } catch (parentEmailError) {
           console.error("parent risk transition email failed:", parentEmailError);
         }
@@ -468,7 +468,7 @@ serve(async (req) => {
         });
 
         try {
-          await sendResendEmail({ to: studentEmail, subject: subj, html });
+          await sendBrevoEmail({ to: studentEmail, subject: subj, html });
           await supabase.from("email_notifications").insert({
             student_id: n.student_id,
             subject_id,

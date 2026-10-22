@@ -26,12 +26,13 @@ Supabase Auth → URL Configuration:
 | Vercel | `VITE_SUPABASE_URL` or `SUPABASE_URL` |
 | Supabase | Deploy function: `npx supabase functions deploy scan-engagement-alerts` |
 
-## 3. Email (Resend — application notifications)
+## 3. Email (Brevo — application notifications)
 
-- `RESEND_API_KEY`, `RESEND_FROM` on Supabase Edge Function secrets (server-side only)
+- `BREVO_API_KEY`, `BREVO_FROM` on Supabase Edge Function secrets (server-side only)
+- Example sender: `EDGE <modsmoderator123@gmail.com>` (name and address must match your verified Brevo sender)
 - `EDGE_RISK_EMAILS_ENABLED`: automatic risk emails from `predict-risk`. Off unless set to exactly `true`
-  (see `docs/NEW_SUPABASE_SETUP.md`, Resend step 4).
-- Supabase **Auth** SMTP (password reset, etc.) is configured separately in the dashboard; do not assume it follows Resend secrets automatically.
+  (see `docs/NEW_SUPABASE_SETUP.md`, Brevo step 4).
+- Supabase **Auth** SMTP (password reset, etc.) is configured separately in the dashboard; application email uses the Brevo HTTP API, not Auth SMTP.
 
 ## 4. Smoke checks after deploy
 

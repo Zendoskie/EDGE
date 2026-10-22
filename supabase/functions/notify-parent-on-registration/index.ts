@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,7 +101,7 @@ serve(async (req) => {
     const resolvedStudentIdNo = studentIdNo || prof.student_id || null;
 
     const { subject, html } = buildInvitationEmail(resolvedStudentName, resolvedStudentIdNo);
-    await sendResendEmail({ to: parentEmail, subject, html });
+    await sendBrevoEmail({ to: parentEmail, subject, html });
 
     // Record that the invitation was sent.
     const { error: logErr } = await db.from("parent_invitation_log").insert({

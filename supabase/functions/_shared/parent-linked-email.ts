@@ -17,7 +17,7 @@ import {
   mapApprovedLinkedParentsByStudent,
   type LinkedParentRecipient,
 } from "./linked-parent-recipients.ts";
-import type { SendAppEmail } from "./resend-email.ts";
+import type { SendAppEmail } from "./brevo-email.ts";
 
 export type ParentEmailCounts = { sent: number; failed: number; duplicates: number };
 

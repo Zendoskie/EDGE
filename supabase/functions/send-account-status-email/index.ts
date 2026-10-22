@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAppUrl } from "../_shared/app-url.ts";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,7 +109,7 @@ serve(async (req) => {
 
     const appUrl = resolveAppUrl(body?.app_url);
 
-    await sendResendEmail({
+    await sendBrevoEmail({
       to: profile.email,
       ...buildEmail(status, {
         fullName: profile.full_name,

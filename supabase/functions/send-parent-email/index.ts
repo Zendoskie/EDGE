@@ -14,7 +14,7 @@ import {
   deliverRegistrationWelcomeEmail,
   type RegistrationWelcomeClaimOutcome,
 } from "../_shared/registration-welcome-email-delivery.ts";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -250,7 +250,7 @@ async function handleRegistrationAccessActivated(
       }
       return "in_flight";
     },
-    send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+    send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
     markSent: async () => {
       const { data: marked, error } = await supabase.rpc("complete_registration_welcome_email", {
         p_request_id: request.id,
@@ -337,7 +337,7 @@ serve(async (req) => {
         throw new Error("Parent email does not match the student's registered parent email");
       }
       const inviteStudentIdNo = studentIdNo || prof.student_id || null;
-      return sendResendEmail({
+      return sendBrevoEmail({
         to,
         ...buildEmail("invitation", { studentName, studentIdNo: inviteStudentIdNo }),
       })
@@ -390,7 +390,7 @@ serve(async (req) => {
           .limit(1);
         const delivery = await deliverEmail({
           alreadyLogged: (existing ?? []).length > 0,
-          send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+          send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
           log: async () => {
             const { error: logError } = await supabase.from("email_notifications").insert({
               student_id: request.student_user_id,
@@ -447,7 +447,7 @@ serve(async (req) => {
         .limit(1);
       const delivery = await deliverEmail({
         alreadyLogged: (existing ?? []).length > 0,
-        send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+        send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
         log: async () => {
           const { error: logError } = await supabase.from("email_notifications").insert({
             student_id: request.student_user_id,
@@ -497,7 +497,7 @@ serve(async (req) => {
         .select("full_name")
         .eq("user_id", link.parent_user_id)
         .maybeSingle();
-      return sendResendEmail({
+      return sendBrevoEmail({
         to: sProf.email,
         ...buildEmail("request_received", {
           parentName: parentName || pProf?.full_name || null,
@@ -536,7 +536,7 @@ serve(async (req) => {
       .eq("user_id", link.student_user_id)
       .maybeSingle();
 
-    return sendResendEmail({
+    return sendBrevoEmail({
       to: pProf2.email,
       ...buildEmail(decisionType, {
         parentName: pProf2.full_name || parentName,

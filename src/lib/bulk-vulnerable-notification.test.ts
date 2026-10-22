@@ -47,7 +47,7 @@ describe('sendBulkVulnerableNotifications', () => {
         mode: 'bulk',
         sent: 1,
         failed: 1,
-        errors: [{ index: 1, message: 'Resend rejected' }],
+        errors: [{ index: 1, message: 'Brevo rejected' }],
       },
       error: null,
     });

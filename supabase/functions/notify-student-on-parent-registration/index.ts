@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,7 +106,7 @@ serve(async (req) => {
 <p>Check that you recognize this person's name and email before approving. After you approve, an administrator must also approve before they can view any of your academic information.</p>
 <p>– The EDGE Team</p>`;
 
-    await sendResendEmail({ to: studentProf.email, subject, html });
+    await sendBrevoEmail({ to: studentProf.email, subject, html });
 
     return jsonOk({ success: true });
   } catch (e) {

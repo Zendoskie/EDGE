@@ -82,13 +82,13 @@ After this, “Generate Predictions” in the app will use the new project’s f
 
 ---
 
-## Step 4 (Optional): Application email notifications (Resend)
+## Step 4 (Optional): Application email notifications (Brevo)
 
-EDGE sends **application** notification emails (grades, registration, referrals, risk alerts, and similar) from Supabase Edge Functions using the [Resend](https://resend.com) HTTP API.
+EDGE sends **application** notification emails (grades, registration, referrals, risk alerts, and similar) from Supabase Edge Functions using the [Brevo transactional email API](https://developers.brevo.com/docs/send-a-transactional-email).
 
-1. In your Resend account:
-   - Create an API key.
-   - Verify a domain or sender address you control (required before production sending).
+1. In your Brevo account:
+   - Create an API key ([API key authentication](https://developers.brevo.com/docs/api-key-authentication)).
+   - Verify the sender address or domain you will use (required before production sending).
 
 2. Deploy the functions that send email (at minimum):
 
@@ -97,21 +97,21 @@ npx supabase functions deploy predict-risk
 npx supabase functions deploy send-notification
 ```
 
-3. Set Resend secrets on the Supabase project (Edge Function secrets, server-side only):
+3. Set Brevo secrets on the Supabase project (Edge Function secrets, server-side only):
 
 ```bash
-npx supabase secrets set RESEND_API_KEY=your_resend_api_key --project-ref <project-ref>
-npx supabase secrets set RESEND_FROM="EDGE <notify@yourdomain.com>" --project-ref <project-ref>
+npx supabase secrets set BREVO_API_KEY=your_brevo_api_key --project-ref <project-ref>
+npx supabase secrets set BREVO_FROM="EDGE <modsmoderator123@gmail.com>" --project-ref <project-ref>
 ```
 
 Notes:
-- `RESEND_FROM` must use an address or domain verified in Resend.
-- These secrets are **not** exposed to the browser (`VITE_*` is never used for Resend).
-- A successful Resend API response means the provider accepted the message; it is not proof of inbox delivery.
+- `BREVO_FROM` supports `Display Name <email@example.com>` or a bare email (display name defaults to `EDGE`).
+- These secrets are **not** exposed to the browser (`VITE_*` is never used for Brevo).
+- A successful Brevo API response means the provider accepted the message; it is not proof of inbox delivery.
 
-### Supabase Auth email (separate from Resend)
+### Supabase Auth email (separate from Brevo application email)
 
-Password reset, magic links, and other **Auth** emails are configured under **Supabase Dashboard → Authentication → SMTP**. That setting is independent of `RESEND_API_KEY` / `RESEND_FROM`. If Auth still points at a legacy SMTP provider (for example Brevo SMTP), update it explicitly in the dashboard; deploying Edge Functions does not migrate Auth email.
+Password reset, magic links, and other **Auth** emails are configured under **Supabase Dashboard → Authentication → SMTP**. That setting is independent of `BREVO_API_KEY` / `BREVO_FROM`. You may use Brevo SMTP for Auth or another provider; deploying Edge Functions does not change Auth SMTP.
 
 4. Automatic student risk emails (rollout gate):
 
@@ -120,7 +120,7 @@ Password reset, magic links, and other **Auth** emails are configured under **Su
 - When on, `predict-risk` emails a student only for a definitive Crucial or Vulnerable result: a recorded risk score
   and evidence in every weighted grade category. Provisional (incomplete) results are never emailed. At most one email
   per student, subject and level every 24 hours. Predictions, dashboards and in-app notifications work the same with the gate off.
-- Enable only after the Resend secrets above are set and the sender is verified:
+- Enable only after the Brevo secrets above are set and the sender is verified:
 
 ```bash
 npx supabase secrets set EDGE_RISK_EMAILS_ENABLED=true --project-ref <project-ref>

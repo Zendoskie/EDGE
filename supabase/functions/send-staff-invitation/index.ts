@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAppUrl } from "../_shared/app-url.ts";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -314,7 +314,7 @@ serve(async (req) => {
       expiresAt:     inv.expires_at as string,
     });
 
-    await sendResendEmail({ to: inv.email as string, subject, html });
+    await sendBrevoEmail({ to: inv.email as string, subject, html });
 
     return new Response(
       JSON.stringify({ success: true, email: inv.email }),

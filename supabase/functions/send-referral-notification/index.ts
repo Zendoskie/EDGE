@@ -9,7 +9,7 @@ import {
   emailLogKey,
 } from "../_shared/notification-channels.ts";
 import { emailLinkedParentsReferralUpdate } from "../_shared/parent-linked-email.ts";
-import { sendResendEmail } from "../_shared/resend-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -190,7 +190,7 @@ async function sendCounselorFollowupEmail(
   const email = counselorFollowupEmail({ subjectCode, message: intervention.note ?? null });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -281,7 +281,7 @@ async function sendCounselingOutcomeEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -492,7 +492,7 @@ serve(async (req) => {
     }
 
     try {
-      await emailLinkedParentsReferralUpdate(supabase, sendResendEmail, {
+      await emailLinkedParentsReferralUpdate(supabase, sendBrevoEmail, {
         studentUserId: referral.student_id,
         subjectId: referral.subject_id,
         subjectCode,
@@ -509,7 +509,7 @@ serve(async (req) => {
     const results: Array<{ to: string; success: boolean; error?: string }> = [];
     for (const email of emails) {
       try {
-        await sendResendEmail(email);
+        await sendBrevoEmail(email);
         results.push({ to: email.to, success: true });
       } catch (err) {
         results.push({
