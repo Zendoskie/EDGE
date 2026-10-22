@@ -51,3 +51,5 @@ Reference that end users encounter the full disclaimer at login, on the dashboar
 | Parent performance — predictions list | Reminder above prediction entries |
 
 Source of truth for application text: [`src/lib/academic-disclaimer.ts`](../src/lib/academic-disclaimer.ts).
+
+For roles, risk methodology, grading, notifications, and AI Coaching behavior, see the [EDGE System Guide](./EDGE_SYSTEM_GUIDE.md).

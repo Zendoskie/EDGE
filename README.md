@@ -80,6 +80,13 @@ This project includes `vercel.json` with a rewrite so every path serves `index.h
 
 Configure your host so unknown paths fall back to `index.html` (for example Netlify `_redirects` or Cloudflare Pages **SPA** / `_routes.json` behavior).
 
+### Documentation (panel / capstone)
+
+- **[EDGE System Guide](docs/EDGE_SYSTEM_GUIDE.md)** — roles and permissions, academic risk definitions, grading, notifications, manual vs automated workflows, AI Coaching limitations, and how they map to the implementation.
+- **[Academic disclaimer](docs/ACADEMIC_DISCLAIMER.md)** — formal disclaimer text and where it appears in the UI.
+- **[Deploy checklist](docs/DEPLOY_CHECKLIST.md)** — production Vercel, cron, and Brevo application email.
+- **[New Supabase setup](docs/NEW_SUPABASE_SETUP.md)** — project bootstrap, Edge secrets, and optional risk-email gate.
+
 ### Research and academic disclaimer
 
 Formal disclaimer language for the research paper, thesis, and system evaluation is documented in [`docs/ACADEMIC_DISCLAIMER.md`](docs/ACADEMIC_DISCLAIMER.md). The same text appears in the landing page footer and on views that display prediction or risk results.
