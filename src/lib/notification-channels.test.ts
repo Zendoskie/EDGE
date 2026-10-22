@@ -899,7 +899,7 @@ describe('email delivery safety', () => {
     expect(feedbackFn).toContain('23505');
   });
 
-  it('uses grades_posted without client score lines or a second grade inbox writer', () => {
+  it('uses grades_posted email on the edge and student grade inbox on the submissions trigger', () => {
     const table = read('src/components/GradebookTable.tsx');
     const save = table.slice(table.indexOf('const saveGrades = useMutation'), table.indexOf('onSuccess: async (result)'));
     expect(save).toContain('emailGradesPosted');
@@ -909,6 +909,10 @@ describe('email delivery safety', () => {
     expect(table).toContain('retryGradeEmails');
     expect(table).toContain('gradesPostedItemsFromSavedScores');
     expect(table.indexOf('gradesPostedItemsFromSavedScores')).toBeLessThan(table.indexOf('emailGradesPosted(subjectId, items)'));
+    const inboxMigration = read('supabase/migrations/20261022153000_student_grade_posted_inbox_dedupe.sql');
+    expect(inboxMigration).toContain('notify_first_activity_grade');
+    expect(inboxMigration).toContain('NEW.student_id');
+    expect(inboxMigration).toContain("'grade-posted:'");
     const notifyFn = read('supabase/functions/send-notification/index.ts');
     const gradesFn = notifyFn.slice(
       notifyFn.indexOf('async function sendGradesPostedEmail'),
