@@ -9,6 +9,7 @@ import {
   emailLogKey,
 } from "../_shared/notification-channels.ts";
 import { emailLinkedParentsReferralUpdate } from "../_shared/parent-linked-email.ts";
+import { sendResendEmail } from "../_shared/resend-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,39 +41,6 @@ function formatRiskLevel(level: string | null): string {
   if (level === "stable") return "Stable";
   if (level === "excelling") return "Excelling";
   return level;
-}
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error))
-      ? (result.message || result.error)
-      : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result;
 }
 
 function buildReferralCreatedHtml(opts: {
@@ -222,7 +190,7 @@ async function sendCounselorFollowupEmail(
   const email = counselorFollowupEmail({ subjectCode, message: intervention.note ?? null });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -313,7 +281,7 @@ async function sendCounselingOutcomeEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -524,7 +492,7 @@ serve(async (req) => {
     }
 
     try {
-      await emailLinkedParentsReferralUpdate(supabase, sendBrevoEmail, {
+      await emailLinkedParentsReferralUpdate(supabase, sendResendEmail, {
         studentUserId: referral.student_id,
         subjectId: referral.subject_id,
         subjectCode,
@@ -541,7 +509,7 @@ serve(async (req) => {
     const results: Array<{ to: string; success: boolean; error?: string }> = [];
     for (const email of emails) {
       try {
-        await sendBrevoEmail(email);
+        await sendResendEmail(email);
         results.push({ to: email.to, success: true });
       } catch (err) {
         results.push({

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,36 +22,6 @@ function jsonOk(data: unknown) {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({})) as { message?: string; error?: string };
-  if (!res.ok) {
-    const msg = result.message || result.error || `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
 }
 
 serve(async (req) => {
@@ -135,7 +106,7 @@ serve(async (req) => {
 <p>Check that you recognize this person's name and email before approving. After you approve, an administrator must also approve before they can view any of your academic information.</p>
 <p>– The EDGE Team</p>`;
 
-    await sendBrevoEmail({ to: studentProf.email, subject, html });
+    await sendResendEmail({ to: studentProf.email, subject, html });
 
     return jsonOk({ success: true });
   } catch (e) {

@@ -9,7 +9,7 @@ const ANON_KEY     = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | u
  * link to the applicant.  The caller must be an admin (verified server-side).
  *
  * Throws a descriptive Error on any failure so the caller can surface the
- * exact reason in the UI (missing secrets, Brevo rejection, network error…).
+ * exact reason in the UI (missing secrets, provider rejection, network error…).
  */
 export async function sendStaffInvitation(invitationId: string): Promise<void> {
   if (!SUPABASE_URL || !ANON_KEY) {

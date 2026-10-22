@@ -41,6 +41,7 @@ import {
   emailLinkedParentsAttendanceUpdate,
   emailLinkedParentsGradesPosted,
 } from "../_shared/parent-linked-email.ts";
+import { sendResendEmail, sendResendEmailBatch } from "../_shared/resend-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,61 +65,6 @@ function safeString(s: unknown): string | null {
 function safeRiskLevel(s: unknown): RiskLevel | null {
   if (s === "critical" || s === "at_risk" || s === "stable" || s === "excelling") return s;
   return null;
-}
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result as { messageId?: string };
-}
-
-async function sendBrevoBatch(emails: Array<{ to: string; subject: string; html: string }>) {
-  const results: { index: number; success: boolean; error?: string }[] = [];
-
-  for (let i = 0; i < emails.length; i++) {
-    const e = emails[i];
-    try {
-      await sendBrevoEmail(e);
-      results.push({ index: i, success: true });
-    } catch (err) {
-      results.push({ index: i, success: false, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  const data = results.filter((r) => r.success).map(() => ({ id: crypto.randomUUID ? crypto.randomUUID() : "" }));
-  const errors = results
-    .filter((r) => !r.success)
-    .map((r) => ({ index: r.index, message: r.error || "Unknown error" }));
-
-  return { data, errors } as {
-    data?: Array<{ id: string }>;
-    errors?: Array<{ index: number; message: string }>;
-  };
 }
 
 function json(body: unknown, status = 200) {
@@ -252,7 +198,7 @@ async function sendGradesPostedEmail(
     );
     const delivery = await deliverEmail({
       alreadyLogged: false,
-      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+      send: () => sendResendEmail({ to, subject: email.subject, html: email.html }),
       log: async () => {
         const rows = pending.map((line) => ({
           student_id: studentId,
@@ -270,7 +216,7 @@ async function sendGradesPostedEmail(
       sent += 1;
       const parentOutcome = await emailLinkedParentsGradesPosted(
         supabase,
-        sendBrevoEmail,
+        sendResendEmail,
         studentId,
         subjectId,
         subject?.code ?? null,
@@ -352,7 +298,7 @@ async function sendRiskFeedbackEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: authorized.studentId,
@@ -451,7 +397,7 @@ async function sendInstructorFeedbackEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: authorized.studentId,
@@ -524,7 +470,7 @@ async function sendEngagementInterventionEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -613,7 +559,7 @@ async function sendEngagementOutcomeEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -680,7 +626,7 @@ async function sendEnrollmentRequestEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: instructorEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: enrollment!.student_id,
@@ -761,7 +707,7 @@ async function sendFeedbackReplyEmail(
     });
     const delivery = await deliverEmail({
       alreadyLogged: (existing ?? []).length > 0,
-      send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+      send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: studentId,
@@ -814,7 +760,7 @@ async function sendFeedbackReplyEmail(
     });
     const delivery = await deliverEmail({
       alreadyLogged: (existing ?? []).length > 0,
-      send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+      send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: studentId,
@@ -913,7 +859,7 @@ async function sendAttendanceUpdateEmail(
     });
     const delivery = await deliverEmail({
       alreadyLogged: (existing ?? []).length > 0,
-      send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+      send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: authorizedStudentId,
@@ -930,7 +876,7 @@ async function sendAttendanceUpdateEmail(
   }
 
   {
-    const parentOutcome = await emailLinkedParentsAttendanceUpdate(supabase, sendBrevoEmail, {
+    const parentOutcome = await emailLinkedParentsAttendanceUpdate(supabase, sendResendEmail, {
       studentUserId: authorizedStudentId,
       subjectId,
       subjectCode: subject?.code ?? null,
@@ -1014,7 +960,7 @@ async function sendLoggedInterventionEmail(
   const email = interventionStudentEmail({ subjectCode, message: interventionMessage });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -1087,7 +1033,7 @@ async function sendRegistrationRejectedEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: null,
@@ -1157,7 +1103,7 @@ async function sendEnrollmentDecisionEmail(
   });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
-    send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
+    send: () => sendResendEmail({ to: studentEmail, subject: email.subject, html: email.html }),
     log: async () => {
       const { error: logError } = await supabase.from("email_notifications").insert({
         student_id: studentId,
@@ -1278,7 +1224,7 @@ serve(async (req) => {
 
       if (recipients.length === 0) throw new Error("recipients must include at least one valid to email");
 
-      const batch = await sendBrevoBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
+      const batch = await sendResendEmailBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
 
       const sentCount = batch.data?.length ?? 0;
       const failedCount = batch.errors?.length ?? 0;
@@ -1318,7 +1264,7 @@ serve(async (req) => {
 
     if (!to) throw new Error("to (student email) is required");
 
-    const result = await sendBrevoEmail({ to, subject: emailSubject, html });
+    const result = await sendResendEmail({ to, subject: emailSubject, html });
 
     if (studentId && subjectId && (riskLevel === "critical" || riskLevel === "at_risk")) {
       await supabase.from("email_notifications").insert({

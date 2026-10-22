@@ -14,6 +14,7 @@ import {
   deliverRegistrationWelcomeEmail,
   type RegistrationWelcomeClaimOutcome,
 } from "../_shared/registration-welcome-email-delivery.ts";
+import { sendResendEmail } from "../_shared/resend-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,37 +63,6 @@ function normalizeEmail(s: unknown): string | null {
 }
 
 const appUrl = (Deno.env.get("APP_URL") || "https://edge.example.com").replace(/\/+$/, "");
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result as { messageId?: string };
-}
 
 function buildEmail(
   type: ParentEmailType,
@@ -280,7 +250,7 @@ async function handleRegistrationAccessActivated(
       }
       return "in_flight";
     },
-    send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+    send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
     markSent: async () => {
       const { data: marked, error } = await supabase.rpc("complete_registration_welcome_email", {
         p_request_id: request.id,
@@ -367,7 +337,7 @@ serve(async (req) => {
         throw new Error("Parent email does not match the student's registered parent email");
       }
       const inviteStudentIdNo = studentIdNo || prof.student_id || null;
-      return sendBrevoEmail({
+      return sendResendEmail({
         to,
         ...buildEmail("invitation", { studentName, studentIdNo: inviteStudentIdNo }),
       })
@@ -420,7 +390,7 @@ serve(async (req) => {
           .limit(1);
         const delivery = await deliverEmail({
           alreadyLogged: (existing ?? []).length > 0,
-          send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+          send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
           log: async () => {
             const { error: logError } = await supabase.from("email_notifications").insert({
               student_id: request.student_user_id,
@@ -477,7 +447,7 @@ serve(async (req) => {
         .limit(1);
       const delivery = await deliverEmail({
         alreadyLogged: (existing ?? []).length > 0,
-        send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+        send: () => sendResendEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
         log: async () => {
           const { error: logError } = await supabase.from("email_notifications").insert({
             student_id: request.student_user_id,
@@ -527,7 +497,7 @@ serve(async (req) => {
         .select("full_name")
         .eq("user_id", link.parent_user_id)
         .maybeSingle();
-      return sendBrevoEmail({
+      return sendResendEmail({
         to: sProf.email,
         ...buildEmail("request_received", {
           parentName: parentName || pProf?.full_name || null,
@@ -566,7 +536,7 @@ serve(async (req) => {
       .eq("user_id", link.student_user_id)
       .maybeSingle();
 
-    return sendBrevoEmail({
+    return sendResendEmail({
       to: pProf2.email,
       ...buildEmail(decisionType, {
         parentName: pProf2.full_name || parentName,

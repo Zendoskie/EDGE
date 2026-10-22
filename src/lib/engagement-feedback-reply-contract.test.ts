@@ -111,7 +111,7 @@ describe('engagement feedback reply notification contract', () => {
         deliverEmail({
           alreadyLogged: false,
           send: async () => {
-            throw new Error('brevo down');
+            throw new Error('provider down');
           },
           log,
         }),

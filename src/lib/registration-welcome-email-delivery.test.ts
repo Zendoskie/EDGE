@@ -73,7 +73,7 @@ describe('registration welcome email delivery orchestration', () => {
 
   it('does not mark sent when the provider fails and allows retry', async () => {
     const store = new InMemoryRegistrationWelcomeClaimStore();
-    const sendFail = vi.fn().mockRejectedValue(new Error('brevo down'));
+    const sendFail = vi.fn().mockRejectedValue(new Error('provider down'));
 
     const failed = await storeBackedDelivery(store, sendFail);
     expect(failed).toBe('failed');

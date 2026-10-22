@@ -17,14 +17,13 @@ import {
   mapApprovedLinkedParentsByStudent,
   type LinkedParentRecipient,
 } from "./linked-parent-recipients.ts";
+import type { SendAppEmail } from "./resend-email.ts";
 
 export type ParentEmailCounts = { sent: number; failed: number; duplicates: number };
 
-type SendBrevo = (opts: { to: string; subject: string; html: string }) => Promise<unknown>;
-
 export async function emailLinkedParentsGradesPosted(
   supabase: ReturnType<typeof createClient>,
-  sendBrevoEmail: SendBrevo,
+  sendAppEmail: SendAppEmail,
   studentId: string,
   subjectId: string,
   subjectCode: string | null,
@@ -72,7 +71,7 @@ export async function emailLinkedParentsGradesPosted(
     });
     const delivery = await deliverEmail({
       alreadyLogged: false,
-      send: () => sendBrevoEmail({ to: parent.email, subject: email.subject, html: email.html }),
+      send: () => sendAppEmail({ to: parent.email, subject: email.subject, html: email.html }),
       log: async () => {
         const rows = pendingLines.map((line) => ({
           student_id: parent.parentUserId,
@@ -96,7 +95,7 @@ export async function emailLinkedParentsGradesPosted(
 
 export async function emailLinkedParentsAttendanceUpdate(
   supabase: ReturnType<typeof createClient>,
-  sendBrevoEmail: SendBrevo,
+  sendAppEmail: SendAppEmail,
   input: {
     studentUserId: string;
     subjectId: string;
@@ -140,7 +139,7 @@ export async function emailLinkedParentsAttendanceUpdate(
 
     const delivery = await deliverEmail({
       alreadyLogged: (existing ?? []).length > 0,
-      send: () => sendBrevoEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
+      send: () => sendAppEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: parent.parentUserId,
@@ -170,7 +169,7 @@ export type ParentRiskTransition = {
 
 export async function emailLinkedParentsRiskTransitions(
   supabase: ReturnType<typeof createClient>,
-  sendBrevoEmail: SendBrevo,
+  sendAppEmail: SendAppEmail,
   transitions: readonly ParentRiskTransition[],
 ): Promise<ParentEmailCounts> {
   let sent = 0;
@@ -228,7 +227,7 @@ export async function emailLinkedParentsRiskTransitions(
 
       const delivery = await deliverEmail({
         alreadyLogged: (existing ?? []).length > 0,
-        send: () => sendBrevoEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
+        send: () => sendAppEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
         log: async () => {
           const { error: logError } = await supabase.from("email_notifications").insert({
             student_id: parent.parentUserId,
@@ -249,7 +248,7 @@ export async function emailLinkedParentsRiskTransitions(
 
 export async function emailLinkedParentsReferralUpdate(
   supabase: ReturnType<typeof createClient>,
-  sendBrevoEmail: SendBrevo,
+  sendAppEmail: SendAppEmail,
   input: {
     studentUserId: string;
     subjectId: string;
@@ -293,7 +292,7 @@ export async function emailLinkedParentsReferralUpdate(
 
     const delivery = await deliverEmail({
       alreadyLogged: (existing ?? []).length > 0,
-      send: () => sendBrevoEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
+      send: () => sendAppEmail({ to: parent.email, subject: emailContent.subject, html: emailContent.html }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: parent.parentUserId,

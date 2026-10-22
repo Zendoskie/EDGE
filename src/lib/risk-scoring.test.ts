@@ -196,7 +196,7 @@ describe('predict-risk ownership and persistence', () => {
     const check = handler.indexOf('isSubjectOwner(subject, user.id)');
     expect(check).toBeGreaterThan(0);
     expect(handler.slice(check, check + 400)).toContain('status: 403');
-    for (const later of ['.from("enrollments")', '.from("predictions")', 'sendBrevoEmail(', '.from("email_notifications")']) {
+    for (const later of ['.from("enrollments")', '.from("predictions")', 'sendResendEmail(', '.from("email_notifications")']) {
       expect(handler.indexOf(later), later).toBeGreaterThan(check);
     }
   });

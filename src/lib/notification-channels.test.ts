@@ -794,12 +794,14 @@ describe('email delivery safety', () => {
 
     for (const src of [outcome, feedback, referral]) {
       expect(src).not.toContain('BREVO');
+      expect(src).not.toContain('RESEND_API_KEY');
       expect(src).not.toContain('SERVICE_ROLE');
       expect(src).not.toContain('api-key');
     }
     expect(outcome).toContain("invoke('send-referral-notification'");
     expect(feedback).toContain("invoke('send-notification'");
-    expect(referralFn).toContain('Deno.env.get("BREVO_API_KEY")');
+    expect(referralFn).toContain('sendResendEmail');
+    expect(referralFn).toContain('../_shared/resend-email.ts');
     expect(referralFn).toContain('sendCounselingOutcomeEmail');
     expect(notifyFn.indexOf('event === "instructor_feedback"')).toBeLessThan(
       notifyFn.indexOf('Only instructors can send notifications'),
@@ -809,7 +811,7 @@ describe('email delivery safety', () => {
       notifyFn.indexOf('serve(async'),
     );
     expect(feedbackFn.indexOf('authorizeFeedbackEmail')).toBeGreaterThan(0);
-    expect(feedbackFn.indexOf('authorizeFeedbackEmail')).toBeLessThan(feedbackFn.indexOf('sendBrevoEmail'));
+    expect(feedbackFn.indexOf('authorizeFeedbackEmail')).toBeLessThan(feedbackFn.indexOf('sendResendEmail'));
     expect(feedbackFn).toContain('.eq("role", "student")');
     expect(feedbackFn).not.toContain('body?.student_id');
     expect(feedbackFn).not.toContain('body?.to');
@@ -819,10 +821,26 @@ describe('email delivery safety', () => {
     );
     expect(outcomeFn).not.toContain('user_inbox_notifications');
     expect(outcomeFn).not.toContain('complete_engagement_intervention');
-    expect(outcomeFn.indexOf('counselingOutcomeRecipient')).toBeLessThan(outcomeFn.indexOf('sendBrevoEmail'));
-    expect(outcomeFn.indexOf('.insert(')).toBeGreaterThan(outcomeFn.indexOf('sendBrevoEmail'));
-    expect(notifyFn).toContain('Deno.env.get("BREVO_API_KEY")');
+    expect(outcomeFn.indexOf('counselingOutcomeRecipient')).toBeLessThan(outcomeFn.indexOf('sendResendEmail'));
+    expect(outcomeFn.indexOf('.insert(')).toBeGreaterThan(outcomeFn.indexOf('sendResendEmail'));
+    expect(notifyFn).toContain('../_shared/resend-email.ts');
     expect(read('supabase/functions/_shared/risk-email.ts')).toContain('EDGE_RISK_EMAILS_ENABLED');
+    expect(read('supabase/functions/_shared/resend-email.ts')).toContain('RESEND_API_KEY');
+    for (const fn of [
+      'send-notification',
+      'predict-risk',
+      'send-referral-notification',
+      'send-parent-email',
+      'send-staff-invitation',
+      'send-account-status-email',
+      'notify-missing-grades',
+      'notify-parent-on-registration',
+      'notify-student-on-parent-registration',
+    ]) {
+      const src = read(`supabase/functions/${fn}/index.ts`);
+      expect(src).toContain('../_shared/resend-email.ts');
+      expect(src).not.toContain('api.brevo.com');
+    }
   });
 
   it('does not publish missing grades when an assessment is created', () => {
@@ -856,13 +874,13 @@ describe('email delivery safety', () => {
     );
     expect(engagement).not.toContain('user_inbox_notifications');
     expect(engagement).not.toContain('log_engagement_intervention');
-    expect(engagement.indexOf('engagementInterventionRecipient')).toBeLessThan(engagement.indexOf('sendBrevoEmail'));
+    expect(engagement.indexOf('engagementInterventionRecipient')).toBeLessThan(engagement.indexOf('sendResendEmail'));
     const logged = notifyFn.slice(
       notifyFn.indexOf('async function sendLoggedInterventionEmail'),
       notifyFn.indexOf('serve(async'),
     );
     expect(logged).not.toContain('user_inbox_notifications');
-    expect(logged.indexOf('loggedInterventionRecipient')).toBeLessThan(logged.indexOf('sendBrevoEmail'));
+    expect(logged.indexOf('loggedInterventionRecipient')).toBeLessThan(logged.indexOf('sendResendEmail'));
     expect(logged).not.toContain('body?.to');
     expect(logged).toContain('message');
     expect(logged).toContain('interventionStudentEmail({');
@@ -875,7 +893,7 @@ describe('email delivery safety', () => {
       notifyFn.indexOf('async function sendEngagementInterventionEmail'),
     );
     expect(feedbackFn.indexOf('ambiguous_instructor')).toBeLessThan(feedbackFn.indexOf('user_inbox_notifications'));
-    expect(feedbackFn.indexOf('user_inbox_notifications')).toBeLessThan(feedbackFn.indexOf('sendBrevoEmail'));
+    expect(feedbackFn.indexOf('user_inbox_notifications')).toBeLessThan(feedbackFn.indexOf('sendResendEmail'));
     expect(feedbackFn).toContain('engagement-feedback:');
     expect(feedbackFn).toContain('dedupe_key');
     expect(feedbackFn).toContain('23505');
@@ -921,7 +939,7 @@ describe('email delivery safety', () => {
       notifyFn.indexOf('async function sendInstructorFeedbackEmail'),
     );
     expect(riskFn).toContain('authorizeRiskFeedbackEmail');
-    expect(riskFn).toContain('sendBrevoEmail');
+    expect(riskFn).toContain('sendResendEmail');
     expect(riskFn).not.toContain('user_inbox_notifications');
     expect(riskFn).not.toContain('risk-feedback:');
     expect(riskFn).not.toContain('body?.to');

@@ -331,7 +331,7 @@ describe('risk emails', () => {
     const gate = src.indexOf('riskEmailsEnabled(Deno.env.get(RISK_EMAIL_GATE_ENV))');
     const gateIf = src.indexOf('if (riskEmailsOn && emailCandidates.some(isDefinitiveRiskEmail))');
     const dedupe = src.indexOf('.from("email_notifications")');
-    const send = src.indexOf('sendBrevoEmail({ to: studentEmail');
+    const send = src.indexOf('sendResendEmail({ to: studentEmail');
     expect(owner).toBeGreaterThan(0);
     expect(gate).toBeGreaterThan(owner);
     expect(gateIf).toBeGreaterThan(gate);
@@ -341,6 +341,6 @@ describe('risk emails', () => {
     expect(src).toContain('profileMap[n.student_id]?.email');
     // Predictions are written before, and independently of, the email step.
     expect(src.indexOf('upsert(plan.upserts')).toBeLessThan(gate);
-    expect(src).not.toMatch(/BREVO_API_KEY\s*=\s*["']/);
+    expect(src).not.toMatch(/RESEND_API_KEY\s*=\s*["']/);
   });
 });
