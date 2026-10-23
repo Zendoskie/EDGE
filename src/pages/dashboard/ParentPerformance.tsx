@@ -23,7 +23,7 @@ import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
-import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
+import { sendParentLinkEmail } from '@/lib/invoke-parent-email';
 import { parentLinkErrorMessage, parentLinkStatusLabel } from '@/lib/parent-link-status';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
@@ -147,19 +147,29 @@ export default function ParentPerformance() {
       if (error) throw new Error(parentLinkErrorMessage(error.message));
 
       if (typeof linkId === 'string' && linkId) {
-        sendParentLinkEmailBestEffort({
-          type: 'request_received',
-          link_id: linkId,
-          student_id_no: trimmed,
-        });
+        try {
+          await sendParentLinkEmail({
+            type: 'request_received',
+            link_id: linkId,
+            student_id_no: trimmed,
+          });
+        } catch (emailErr) {
+          const msg = emailErr instanceof Error ? emailErr.message : 'Email notification failed';
+          return { linkId, emailWarning: msg };
+        }
       }
-      return linkId;
+      return { linkId, emailWarning: null as string | null };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-approved-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-my-links', user?.id] });
       toast.success('Access request submitted. The student must approve it, then an administrator.');
+      if (result?.emailWarning) {
+        toast.warning(`Request saved. Student inbox notified, but email failed: ${result.emailWarning}`, {
+          duration: 8000,
+        });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });

@@ -30,6 +30,7 @@ import { useStudentAcademicSnapshot } from '@/hooks/useStudentAcademicSnapshot';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { submitRiskFeedback } from '@/lib/student-feedback-notification';
+import { useStudentLearningRecommendationsSync } from '@/hooks/useStudentLearningRecommendationsSync';
 
 interface RecentActivity {
   score: number | null;
@@ -50,6 +51,7 @@ interface RecentActivity {
 export default function StudentDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  useStudentLearningRecommendationsSync(user?.id);
   useTrackPageView('view_subject_page', null, 'Student dashboard');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selectedReasons, setSelectedReasons] = useState<Record<string, boolean>>({});
