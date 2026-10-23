@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { emailLoggedIntervention } from '@/lib/intervention-notification';
+import { emailAttendanceUpdate } from '@/lib/attendance-update-notification';
 import { ArrowLeft, UserPlus, Plus, Trash2, CalendarCheck, Users, ClipboardList, Brain, Copy, Mail, History, Lightbulb, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { invalidateStudentLinkedCaches } from '@/lib/student-performance-scope';
@@ -30,7 +31,8 @@ import {
 import { classifyRiskScore, predictionCoverage, RISK_CATEGORIES, RISK_CATEGORY_LABELS } from '@/lib/risk-scoring';
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { findDuplicateActivityTitle } from '@/lib/gradebook';
-import { publishMissingGradeAlerts, publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
+import { publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
+import { emailEnrollmentDecision } from '@/lib/enrollment-decision-notification';
 import { GradebookTable } from '@/components/GradebookTable';
 import { subjectReleaseKey } from '@/lib/final-grade-freshness';
 import { flushSubjectRiskRecalc, recalculateSubjectRisk, scheduleSubjectRiskRecalc } from '@/lib/recalculate-risk';
@@ -41,12 +43,12 @@ import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { sendReferralNotification } from '@/lib/referral-notifications';
+import { sendBulkVulnerableNotifications } from '@/lib/bulk-vulnerable-notification';
 import { normalizeReferralStatus } from '@/lib/referral-utils';
 import type {
   EmbeddedProgram,
   EnrollmentListRow,
   PredictionRow,
-  SendNotificationResponse,
   SubjectWithInstructor,
 } from '@/types/dashboard';
 
@@ -356,12 +358,17 @@ function SubjectStudents({
         .eq('id', vars.enrollmentId)
         .eq('status', 'pending');
       if (error) throw error;
-      return vars.studentId;
+      const email = await emailEnrollmentDecision(vars.enrollmentId);
+      return { studentId: vars.studentId, emailError: email.emailError };
     },
-    onSuccess: (studentId) => {
+    onSuccess: ({ studentId, emailError }) => {
       queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
       invalidateStudentLinkedCaches(queryClient, studentId);
-      toast.success('Enrollment request rejected');
+      if (emailError) {
+        toast.warning(`Enrollment request rejected. ${emailError}`, { duration: 8000 });
+      } else {
+        toast.success('Enrollment request rejected');
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -462,7 +469,12 @@ function SubjectStudents({
                                 }
                                 queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
                                 invalidateStudentLinkedCaches(queryClient, e.student_id);
-                                toast.success('Enrollment approved');
+                                const decisionEmail = await emailEnrollmentDecision(e.id);
+                                if (decisionEmail.emailError) {
+                                  toast.warning(`Enrollment approved. ${decisionEmail.emailError}`, { duration: 8000 });
+                                } else {
+                                  toast.success('Enrollment approved');
+                                }
                                 try {
                                   await publishMissingGradeAlertsForSubject(subjectId);
                                 } catch {
@@ -555,7 +567,7 @@ export function SubjectAttendance({
       if (error) throw error;
       return { markedDate, rows: data ?? [] };
     },
-    onSuccess: ({ markedDate, rows }) => {
+    onSuccess: async ({ markedDate, rows }, { studentId, status }) => {
       queryClient.setQueryData(['attendance', subjectId, markedDate], rows);
       queryClient.setQueryData<typeof attendanceHistory>(['attendance-history', subjectId], (old) =>
         old && [...rows, ...old.filter((r) => r.date !== markedDate)].sort(
@@ -564,6 +576,17 @@ export function SubjectAttendance({
       );
       queryClient.invalidateQueries({ queryKey: subjectReleaseKey(subjectId) });
       toast.success('Attendance updated');
+      const committedRow = (rows as { student_id?: string; status?: string }[]).find(
+        (row) => row.student_id === studentId,
+      );
+      const committedStatus = committedRow?.status ?? status;
+      const email = await emailAttendanceUpdate({
+        studentId,
+        subjectId,
+        date: markedDate,
+        status: committedStatus,
+      });
+      if (email.emailError) toast.warning(email.emailError);
       scheduleSubjectRiskRecalc(subjectId, (result) => {
         if (result.ok) queryClient.invalidateQueries({ queryKey: ['predictions', subjectId] });
       });
@@ -772,19 +795,14 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
       if (findDuplicateActivityTitle(activities, title)) {
         throw new Error('An assessment with this title already exists for this subject.');
       }
-      const { data: created, error } = await supabase.from('activities').insert({
+      const { error } = await supabase.from('activities').insert({
         title,
         type: form.type,
         max_score: maxScore,
         subject_id: subjectId,
         created_by: userId,
-      }).select('id').single();
+      });
       if (error) throw error;
-      try {
-        await publishMissingGradeAlerts(subjectId, [created.id]);
-      } catch {
-        toast.message('Activity created. Missing-grade notifications could not be created.');
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities', subjectId] });
@@ -1326,15 +1344,21 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
 
       if (referralError) throw referralError;
 
-      await sendReferralNotification({
+      const email = await sendReferralNotification({
         event: 'referral_created',
         referralId: inserted.id,
       });
 
-      return { referralId: inserted.id, studentId: prediction.student_id };
+      return {
+        referralId: inserted.id,
+        studentId: prediction.student_id,
+        emailError: email.emailError,
+      };
     },
     onSuccess: (result) => {
-      toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+      toast.success('Counseling referral submitted.');
+      if (result.emailError) toast.message(result.emailError);
+      else toast.message('Student and guidance counselors have been notified.');
       invalidateReferralCaches(result.studentId);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1432,12 +1456,16 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
             .single();
           if (referralError) throw referralError;
 
-          await sendReferralNotification({
+          const email = await sendReferralNotification({
             event: 'referral_created',
             referralId: inserted.id,
           });
 
-          return { mode: 'referral_created' as const, studentId: interventionPrediction.student_id };
+          return {
+            mode: 'referral_created' as const,
+            studentId: interventionPrediction.student_id,
+            emailError: email.emailError,
+          };
         }
       }
 
@@ -1454,7 +1482,9 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     },
     onSuccess: (result) => {
       if (result?.mode === 'referral_created') {
-        toast.success('Counseling referral submitted. Student and guidance counselors have been notified.');
+        toast.success('Counseling referral submitted.');
+        if (result.emailError) toast.message(result.emailError);
+        else toast.message('Student and guidance counselors have been notified.');
         invalidateReferralCaches(result.studentId);
       } else {
         toast.success('Intervention logged');
@@ -1493,32 +1523,38 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
     setBulkNotifyPreparing(true);
     const msg = bulkNotifyMessage || `Your instructor has an update regarding ${subjectCode}. Please check the EDGE platform and consider reaching out for support.`;
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('send-notification', {
-        body: {
-          subject_code: subjectCode,
-          subject_name: subjectName,
-          body: msg,
-          recipients: withEmail.map((p: PredictionRow) => ({
-            to: p.profile?.email,
-            student_id: p.student_id,
-            subject_id: subjectId,
-            risk_level: p.risk_level,
-          })),
-        },
+      const result = await sendBulkVulnerableNotifications({
+        subjectCode,
+        subjectName,
+        body: msg,
+        recipients: withEmail.map((p: PredictionRow) => ({
+          to: p.profile!.email!,
+          student_id: p.student_id,
+          subject_id: subjectId,
+          risk_level: p.risk_level,
+        })),
       });
-      if (invokeError) throw new Error(invokeError.message || 'Failed to send emails');
-
-      const payload = data as SendNotificationResponse | null;
-      const sent = payload?.sent ?? 0;
-      const failed = payload?.failed ?? 0;
-      const errors = payload?.errors;
+      if (result.kind === 'invoke_error') throw new Error(result.message);
+      if (result.kind === 'invalid_response') {
+        toast.error('Bulk email failed: unexpected response from the notification service.');
+        return;
+      }
 
       setBulkNotifyOpen(false);
       setBulkNotifyMessage('');
-      toast.success(`Sent notifications to ${sent} of ${withEmail.length} vulnerable students`);
-      if (failed > 0) {
-        const first = errors?.[0]?.message;
-        toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check Resend settings.');
+      if (result.sent === 0) {
+        const first = result.errors[0]?.message;
+        toast.error(
+          first
+            ? `No emails were sent. ${first}`
+            : 'No emails were sent. Check email configuration and try again.',
+        );
+        return;
+      }
+      toast.success(`Sent notifications to ${result.sent} of ${result.total} vulnerable students`);
+      if (result.failed > 0) {
+        const first = result.errors[0]?.message;
+        toast.error(first ? `Some emails failed: ${first}` : 'Some emails failed. Check email settings.');
       }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Bulk email failed');

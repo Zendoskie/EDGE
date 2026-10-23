@@ -314,7 +314,7 @@ BEGIN
 
   -- Inactivity based on last_login_at
   IF v_last_login IS NOT NULL THEN
-    v_days := FLOOR(EXTRACT(EPOCH FROM (now() - v_last_login)) / 86400)::
+    v_days := FLOOR(EXTRACT(EPOCH FROM (now() - v_last_login)) / 86400)::INTEGER;
 
     IF v_days >= 7 THEN
       PERFORM public.create_engagement_alert(

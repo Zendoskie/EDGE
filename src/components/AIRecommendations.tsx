@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +21,7 @@ import {
   Star,
   BarChart3
 } from 'lucide-react';
+import { syncLearningRecommendationsForStudent } from '@/lib/learning-recommendations-sync';
 
 interface LearningRecommendation {
   id: string;
@@ -72,6 +73,34 @@ export default function AIRecommendations() {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [expandedRecommendation, setExpandedRecommendation] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const syncAttempted = useRef(false);
+
+  const { data: latestRiskLevel } = useQuery({
+    queryKey: ['student-risk-for-recommendations', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('predictions')
+        .select('risk_level')
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.risk_level ?? null;
+    },
+    enabled: !!user?.id,
+  });
+
+  useEffect(() => {
+    if (!user?.id || latestRiskLevel == null || syncAttempted.current) return;
+    syncAttempted.current = true;
+    void syncLearningRecommendationsForStudent(user.id, latestRiskLevel).then((result) => {
+      if (result.status === 'synced') {
+        queryClient.invalidateQueries({ queryKey: ['ai-recommendations', user.id] });
+      }
+    });
+  }, [user?.id, latestRiskLevel, queryClient]);
 
   // Fetch AI recommendations
   const { data: recommendations = [], isLoading: recommendationsLoading } = useQuery({

@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const { rpc, toastSuccess } = vi.hoisted(() => ({
+const { rpc, toastSuccess, emailFeedbackReply } = vi.hoisted(() => ({
   rpc: vi.fn(async () => ({ data: null, error: null })),
   toastSuccess: vi.fn(),
+  emailFeedbackReply: vi.fn(async () => ({ emailError: null, alreadySent: false })),
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: toastSuccess, error: vi.fn(), message: vi.fn() },
+  toast: { success: toastSuccess, error: vi.fn(), message: vi.fn(), warning: vi.fn() },
 }));
-import { fireEvent, render, screen } from '@testing-library/react';
+
+vi.mock('@/lib/feedback-reply-notification', () => ({
+  emailFeedbackReply,
+}));
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import InstructorFeedback, { InstructorFeedbackSummary } from '@/pages/dashboard/InstructorFeedback';
@@ -160,6 +165,16 @@ describe('Instructor feedback section', () => {
       p_kind: 'engagement',
       p_feedback_id: 'eng-1',
       p_response: 'Let us review Activity 1 together.',
+    });
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalled();
+      expect(emailFeedbackReply).toHaveBeenCalledWith({
+        kind: 'engagement',
+        feedbackId: 'eng-1',
+      });
+      expect(rpc.mock.invocationCallOrder[0]).toBeLessThan(
+        emailFeedbackReply.mock.invocationCallOrder[0],
+      );
     });
     expect(await screen.findByText(/Reviewed/)).toBeTruthy();
     expect(toastSuccess).toHaveBeenCalledWith('Reply saved');

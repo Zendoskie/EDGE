@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 
 export const INTERVENTION_SAVED_EMAIL_FAILED = 'Intervention saved. The student email could not be sent.';
 
@@ -10,10 +11,10 @@ async function sendInterventionEmail(
     body: { event, intervention_id: interventionId },
   });
   if (error) return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
-  if (data?.duplicate) return { emailError: null, alreadySent: true };
-  const failed = typeof data?.failed === 'number' ? data.failed : 0;
-  if (failed > 0 || data?.skipped) return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
-  return { emailError: null, alreadySent: false };
+  const outcome = interpretNotificationInvokeResult(data);
+  if (outcome === 'duplicate') return { emailError: null, alreadySent: true };
+  if (outcome === 'sent') return { emailError: null, alreadySent: false };
+  return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
 }
 
 /** Email only. Does not log another intervention or inbox row. */
@@ -34,10 +35,10 @@ export async function emailCounselorFollowup(
     body: { event: 'counselor_followup', intervention_id: interventionId },
   });
   if (error) return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
-  if (data?.duplicate) return { emailError: null, alreadySent: true };
-  const failed = typeof data?.failed === 'number' ? data.failed : 0;
-  if (failed > 0 || data?.skipped) return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
-  return { emailError: null, alreadySent: false };
+  const outcome = interpretNotificationInvokeResult(data);
+  if (outcome === 'duplicate') return { emailError: null, alreadySent: true };
+  if (outcome === 'sent') return { emailError: null, alreadySent: false };
+  return { emailError: INTERVENTION_SAVED_EMAIL_FAILED, alreadySent: false };
 }
 
 export function canRetryCounselorFollowupEmail(

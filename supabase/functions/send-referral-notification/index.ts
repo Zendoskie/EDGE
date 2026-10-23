@@ -8,6 +8,8 @@ import {
   deliverEmail,
   emailLogKey,
 } from "../_shared/notification-channels.ts";
+import { emailLinkedParentsReferralUpdate } from "../_shared/parent-linked-email.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,39 +41,6 @@ function formatRiskLevel(level: string | null): string {
   if (level === "stable") return "Stable";
   if (level === "excelling") return "Excelling";
   return level;
-}
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error))
-      ? (result.message || result.error)
-      : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result;
 }
 
 function buildReferralCreatedHtml(opts: {
@@ -175,7 +144,7 @@ async function sendCounselorFollowupEmail(
 
   const { data: intervention, error: interventionError } = await supabase
     .from("engagement_interventions")
-    .select("id, student_id, instructor_id, action_type, status, subject_id")
+    .select("id, student_id, instructor_id, action_type, status, subject_id, note")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
@@ -218,7 +187,7 @@ async function sendCounselorFollowupEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = counselorFollowupEmail(subjectCode);
+  const email = counselorFollowupEmail({ subjectCode, message: intervention.note ?? null });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
@@ -255,7 +224,7 @@ async function sendCounselingOutcomeEmail(
 
   const { data: intervention, error: interventionError } = await supabase
     .from("engagement_interventions")
-    .select("id, student_id, instructor_id, action_type, actor_role, status, subject_id, completed_by")
+    .select("id, student_id, instructor_id, action_type, actor_role, status, subject_id, completed_by, note, outcome_rating")
     .eq("id", interventionId)
     .maybeSingle();
   if (interventionError) throw interventionError;
@@ -298,7 +267,18 @@ async function sendCounselingOutcomeEmail(
     .eq("student_id", studentId)
     .eq("risk_level", logKey)
     .limit(1);
-  const email = counselingOutcomeEmail(subjectCode);
+  const { data: staffOutcome } = await supabase
+    .from("intervention_staff_outcomes")
+    .select("outcome_note")
+    .eq("intervention_id", interventionId)
+    .maybeSingle();
+
+  const email = counselingOutcomeEmail({
+    subjectCode,
+    message: intervention.note ?? null,
+    outcomeRating: intervention.outcome_rating ?? null,
+    outcomeNote: staffOutcome?.outcome_note ?? null,
+  });
   const delivery = await deliverEmail({
     alreadyLogged: (existing ?? []).length > 0,
     send: () => sendBrevoEmail({ to: studentEmail, subject: email.subject, html: email.html }),
@@ -509,6 +489,21 @@ serve(async (req) => {
           }),
         });
       }
+    }
+
+    try {
+      await emailLinkedParentsReferralUpdate(supabase, sendBrevoEmail, {
+        studentUserId: referral.student_id,
+        subjectId: referral.subject_id,
+        subjectCode,
+        referralId,
+        event,
+        decision: event === "referral_decided"
+          ? (referral.status === "approved" ? "approved" : "rejected")
+          : null,
+      });
+    } catch (parentEmailError) {
+      console.error("parent referral email failed:", parentEmailError);
     }
 
     const results: Array<{ to: string; success: boolean; error?: string }> = [];

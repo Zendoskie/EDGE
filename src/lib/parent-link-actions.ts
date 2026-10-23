@@ -25,6 +25,10 @@ export async function studentDecideParentRegistration(requestId: string, decisio
     p_decision: decision,
   });
   if (error) throw new Error(parentLinkErrorMessage(error.message));
+  sendParentLinkEmailBestEffort({
+    type: decision === "approve" ? "student_approved" : "student_rejected",
+    registration_request_id: requestId,
+  });
   return String(data ?? "");
 }
 
@@ -35,6 +39,12 @@ export async function adminReviewParentRequest(requestId: string, decision: Pare
     p_decision: decision,
   });
   if (error) throw new Error(parentLinkErrorMessage(error.message));
+  if (decision === "reject") {
+    sendParentLinkEmailBestEffort({
+      type: "admin_rejected",
+      registration_request_id: requestId,
+    });
+  }
   return data ? String(data) : null;
 }
 

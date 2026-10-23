@@ -1,5 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
+import { activityIdsWithAtLeastOneRecordedScore } from '@/lib/missing-grade-eligibility';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 import { toast } from 'sonner';
+
+const MISSING_GRADE_EMAIL_FAILED = 'Missing-grade alert saved. The email notification could not be sent.';
 
 export async function publishMissingGradeAlerts(subjectId: string, activityIds: string[]) {
   const uniqueIds = [...new Set(activityIds.filter(Boolean))];
@@ -10,7 +14,7 @@ export async function publishMissingGradeAlerts(subjectId: string, activityIds: 
     if (error) throw error;
     for (const recipient of missingRecipients ?? []) {
       if (!recipient.email) continue;
-      const { error: emailError } = await supabase.functions.invoke('send-notification', {
+      const { data: emailData, error: emailError } = await supabase.functions.invoke('send-notification', {
         body: {
           to: recipient.email,
           student_id: recipient.student_id,
@@ -20,8 +24,8 @@ export async function publishMissingGradeAlerts(subjectId: string, activityIds: 
           body: recipient.notification_body,
         },
       });
-      if (emailError) {
-        toast.message('Missing-grade alert saved. The email notification could not be sent.');
+      if (emailError || interpretNotificationInvokeResult(emailData) === 'failed') {
+        toast.message(MISSING_GRADE_EMAIL_FAILED);
       }
     }
   }
@@ -30,8 +34,17 @@ export async function publishMissingGradeAlerts(subjectId: string, activityIds: 
 export async function publishMissingGradeAlertsForSubject(subjectId: string) {
   const { data, error } = await supabase.from('activities').select('id').eq('subject_id', subjectId);
   if (error) throw error;
-  await publishMissingGradeAlerts(
-    subjectId,
-    (data ?? []).map((activity) => activity.id),
-  );
+  const activityIds = (data ?? []).map((activity) => activity.id).filter(Boolean);
+  if (activityIds.length === 0) return;
+
+  const { data: submissions, error: submissionsError } = await supabase
+    .from('submissions')
+    .select('activity_id, score')
+    .in('activity_id', activityIds);
+  if (submissionsError) throw submissionsError;
+
+  const eligibleActivityIds = activityIdsWithAtLeastOneRecordedScore(submissions ?? []);
+  if (eligibleActivityIds.length === 0) return;
+
+  await publishMissingGradeAlerts(subjectId, eligibleActivityIds);
 }

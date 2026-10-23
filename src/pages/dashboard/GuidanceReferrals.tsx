@@ -66,18 +66,20 @@ export default function GuidanceReferrals() {
         .eq('id', id);
       if (error) throw error;
 
-      await sendReferralNotification({
+      const email = await sendReferralNotification({
         event: 'referral_decided',
         referralId: id,
         counselorRemarks: remarks,
       });
+      return { emailError: email.emailError };
     },
-    onSuccess: (_, vars) => {
+    onSuccess: (result, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['guidance-referrals', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['student-counseling-referrals'] });
       void queryClient.invalidateQueries({ queryKey: ['instructor-counseling-referrals'] });
       void queryClient.invalidateQueries({ queryKey: ['counseling-referrals'] });
       toast.success(vars.status === 'approved' ? 'Referral approved' : 'Referral rejected');
+      if (result.emailError) toast.message(result.emailError);
       setReviewTarget(null);
       setCounselorRemarks('');
     },

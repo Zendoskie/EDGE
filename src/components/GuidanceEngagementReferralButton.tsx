@@ -90,15 +90,16 @@ export function GuidanceEngagementReferralButton({
         .single();
       if (error) throw error;
 
-      await sendReferralNotification({
+      const email = await sendReferralNotification({
         event: 'referral_created',
         referralId: inserted.id,
       });
 
-      return inserted.id;
+      return { referralId: inserted.id, emailError: email.emailError };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast.success('Counseling referral created from engagement review.');
+      if (result.emailError) toast.message(result.emailError);
       void queryClient.invalidateQueries({ queryKey: ['guidance-referrals'] });
       setOpen(false);
     },

@@ -32,6 +32,7 @@ import { fetchInstructorCourseBundle, instructorCourseBundleKey } from '@/lib/in
 import { PageHeader } from '@/components/shell/PageHeader';
 import { InstructorFeedbackSummary } from '@/pages/dashboard/InstructorFeedback';
 import { countPendingEngagementFeedback } from '@/lib/instructor-feedback';
+import { sendEarlyWarningEmail } from '@/lib/early-warning-notification';
 
 const getYearFromSubject = (subject: any) => {
   const code = subject.code || '';
@@ -595,20 +596,16 @@ export default function InstructorDashboard() {
       if (interventionError) throw new Error(interventionError.message || 'Failed to create in-app warning.');
 
       if (row?.studentEmail) {
-        const { error } = await supabase.functions.invoke('send-notification', {
-          body: {
-            to: row.studentEmail,
-            student_id: row.studentId,
-            subject_id: row.subjectId,
-            risk_level: row.latestRisk,
-            subject_code: row.subjectCode,
-            subject_name: row.subjectName,
-            body: message,
-          },
+        const { emailError } = await sendEarlyWarningEmail({
+          studentEmail: row.studentEmail,
+          studentId: row.studentId,
+          subjectId: row.subjectId,
+          latestRisk: row.latestRisk,
+          subjectCode: row.subjectCode,
+          subjectName: row.subjectName,
+          message,
         });
-        if (error) {
-          throw new Error(`In-app warning saved, but email failed: ${error.message || 'send error'}`);
-        }
+        if (emailError) throw new Error(emailError);
       }
     },
     onSuccess: () => {

@@ -7,6 +7,7 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
+import { sendParentRegistrationWelcomeEmail } from '@/lib/invoke-parent-email';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 
 type Invitation = {
@@ -22,7 +23,7 @@ type TokenState =
   | { phase: 'loading' }
   | { phase: 'invalid'; reason: string }
   | { phase: 'form'; invitation: Invitation }
-  | { phase: 'success'; email: string };
+  | { phase: 'success'; email: string; welcomeEmailWarning: string | null };
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
@@ -138,7 +139,12 @@ export default function CompleteParentRegistration() {
         throw completeError;
       }
 
-      setState({ phase: 'success', email: inv.email });
+      const welcome = await sendParentRegistrationWelcomeEmail({ completion_token: token });
+      setState({
+        phase: 'success',
+        email: inv.email,
+        welcomeEmailWarning: welcome.failed ? (welcome.error ?? 'We could not send the welcome email. You can still sign in.') : null,
+      });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Registration failed. Please try again.');
     } finally {
@@ -169,6 +175,9 @@ export default function CompleteParentRegistration() {
         <CheckCircle2 aria-hidden />
         <h2>Account active</h2>
         <p className="edge-auth-lead">Sign in with {state.email} and the password you just created. You will only see the student linked to this request.</p>
+        {state.welcomeEmailWarning ? (
+          <p className="text-sm text-amber-700 dark:text-amber-400">{state.welcomeEmailWarning}</p>
+        ) : null}
         <Button type="button" className="w-full" onClick={() => navigate('/login')}>Sign in to EDGE</Button>
       </div>
     );

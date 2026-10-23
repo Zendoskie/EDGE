@@ -1,5 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  deliverEmail,
+  emailLogKey,
+  parentRegistrationDecisionLogId,
+} from "../_shared/notification-channels.ts";
+import {
+  normalizeEmailForCompare,
+  registrationWelcomeDecisionId,
+  validateRegistrationWelcomeEligibility,
+} from "../_shared/parent-registration-welcome.ts";
+import {
+  deliverRegistrationWelcomeEmail,
+  type RegistrationWelcomeClaimOutcome,
+} from "../_shared/registration-welcome-email-delivery.ts";
+import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +32,7 @@ const ACCEPTED_TYPES = [
   "student_rejected",
   "admin_approved",
   "admin_rejected",
+  "registration_access_activated",
   // Legacy aliases for the student decision.
   "approved",
   "rejected",
@@ -47,37 +63,6 @@ function normalizeEmail(s: unknown): string | null {
 }
 
 const appUrl = (Deno.env.get("APP_URL") || "https://edge.example.com").replace(/\/+$/, "");
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result as { messageId?: string };
-}
 
 function buildEmail(
   type: ParentEmailType,
@@ -167,26 +152,168 @@ ${idLine}
   }
 }
 
+async function handleRegistrationAccessActivated(
+  supabase: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+) {
+  const completionToken = safeString(body?.completion_token);
+  if (!completionToken) throw new Error("completion_token is required");
+
+  const { data: invitation, error: invError } = await supabase
+    .from("staff_invitations")
+    .select("id, email, status, role, parent_request_id, accepted_at")
+    .eq("token", completionToken)
+    .maybeSingle();
+  if (invError) throw new Error("Could not verify invitation");
+  if (!invitation?.parent_request_id) throw new Error("Invalid or incomplete registration");
+
+  const { data: request, error: reqError } = await supabase
+    .from("parent_registration_requests")
+    .select("id, email, full_name, student_name, student_user_id, status, completed_at")
+    .eq("id", invitation.parent_request_id)
+    .maybeSingle();
+  if (reqError) throw new Error("Could not verify parent registration request");
+  if (!request) throw new Error("Invalid or incomplete registration");
+
+  const { data: approvedLinks, error: linkError } = await supabase
+    .from("parent_student_links")
+    .select("parent_user_id, status")
+    .eq("student_user_id", request.student_user_id)
+    .eq("status", "approved");
+  if (linkError) throw new Error("Could not verify parent link");
+
+  const invitationEmailNorm = normalizeEmailForCompare(invitation.email);
+  let linkStatus: string | null = null;
+  let parentProfileEmail: string | null = null;
+
+  for (const link of approvedLinks ?? []) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("user_id", link.parent_user_id)
+      .maybeSingle();
+    if (profileError) throw new Error("Could not verify parent profile");
+    const profileNorm = normalizeEmailForCompare(profile?.email);
+    if (
+      profileNorm
+      && profileNorm === invitationEmailNorm
+      && profileNorm === normalizeEmailForCompare(request.email)
+    ) {
+      linkStatus = link.status;
+      parentProfileEmail = profile?.email ?? null;
+      break;
+    }
+  }
+
+  const eligibility = validateRegistrationWelcomeEligibility({
+    invitationRole: String((invitation as { role?: string }).role ?? ""),
+    invitationStatus: String((invitation as { status?: string }).status ?? ""),
+    invitationEmail: invitation.email ?? "",
+    requestStatus: String((request as { status?: string }).status ?? ""),
+    requestCompletedAt: request.completed_at,
+    requestEmail: request.email ?? "",
+    linkStatus,
+    parentProfileEmail,
+  });
+  if (!eligibility.eligible) {
+    throw new Error("Invalid or incomplete registration");
+  }
+
+  const parentEmail = normalizeEmail(request.email);
+  if (!parentEmail) throw new Error("Parent email not on file");
+
+  const completedAt = String(request.completed_at);
+  const logKey = emailLogKey(
+    "parent_registration_decision",
+    parentRegistrationDecisionLogId(
+      request.id,
+      registrationWelcomeDecisionId(request.id, completedAt),
+    ),
+  );
+
+  const emailContent = buildEmail("admin_approved", {
+    parentName: request.full_name,
+    studentName: request.student_name,
+  });
+
+  const delivery = await deliverRegistrationWelcomeEmail({
+    claim: async (): Promise<RegistrationWelcomeClaimOutcome> => {
+      const { data, error } = await supabase.rpc("try_claim_registration_welcome_email", {
+        p_request_id: request.id,
+        p_dedupe_key: logKey,
+        p_student_id: request.student_user_id,
+      });
+      if (error) throw new Error("Could not reserve welcome email delivery");
+      const outcome = String(data ?? "");
+      if (outcome === "claimed" || outcome === "duplicate" || outcome === "in_flight") {
+        return outcome;
+      }
+      return "in_flight";
+    },
+    send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+    markSent: async () => {
+      const { data: marked, error } = await supabase.rpc("complete_registration_welcome_email", {
+        p_request_id: request.id,
+        p_dedupe_key: logKey,
+      });
+      if (error || !marked) throw new Error("Could not confirm welcome email delivery");
+    },
+    markFailed: async () => {
+      await supabase.rpc("fail_registration_welcome_email", {
+        p_request_id: request.id,
+        p_dedupe_key: logKey,
+      });
+    },
+    afterSent: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: request.student_user_id,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+
+  if (delivery === "failed") {
+    return new Response(JSON.stringify({ success: true, sent: 0, failed: 1, type: "registration_access_activated" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (delivery === "duplicate") {
+    return new Response(JSON.stringify({ success: true, sent: 0, failed: 0, duplicate: true, type: "registration_access_activated" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ success: true, sent: 1, failed: 0, type: "registration_access_activated" }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const body = await req.json().catch(() => ({}));
+    const rawType = safeString(body?.type);
+    if (!rawType || !ACCEPTED_TYPES.includes(rawType)) {
+      throw new Error(`type must be one of ${ACCEPTED_TYPES.join(", ")}`);
+    }
+
+    if (rawType === "registration_access_activated") {
+      return await handleRegistrationAccessActivated(supabase, body as Record<string, unknown>);
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) throw new Error("Missing authorization header");
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
-    const body = await req.json();
-    const rawType = safeString(body?.type);
-    if (!rawType || !ACCEPTED_TYPES.includes(rawType)) {
-      throw new Error(`type must be one of ${ACCEPTED_TYPES.join(", ")}`);
-    }
     const type = canonicalType(rawType);
 
     const to = normalizeEmail(body?.to);
@@ -215,6 +342,134 @@ serve(async (req) => {
         ...buildEmail("invitation", { studentName, studentIdNo: inviteStudentIdNo }),
       })
         .then(() => new Response(JSON.stringify({ success: true, type }), { headers: { ...corsHeaders, "Content-Type": "application/json" } }));
+    }
+
+    const registrationRequestId = safeString(body?.registration_request_id);
+    if (registrationRequestId) {
+      const decisionType = type as DecisionEmailType;
+      const { data: request, error: requestErr } = await supabase
+        .from("parent_registration_requests")
+        .select("id, student_user_id, email, full_name, student_name, status, student_decided_at, reviewed_at")
+        .eq("id", registrationRequestId)
+        .maybeSingle();
+      if (requestErr) throw new Error("Could not verify parent registration request");
+      if (!request) throw new Error("Parent registration request not found");
+
+      if (decisionType === "admin_rejected") {
+        const { data: adminRole } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        if (!adminRole) throw new Error("Forbidden");
+        if (request.status !== "admin_rejected") {
+          throw new Error("Request status does not match this notification");
+        }
+        if (!request.reviewed_at) {
+          throw new Error("Request review timestamp is missing");
+        }
+        const parentEmail = normalizeEmail(request.email);
+        if (!parentEmail) throw new Error("Parent email not on file");
+        const emailContent = buildEmail("admin_rejected", {
+          parentName: request.full_name,
+          studentName: request.student_name,
+        });
+        const logKey = emailLogKey(
+          "parent_registration_decision",
+          parentRegistrationDecisionLogId(
+            request.id,
+            `admin_rejected:${request.reviewed_at}`,
+          ),
+        );
+        const { data: existing } = await supabase
+          .from("email_notifications")
+          .select("id")
+          .eq("student_id", request.student_user_id)
+          .eq("risk_level", logKey)
+          .limit(1);
+        const delivery = await deliverEmail({
+          alreadyLogged: (existing ?? []).length > 0,
+          send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+          log: async () => {
+            const { error: logError } = await supabase.from("email_notifications").insert({
+              student_id: request.student_user_id,
+              risk_level: logKey,
+              channel: "email",
+            });
+            if (logError) throw logError;
+          },
+        });
+        if (delivery === "failed") {
+          return new Response(JSON.stringify({ success: true, sent: 0, failed: 1, type }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (delivery === "duplicate") {
+          return new Response(JSON.stringify({ success: true, sent: 0, failed: 0, duplicate: true, type }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ success: true, sent: 1, failed: 0, type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (decisionType !== "student_approved" && decisionType !== "student_rejected") {
+        throw new Error("registration_request_id is only valid for student or admin rejection emails");
+      }
+      if (request.student_user_id !== user.id) throw new Error("Forbidden");
+      const expectedStatus = decisionType === "student_approved" ? "pending_admin" : "rejected";
+      if (request.status !== expectedStatus) {
+        throw new Error("Request status does not match this notification");
+      }
+      if (!request.student_decided_at) {
+        throw new Error("Request decision timestamp is missing");
+      }
+      const parentEmail = normalizeEmail(request.email);
+      if (!parentEmail) throw new Error("Parent email not on file");
+      const emailContent = buildEmail(decisionType, {
+        parentName: request.full_name,
+        studentName: request.student_name,
+      });
+      const logKey = emailLogKey(
+        "parent_registration_decision",
+        parentRegistrationDecisionLogId(
+          request.id,
+          `${decisionType}:${request.student_decided_at}`,
+        ),
+      );
+      const { data: existing } = await supabase
+        .from("email_notifications")
+        .select("id")
+        .eq("student_id", request.student_user_id)
+        .eq("risk_level", logKey)
+        .limit(1);
+      const delivery = await deliverEmail({
+        alreadyLogged: (existing ?? []).length > 0,
+        send: () => sendBrevoEmail({ to: parentEmail, subject: emailContent.subject, html: emailContent.html }),
+        log: async () => {
+          const { error: logError } = await supabase.from("email_notifications").insert({
+            student_id: request.student_user_id,
+            risk_level: logKey,
+            channel: "email",
+          });
+          if (logError) throw logError;
+        },
+      });
+      if (delivery === "failed") {
+        return new Response(JSON.stringify({ success: true, sent: 0, failed: 1, type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (delivery === "duplicate") {
+        return new Response(JSON.stringify({ success: true, sent: 0, failed: 0, duplicate: true, type }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, sent: 1, failed: 0, type }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (!linkId) throw new Error("link_id is required");

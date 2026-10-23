@@ -5,10 +5,21 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { UserCheck, UserX, RefreshCw } from 'lucide-react';
 import type { AppRole } from '@/hooks/useAuth';
 import { sendAccountStatusEmailBestEffort } from '@/lib/invoke-account-status-email';
+import { rejectStudentRegistrationRequest } from '@/lib/student-registration-rejection';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 import { getPublicAppUrl } from '@/lib/app-url';
 import ParentGuardianRequestsCard from '@/components/ParentGuardianRequestsCard';
@@ -39,6 +50,9 @@ export default function AdminApprovals() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [inviteLinks, setInviteLinks] = useState<Array<{ id: string; email: string; url: string }>>([]);
+  const [rejectTarget, setRejectTarget] = useState<StudentRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectBusy, setRejectBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,7 +127,7 @@ export default function AdminApprovals() {
     void load();
   }, [load]);
 
-  const reviewStudentRequest = async (request: StudentRequest, status: 'approved' | 'rejected') => {
+  const reviewStudentRequest = async (request: StudentRequest, status: 'approved') => {
     setBusyId(request.id);
     try {
       const { data, error } = await (supabase as any).rpc('admin_review_student_request', {
@@ -121,12 +135,6 @@ export default function AdminApprovals() {
         p_status: status,
       });
       if (error) throw error;
-
-      if (status === 'rejected') {
-        toast.success('Student request rejected. No invitation was sent.');
-        await load();
-        return;
-      }
 
       const invitationId = data as string | null;
       if (invitationId) {
@@ -155,6 +163,39 @@ export default function AdminApprovals() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
+      setBusyId(null);
+    }
+  };
+
+  const openStudentRejectDialog = (request: StudentRequest) => {
+    setRejectTarget(request);
+    setRejectReason('');
+  };
+
+  const handleConfirmStudentReject = async () => {
+    if (!rejectTarget || rejectBusy) return;
+    setRejectBusy(true);
+    setBusyId(rejectTarget.id);
+    try {
+      const result = await rejectStudentRegistrationRequest({
+        requestId: rejectTarget.id,
+        rejectionReason: rejectReason,
+      });
+      if (!result.ok) {
+        toast.error(result.rpcError);
+        return;
+      }
+      if (result.emailError) {
+        toast.warning(`Student request rejected. ${result.emailError}`, { duration: 8000 });
+      } else {
+        toast.success('Student request rejected. No invitation was sent.');
+      }
+      setRejectTarget(null);
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Rejection failed');
+    } finally {
+      setRejectBusy(false);
       setBusyId(null);
     }
   };
@@ -207,7 +248,7 @@ export default function AdminApprovals() {
         <CardHeader className="space-y-1 border-b border-border/50 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <CardTitle className="text-base sm:text-lg">Student signup requests</CardTitle>
           <CardDescription className="text-pretty">
-            Phase 1 requests include the Student ID. Approval sends a single-use registration email. Rejection sends nothing, and the student cannot sign in.
+            Phase 1 requests include the Student ID. Approval sends a single-use registration email. Rejection emails the applicant (when delivery succeeds) and does not create an account.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-6">
@@ -254,7 +295,7 @@ export default function AdminApprovals() {
                             variant="outline"
                             className="gap-1"
                             disabled={busyId === request.id}
-                            onClick={() => void reviewStudentRequest(request, 'rejected')}
+                            onClick={() => openStudentRejectDialog(request)}
                           >
                             <UserX className="h-4 w-4 shrink-0" />
                             Reject
@@ -404,6 +445,53 @@ export default function AdminApprovals() {
       </Card>
 
       <ParentGuardianRequestsCard />
+
+      <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open && !rejectBusy) setRejectTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject student signup request</DialogTitle>
+            <DialogDescription>
+              Rejecting <span className="font-medium text-foreground">{rejectTarget?.full_name}</span>
+              &apos;s request ({rejectTarget?.email}). They will not receive a registration invitation.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5 py-1">
+            <Label htmlFor="student-reject-reason">
+              Rejection reason <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Textarea
+              id="student-reject-reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Explain why the request was not approved (optional)…"
+              rows={3}
+              className="resize-none"
+              disabled={rejectBusy}
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={rejectBusy}
+              onClick={() => setRejectTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={rejectBusy}
+              onClick={() => void handleConfirmStudentReject()}
+            >
+              <UserX className="mr-1.5 h-4 w-4" />
+              {rejectBusy ? 'Rejecting…' : 'Confirm reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

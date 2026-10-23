@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { interpretNotificationInvokeResult } from '@/lib/notification-invoke-result';
 
 export const GRADES_EMAIL_FAILED = 'Grade email could not be sent.';
 export const GRADES_EMAIL_ALREADY_SENT = 'Grade emails were already sent for those scores.';
@@ -18,8 +19,8 @@ export async function emailGradesPosted(
     },
   });
   if (error) return { emailError: GRADES_EMAIL_FAILED, alreadySent: false };
-  if (data?.duplicate) return { emailError: null, alreadySent: true };
-  const failed = typeof data?.failed === 'number' ? data.failed : 0;
-  if (failed > 0 || data?.skipped) return { emailError: GRADES_EMAIL_FAILED, alreadySent: false };
-  return { emailError: null, alreadySent: false };
+  const outcome = interpretNotificationInvokeResult(data);
+  if (outcome === 'duplicate') return { emailError: null, alreadySent: true };
+  if (outcome === 'sent') return { emailError: null, alreadySent: false };
+  return { emailError: GRADES_EMAIL_FAILED, alreadySent: false };
 }
