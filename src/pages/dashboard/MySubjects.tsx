@@ -112,20 +112,20 @@ export default function MySubjects() {
             .filter(Boolean),
         ),
       ) as string[];
-      if (instructorIds.length === 0) return data;
+      if (instructorIds.length === 0) return [];
       const { data: instructorProfiles } = await supabase
         .from('profiles')
         .select('user_id, full_name, email')
         .in('user_id', instructorIds);
-      return (data ?? []).map((row: any) => ({
-        ...row,
-        subjects: row.subjects
-          ? {
-              ...row.subjects,
-              instructor_profile: instructorProfiles?.find(p => p.user_id === row.subjects.instructor_id) ?? null,
-            }
-          : row.subjects,
-      }));
+      return (data ?? [])
+        .filter((row: any) => row.subjects?.instructor_id)
+        .map((row: any) => ({
+          ...row,
+          subjects: {
+            ...row.subjects,
+            instructor_profile: instructorProfiles?.find(p => p.user_id === row.subjects.instructor_id) ?? null,
+          },
+        }));
     },
     enabled: !!user?.id,
   });
@@ -136,6 +136,7 @@ export default function MySubjects() {
       const { data, error } = await supabase
         .from('subjects')
         .select('id, code, name, semester, academic_year, instructor_id, program_id, programs(code, name)')
+        .not('instructor_id', 'is', null)
         .order('created_at', { ascending: false });
       if (error) {
         console.warn('MySubjects: all subjects query failed', error);
@@ -164,11 +165,11 @@ export default function MySubjects() {
       // First, get the subject details to check restrictions
       const { data: subject, error: findError } = await supabase
         .from('subjects')
-        .select('id, code, name, program_id, programs(code, name)')
+        .select('id, code, name, program_id, instructor_id, programs(code, name)')
         .ilike('code', trimmed)
         .maybeSingle();
       if (findError) throw findError;
-      if (!subject) throw new Error(`No course found with code "${code.trim()}".`);
+      if (!subject?.instructor_id) throw new Error(`No course found with code "${code.trim()}".`);
       
       // Check if student can enroll based on program restriction
       if (subject.program_id) {
@@ -248,11 +249,11 @@ export default function MySubjects() {
       // First, get the subject details to check restrictions
       const { data: subject, error: findError } = await supabase
         .from('subjects')
-        .select('id, code, name, program_id, programs(code, name)')
+        .select('id, code, name, program_id, instructor_id, programs(code, name)')
         .eq('id', subjectId)
         .maybeSingle();
       if (findError) throw findError;
-      if (!subject) throw new Error('Course not found.');
+      if (!subject?.instructor_id) throw new Error('Course not found.');
       
       // Check if student can enroll based on program restriction
       if (subject.program_id) {
@@ -317,7 +318,9 @@ export default function MySubjects() {
   const pendingOrRejected = enrollmentsWithSubjects.filter(
     (row: any) => row.status && row.status !== 'active',
   );
-  const availableSubjects = (allSubjects as any[]).filter(s => !enrolledSubjectIds.has(s.id));
+  const availableSubjects = (allSubjects as any[]).filter(
+    (s) => s.instructor_id && !enrolledSubjectIds.has(s.id),
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">

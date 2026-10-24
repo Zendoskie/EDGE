@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+.baseline-test-*/
+.clean-verify-*/
+.vercel-deploy-worktree-*/
+.vercel-release-*/
+.release-staging-patches/

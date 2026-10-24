@@ -23,7 +23,7 @@ import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { filterSubmissionsByActiveSubjects } from '@/lib/student-performance-scope';
 import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
-import { sendParentLinkEmail } from '@/lib/invoke-parent-email';
+import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
 import { parentLinkErrorMessage, parentLinkStatusLabel } from '@/lib/parent-link-status';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
@@ -147,29 +147,34 @@ export default function ParentPerformance() {
       if (error) throw new Error(parentLinkErrorMessage(error.message));
 
       if (typeof linkId === 'string' && linkId) {
-        try {
-          await sendParentLinkEmail({
-            type: 'request_received',
-            link_id: linkId,
-            student_id_no: trimmed,
-          });
-        } catch (emailErr) {
-          const msg = emailErr instanceof Error ? emailErr.message : 'Email notification failed';
-          return { linkId, emailWarning: msg };
-        }
+        // #region agent log
+        fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+          body: JSON.stringify({
+            sessionId: 'b4b4c1',
+            runId: 'parent-email-fix',
+            hypothesisId: 'G',
+            location: 'ParentPerformance.tsx:requestAccess',
+            message: 'parent_request_student_link ok, invoking request_received email',
+            data: { flow: 'parent_student_link', linkIdLen: linkId.length },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+        sendParentLinkEmailBestEffort({
+          type: 'request_received',
+          link_id: linkId,
+          student_id_no: trimmed,
+        });
       }
-      return { linkId, emailWarning: null as string | null };
+      return linkId;
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-approved-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-my-links', user?.id] });
       toast.success('Access request submitted. The student must approve it, then an administrator.');
-      if (result?.emailWarning) {
-        toast.warning(`Request saved. Student inbox notified, but email failed: ${result.emailWarning}`, {
-          duration: 8000,
-        });
-      }
     },
     onError: (e: Error) => toast.error(e.message),
   });

@@ -9,7 +9,6 @@ import {
   emailLogKey,
 } from "../_shared/notification-channels.ts";
 import { emailLinkedParentsReferralUpdate } from "../_shared/parent-linked-email.ts";
-import { sendBrevoEmail } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +40,39 @@ function formatRiskLevel(level: string | null): string {
   if (level === "stable") return "Stable";
   if (level === "excelling") return "Excelling";
   return level;
+}
+
+async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
+  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
+
+  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
+  const match = fromRaw.match(/^(.*)<(.+)>$/);
+  const fromName = match ? match[1].trim() : "EDGE";
+  const fromEmail = match ? match[2].trim() : fromRaw;
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": brevoKey,
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: opts.to }],
+      subject: opts.subject,
+      htmlContent: opts.html,
+    }),
+  });
+
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (result && (result.message || result.error))
+      ? (result.message || result.error)
+      : `Brevo error (${res.status})`;
+    throw new Error(msg);
+  }
+  return result;
 }
 
 function buildReferralCreatedHtml(opts: {

@@ -41,7 +41,6 @@ import {
   emailLinkedParentsAttendanceUpdate,
   emailLinkedParentsGradesPosted,
 } from "../_shared/parent-linked-email.ts";
-import { sendBrevoEmail, sendBrevoEmailBatch } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +64,61 @@ function safeString(s: unknown): string | null {
 function safeRiskLevel(s: unknown): RiskLevel | null {
   if (s === "critical" || s === "at_risk" || s === "stable" || s === "excelling") return s;
   return null;
+}
+
+async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
+  const brevoKey = Deno.env.get("BREVO_API_KEY");
+  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
+
+  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
+  const match = fromRaw.match(/^(.*)<(.+)>$/);
+  const fromName = match ? match[1].trim() : "EDGE";
+  const fromEmail = match ? match[2].trim() : fromRaw;
+
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": brevoKey,
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: opts.to }],
+      subject: opts.subject,
+      htmlContent: opts.html,
+    }),
+  });
+
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
+    throw new Error(msg);
+  }
+  return result as { messageId?: string };
+}
+
+async function sendBrevoBatch(emails: Array<{ to: string; subject: string; html: string }>) {
+  const results: { index: number; success: boolean; error?: string }[] = [];
+
+  for (let i = 0; i < emails.length; i++) {
+    const e = emails[i];
+    try {
+      await sendBrevoEmail(e);
+      results.push({ index: i, success: true });
+    } catch (err) {
+      results.push({ index: i, success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  const data = results.filter((r) => r.success).map(() => ({ id: crypto.randomUUID ? crypto.randomUUID() : "" }));
+  const errors = results
+    .filter((r) => !r.success)
+    .map((r) => ({ index: r.index, message: r.error || "Unknown error" }));
+
+  return { data, errors } as {
+    data?: Array<{ id: string }>;
+    errors?: Array<{ index: number; message: string }>;
+  };
 }
 
 function json(body: unknown, status = 200) {
@@ -1001,9 +1055,13 @@ async function sendRegistrationRejectedEmail(
   if (!(await callerIsAdmin(supabase, callerId))) throw new Error("Forbidden: admin role required");
 
   const table = kind === "student" ? "student_registration_requests" : "staff_registration_requests";
+  const selectFields =
+    kind === "student"
+      ? "id, email, full_name, status, rejection_reason"
+      : "id, email, full_name, status, rejection_reason, role";
   const { data: request, error } = await supabase
     .from(table)
-    .select("id, email, full_name, status, rejection_reason, role")
+    .select(selectFields)
     .eq("id", requestId)
     .maybeSingle();
   if (error) throw error;
@@ -1224,7 +1282,7 @@ serve(async (req) => {
 
       if (recipients.length === 0) throw new Error("recipients must include at least one valid to email");
 
-      const batch = await sendBrevoEmailBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
+      const batch = await sendBrevoBatch(recipients.map((r) => ({ to: r.to, subject: emailSubject, html })));
 
       const sentCount = batch.data?.length ?? 0;
       const failedCount = batch.errors?.length ?? 0;

@@ -37,7 +37,7 @@ describe('Phase 3C load and security guards', () => {
 
   it('adds no Realtime channel, binding or timer', () => {
     expect(count(/\.channel\(/g)).toBe(6);
-    expect(count(/postgres_changes/g)).toBe(14);
+    expect(count(/postgres_changes/g)).toBe(13);
     expect(count(/setInterval\(/g)).toBe(8);
     expect(files.some((f) => /final_grade_releases/.test(f.text) && /\.channel\(/.test(f.text))).toBe(false);
   });

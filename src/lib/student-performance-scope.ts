@@ -11,11 +11,18 @@ export async function fetchActiveEnrolledSubjectIds(
 ): Promise<string[]> {
   const { data, error } = await supabase
     .from('enrollments')
-    .select('subject_id')
+    .select('subject_id, subjects!inner(instructor_id)')
     .eq('student_id', studentId)
     .eq('status', 'active');
   if (error) throw error;
-  return (data ?? []).map((r) => r.subject_id).filter((id): id is string => typeof id === 'string');
+  return (data ?? [])
+    .filter((row) => {
+      const subject = row.subjects;
+      const instructorId = Array.isArray(subject) ? subject[0]?.instructor_id : subject?.instructor_id;
+      return !!instructorId;
+    })
+    .map((row) => row.subject_id)
+    .filter((id): id is string => typeof id === 'string');
 }
 
 export function getActivityFromSubmission(sub: { activities?: unknown }): {

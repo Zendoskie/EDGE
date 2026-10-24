@@ -24,6 +24,7 @@ export function emailLogKey(
     | "attendance_update"
     | "engagement_outcome"
     | "parent_registration_decision"
+    | "parent_registration_submitted"
     | "registration_rejected"
     | "enrollment_decision"
     | "parent_grades_posted"
@@ -115,6 +116,11 @@ export function shouldNotifyParentRiskTransition(
 /** One email per committed student decision on a registration request. */
 export function parentRegistrationDecisionLogId(requestId: string, decisionType: string): string {
   return `${requestId}:${decisionType}`;
+}
+
+/** One student email when a parent submits a registration access request. */
+export function parentRegistrationSubmittedLogId(requestId: string): string {
+  return requestId;
 }
 
 /** Caller may email grades for this subject. */
