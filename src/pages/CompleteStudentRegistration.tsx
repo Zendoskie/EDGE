@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { AuthFrame } from '@/components/shell/AuthSlider';
+import { completeStudentInvitationRpc } from '@/lib/complete-student-invitation';
+import { commitPasswordReset } from '@/lib/apply-password-reset';
 
 type Invitation = {
   email: string;
@@ -93,9 +95,15 @@ export default function CompleteStudentRegistration() {
     setErrors({});
     setSubmitting(true);
     try {
+      const email = inv.email.trim().toLowerCase();
+      const pw = password;
+
+      let userId: string | undefined;
+      let activeSession = false;
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: inv.email,
-        password,
+        email,
+        password: pw,
         options: {
           data: {
             full_name: inv.full_name ?? '',
@@ -113,22 +121,33 @@ export default function CompleteStudentRegistration() {
         const msg = (signUpError.message || '').toLowerCase();
         const code = (signUpError as { code?: string }).code ?? '';
         if (code === 'user_already_exists' || msg.includes('user already registered')) {
-          throw new Error('An account with this email already exists. Sign in, or contact an administrator.');
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password: pw,
+          });
+          if (signInError) {
+            throw new Error(
+              'An account already exists for this email. Use Forgot password on the sign-in page, then open this invitation link again or ask an administrator for a new one.',
+            );
+          }
+          userId = signInData.user?.id;
+          activeSession = Boolean(signInData.session);
+        } else {
+          throw signUpError;
         }
-        throw signUpError;
-      }
-      if (!signUpData.user) {
-        throw new Error('Sign-up did not return a user. Please try again.');
-      }
-
-      if (signUpData.session) {
-        await supabase.auth.signOut();
+      } else {
+        if (!signUpData.user) {
+          throw new Error('Sign-up did not return a user. Please try again.');
+        }
+        userId = signUpData.user.id;
+        activeSession = Boolean(signUpData.session);
       }
 
-      const { error: completeError } = await (supabase as any).rpc('complete_student_invitation', {
-        p_token: token,
-        p_user_id: signUpData.user.id,
-      });
+      if (!userId) {
+        throw new Error('Could not resolve your account. Please try again.');
+      }
+
+      const { error: completeError } = await completeStudentInvitationRpc(token, userId);
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
         if (cm.includes('invitation_already_accepted')) {
@@ -140,10 +159,50 @@ export default function CompleteStudentRegistration() {
         if (cm.includes('email_mismatch')) {
           throw new Error('The invitation email does not match this account.');
         }
+        if (cm.includes('user_profile_not_found')) {
+          throw new Error('Your account is still being set up. Wait a moment and try again.');
+        }
         throw completeError;
       }
 
-      setState({ phase: 'success', email: inv.email });
+      // #region agent log
+      fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+        body: JSON.stringify({
+          sessionId: 'b4b4c1',
+          runId: 'student-login-fix',
+          hypothesisId: 'H-session',
+          location: 'CompleteStudentRegistration.tsx:afterComplete',
+          message: 'invitation complete',
+          data: { activeSession, userIdLen: userId.length },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+
+      if (activeSession) {
+        try {
+          await commitPasswordReset(pw);
+        } catch {
+          const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: pw });
+          if (signInError) {
+            setState({ phase: 'success', email });
+            return;
+          }
+        }
+        navigate('/dashboard');
+        return;
+      }
+
+      const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (!verifyError) {
+        navigate('/dashboard');
+        return;
+      }
+
+
+      setState({ phase: 'success', email });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Registration failed. Please try again.');
     } finally {

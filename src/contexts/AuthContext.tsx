@@ -182,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const normalizedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: normalizedEmail,
       password,
@@ -190,6 +190,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       const em = (error.message || '').toLowerCase();
       const status = (error as { status?: number }).status;
+      // #region agent log
+      fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+        body: JSON.stringify({
+          sessionId: 'b4b4c1',
+          runId: 'student-login-fix',
+          hypothesisId: 'H-auth',
+          location: 'AuthContext.tsx:signIn',
+          message: 'signInWithPassword failed',
+          data: { status, authMessage: error.message },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       if (em.includes('email not confirmed') || em.includes('confirm your email')) {
         throw new Error('Please confirm your email before signing in.');
       }
@@ -251,6 +266,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (prof.account_status === 'pending') {
       await supabase.auth.signOut();
+      // #region agent log
+      fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+        body: JSON.stringify({
+          sessionId: 'b4b4c1',
+          runId: 'student-login-fix',
+          hypothesisId: 'H-pending',
+          location: 'AuthContext.tsx:signIn',
+          message: 'blocked pending account_status',
+          data: { accountStatus: prof.account_status },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       throw new Error('Account pending approval');
     }
     if (prof.account_status === 'rejected') {
@@ -259,8 +289,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (prof.account_status !== 'approved') {
       await supabase.auth.signOut();
-      throw new Error('Invalid credentials');
+      throw new Error(
+        prof.account_status === 'pending'
+          ? 'Account pending approval'
+          : 'Account not approved',
+      );
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+      body: JSON.stringify({
+        sessionId: 'b4b4c1',
+        runId: 'post-fix-v3',
+        hypothesisId: 'H-login-ok',
+        location: 'AuthContext.tsx:signIn',
+        message: 'signInWithPassword succeeded',
+        data: { accountStatus: prof.account_status, role: r },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
 
     signInHandledUserIdRef.current = uid;
     syncedUserIdRef.current = uid;

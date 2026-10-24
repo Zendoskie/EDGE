@@ -56,7 +56,10 @@ import {
   OTHER_STUDENT_REPLY,
   callOpenAiChat,
   completedRepeatOrdinal,
+  isProactiveAtRiskBriefing,
   isSameQuestionRefusal,
+  PROACTIVE_AT_RISK_BRIEFING_PREFIX,
+  buildCoachSystemPrompt,
   runCoachChat,
   sanitizeConversation,
   type ChatMessage,
@@ -1065,5 +1068,34 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     expect(system).toContain('never fabricate assessment names, scores, deadlines, teacher feedback or completed work');
     expect(system).toContain('Never recalculate, reclassify, or disagree with them.');
     expect(system).not.toContain('Evidence-based weak areas');
+  });
+});
+
+describe('proactive at-risk briefing', () => {
+  it('detects the proactive prompt prefix', () => {
+    expect(isProactiveAtRiskBriefing(`${PROACTIVE_AT_RISK_BRIEFING_PREFIX} explain my risk`)).toBe(true);
+    expect(isProactiveAtRiskBriefing('Recommend a study plan')).toBe(false);
+  });
+
+  it('adds proactive briefing outline to the system prompt', () => {
+    const rec = buildStudentRecord(input);
+    const system = buildCoachSystemPrompt({
+      record: rec,
+      focus: rec.subjects[0] ?? null,
+      availability: null,
+      now: NOW,
+      proactiveBriefing: true,
+    });
+    expect(system).toContain('PROACTIVE AT-RISK BRIEFING');
+    expect(system).toContain('7-day study plan');
+  });
+
+  it('runs proactive briefing through the coach with AI', async () => {
+    const { deps, callModel } = makeDeps({ callModel: vi.fn(async () => 'Day 1: Review weak quiz areas.') });
+    const prompt = `${PROACTIVE_AT_RISK_BRIEFING_PREFIX} full briefing please`;
+    const res = await runCoachChat(deps, [user(prompt)]);
+    expect(res.source).toBe('ai');
+    const system = callModel.mock.calls[0][0] as string;
+    expect(system).toContain('PROACTIVE AT-RISK BRIEFING');
   });
 });

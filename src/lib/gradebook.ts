@@ -139,6 +139,8 @@ export function missingGradeNotificationBody(activityTitle: string, subjectCode:
   return `You have a missing grade for ${activity} in ${subject}.`;
 }
 
+export { missingGradeAlertAllowed } from '../../supabase/functions/_shared/missing-grade.ts';
+
 /**
  * Active enrollments with no recorded score. A score of 0 is a grade.
  * Callers must only use this after grades for the activity have been published.

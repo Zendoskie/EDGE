@@ -70,7 +70,7 @@ export default function OfflineSupport() {
         .eq('student_id', user!.id);
       return (data ?? [])
         .map((e) => e.subjects)
-        .filter((s): s is NonNullable<typeof s> => s != null)
+        .filter((s): s is NonNullable<typeof s> => s != null && !!s.instructor_id)
         .map((s) => ({
           id: s.id,
           code: s.code,

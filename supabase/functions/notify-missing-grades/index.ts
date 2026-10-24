@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { missingGradeAlertAllowed } from "../_shared/missing-grade.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,7 +97,7 @@ serve(async (req) => {
 
     const { data: activity, error: actError } = await supabase
       .from("activities")
-      .select("id, title, subject_id, grades_published_at, subjects(id, code, name, instructor_id)")
+      .select("id, title, type, subject_id, grades_published_at, subjects(id, code, name, instructor_id)")
       .eq("id", activityId)
       .maybeSingle();
     if (actError) throw actError;
@@ -135,6 +136,20 @@ serve(async (req) => {
       const row = s as { student_id?: string | null; score?: number | null };
       if (!row.student_id) continue;
       scoreByStudentId.set(row.student_id, row.score ?? null);
+    }
+
+    const scoredSubmissionCount = [...scoreByStudentId.values()].filter((score) => score != null).length;
+    const assessmentType = safeString((activity as { type?: string }).type) ?? "";
+    if (!missingGradeAlertAllowed({ assessmentType, scoredSubmissionCount })) {
+      return new Response(JSON.stringify({
+        success: true,
+        sent: 0,
+        skippedNoEmail: 0,
+        missingCount: 0,
+        skipped: "no_recorded_score",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const missingStudentIds = enrolledStudentIds.filter((sid) => {

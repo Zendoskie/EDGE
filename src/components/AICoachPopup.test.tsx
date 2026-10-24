@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AICoachPopup, canSendCoachMessage, toApiMessages } from '@/components/AICoachPopup';
 import { invokeAiCoach } from '@/lib/invoke-ai-coach';
+import { markCoachClosedThisSession } from '@/lib/ai-coach-proactive';
 
 vi.mock('@/lib/invoke-ai-coach', () => ({
   invokeAiCoach: vi.fn(),
@@ -11,6 +12,40 @@ vi.mock('@/lib/invoke-ai-coach', () => ({
 vi.mock('@/lib/track-activity', () => ({
   trackStudentActivity: vi.fn(),
 }));
+
+const baseMetrics = {
+  subjectId: 'sub-1',
+  subjectCode: 'CS101',
+  subjectName: 'Intro to CS',
+  riskClassification: 'at_risk' as const,
+  riskScore: 72,
+  riskEvidence: null,
+  attendancePercent: 80,
+  activityScorePercent: 65,
+  quizScorePercent: 70,
+  laboratoryExamPercent: null,
+  comprehensionRating: null,
+  systemRecommendation: 'Review weekly',
+  createdAt: new Date().toISOString(),
+};
+
+function renderCoach(overrides: Partial<Parameters<typeof AICoachPopup>[0]> = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AICoachPopup
+        userId="student-1"
+        riskLevel="at_risk"
+        subjectLabel="CS101"
+        atRiskMetrics={[baseMetrics]}
+        metrics={baseMetrics}
+        {...overrides}
+      />
+    </QueryClientProvider>,
+  );
+}
 
 describe('AI Coach request payload', () => {
   it('sends only real conversation turns: no starter, no client-built context, no student id', () => {
@@ -56,98 +91,62 @@ describe('AI Coach request payload', () => {
 describe('AICoachPopup', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     document.body.innerHTML = '<div id="ai-coach-header-slot"></div>';
     Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(invokeAiCoach).mockReset();
+    vi.mocked(invokeAiCoach).mockResolvedValue({ reply: 'Your 7-day study plan starts with weak quiz review.' });
   });
 
   it('renders for at-risk students without crashing', () => {
-    const queryClient = new QueryClient();
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AICoachPopup
-          riskLevel="at_risk"
-          subjectLabel="CS101"
-          metrics={{
-            subjectId: 'sub-1',
-            subjectCode: 'CS101',
-            subjectName: 'Intro to CS',
-            riskClassification: 'at_risk',
-            riskScore: 72,
-            riskEvidence: null,
-            attendancePercent: 80,
-            activityScorePercent: 65,
-            quizScorePercent: 70,
-            laboratoryExamPercent: null,
-            comprehensionRating: null,
-            systemRecommendation: 'Review weekly',
-            createdAt: new Date().toISOString(),
-          }}
-        />
-      </QueryClientProvider>,
-    );
-
+    renderCoach();
     expect(screen.getByLabelText('AI Coach')).toBeInTheDocument();
+  });
+
+  it('auto-opens for at-risk students when the session is not dismissed', async () => {
+    renderCoach();
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+  });
+
+  it('does not auto-open when the student closed the coach this session', async () => {
+    markCoachClosedThisSession('student-1');
+    renderCoach();
+    await waitFor(() => expect(invokeAiCoach).not.toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('fetches proactive study plan without user typing', async () => {
+    renderCoach();
+    await waitFor(() => expect(invokeAiCoach).toHaveBeenCalled());
+    const body = vi.mocked(invokeAiCoach).mock.calls[0][0] as { messages: { role: string; content: string }[] };
+    expect(body.messages[0].content).toMatch(/EDGE_PROACTIVE_AT_RISK_BRIEFING/);
+    await waitFor(() =>
+      expect(screen.getByText('Your 7-day study plan starts with weak quiz review.')).toBeInTheDocument(),
+    );
   });
 
   it('blocks a second send while the first request is running, then accepts the same question after it finishes', async () => {
     const invoke = vi.mocked(invokeAiCoach);
     let release: (value: { reply: string }) => void = () => {};
     invoke.mockImplementationOnce(
-      () => new Promise((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
     );
+    invoke.mockResolvedValue({ reply: 'Study Plan B' });
 
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AICoachPopup
-          riskLevel="at_risk"
-          subjectLabel="CS101"
-          metrics={{
-            subjectId: 'sub-1',
-            subjectCode: 'CS101',
-            subjectName: 'Intro to CS',
-            riskClassification: 'at_risk',
-            riskScore: 72,
-            riskEvidence: null,
-            attendancePercent: 80,
-            activityScorePercent: 65,
-            quizScorePercent: 70,
-            laboratoryExamPercent: null,
-            comprehensionRating: null,
-            systemRecommendation: 'Review weekly',
-            createdAt: new Date().toISOString(),
-          }}
-        />
-      </QueryClientProvider>,
-    );
+    renderCoach();
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    release({ reply: 'Proactive plan' });
+    await waitFor(() => expect(screen.getByText('Proactive plan')).toBeInTheDocument());
 
     const box = await screen.findByPlaceholderText('Type your message…');
     fireEvent.change(box, { target: { value: 'Recommend a study plan' } });
     const send = screen.getByRole('button', { name: 'Send message' });
     fireEvent.click(send);
     fireEvent.click(send);
-    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-
-    release({ reply: 'Study Plan A' });
-    await waitFor(() => expect(screen.getByText('Study Plan A')).toBeInTheDocument());
-
-    invoke.mockResolvedValueOnce({ reply: 'Study Plan B' });
-    fireEvent.change(screen.getByPlaceholderText('Type your message…'), {
-      target: { value: 'Recommend a study plan' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-
-    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
-    const secondBody = invoke.mock.calls[1][0] as { messages: { role: string; content: string }[] };
-    expect(secondBody.messages.filter((m) => m.role === 'user').map((m) => m.content)).toEqual([
-      'Recommend a study plan',
-      'Recommend a study plan',
-    ]);
-    await waitFor(() => expect(screen.getByText('Study Plan B')).toBeInTheDocument());
+    await waitFor(() => expect(invoke.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 });

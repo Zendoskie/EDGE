@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { AuthSlider } from '@/components/shell/AuthSlider';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { parentLinkErrorMessage } from '@/lib/parent-link-status';
+import { notifyStudentOnParentRegistrationBestEffort } from '@/lib/invoke-parent-email';
 
 const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
   {
@@ -39,6 +40,7 @@ const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
 export default function Login() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<'login' | 'signup'>('login');
@@ -56,6 +58,14 @@ export default function Login() {
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('edge_needs_password_apply');
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +90,17 @@ export default function Login() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const st = location.state as { email?: string; fromPasswordReset?: boolean } | null;
+    if (!st) return;
+    if (st.email) setLoginEmail(st.email);
+    if (st.fromPasswordReset) {
+      setLoginPassword('');
+      toast.message('Use the same password you just set on the reset page.', { duration: 9000 });
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   const loginErrorMessage = (err: unknown): string => {
     if (err instanceof Error && err.message.trim()) return err.message;
@@ -167,14 +188,37 @@ export default function Login() {
           toast.error("Please enter the student's Student ID.");
           return;
         }
-        const { error: requestError } = await (supabase as any).rpc('submit_parent_registration_request', {
-          p_full_name: signupName.trim(),
-          p_email: signupEmail.trim(),
-          p_student_id: signupGuardianStudentId.trim(),
-        });
+        const { data: parentRequestId, error: requestError } = await (supabase as any).rpc(
+          'submit_parent_registration_request',
+          {
+            p_full_name: signupName.trim(),
+            p_email: signupEmail.trim(),
+            p_student_id: signupGuardianStudentId.trim(),
+          },
+        );
         if (requestError) {
           toast.error(parentLinkErrorMessage(requestError.message));
           return;
+        }
+        if (typeof parentRequestId === 'string' && parentRequestId) {
+          // #region agent log
+          fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+            body: JSON.stringify({
+              sessionId: 'b4b4c1',
+              runId: 'parent-email-fix',
+              hypothesisId: 'F',
+              location: 'Login.tsx:parentRegistration',
+              message: 'submit_parent_registration_request ok, invoking student email',
+              data: { flow: 'parent_registration_request', requestIdLen: parentRequestId.length },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+          // #endregion
+          notifyStudentOnParentRegistrationBestEffort({
+            registration_request_id: parentRequestId,
+          });
         }
         setTab('login');
         setLoginEmail(signupEmail);
@@ -203,12 +247,30 @@ export default function Login() {
           <form onSubmit={handleLogin} className="edge-auth-fields">
                     <div className="space-y-2">
                       <Label htmlFor="login-email">Email</Label>
-                      <Input id="login-email" type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required placeholder="you@university.edu" />
+                      <Input
+                        id="login-email"
+                        name="email"
+                        type="email"
+                        autoComplete="username"
+                        value={loginEmail}
+                        onChange={e => setLoginEmail(e.target.value)}
+                        required
+                        placeholder="you@university.edu"
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="login-password">Password</Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="login-password">Password</Label>
+                        <Link
+                          to="/forgot-password"
+                          className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
                       <PasswordInput
                         id="login-password"
+                        name="password"
                         autoComplete="current-password"
                         value={loginPassword}
                         onChange={e => setLoginPassword(e.target.value)}

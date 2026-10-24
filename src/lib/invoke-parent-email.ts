@@ -93,8 +93,10 @@ export function sendParentLinkEmailBestEffort(input: SendParentEmailInput): void
 // ---------------------------------------------------------------------------
 
 export type NotifyStudentOnParentRegistrationInput = {
-  /** The parent's Gmail used to register, so the function can locate their pending link. */
-  parent_email: string;
+  /** Legacy parent signup: locate pending parent_student_links by parent email. */
+  parent_email?: string;
+  /** Two-phase parent registration request (submit_parent_registration_request). */
+  registration_request_id?: string;
 };
 
 /**
@@ -108,6 +110,9 @@ export async function notifyStudentOnParentRegistration(
   if (!SUPABASE_URL || !ANON_KEY) {
     throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY.");
   }
+  if (!input.parent_email?.trim() && !input.registration_request_id?.trim()) {
+    throw new Error("parent_email or registration_request_id is required.");
+  }
 
   const base = SUPABASE_URL.replace(/\/$/, "");
   const res = await fetch(`${base}/functions/v1/notify-student-on-parent-registration`, {
@@ -119,7 +124,38 @@ export async function notifyStudentOnParentRegistration(
     body: JSON.stringify(input),
   });
 
-  const json = (await res.json().catch(() => ({}))) as { error?: unknown };
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: unknown;
+    sent?: number;
+    failed?: number;
+    skipped?: boolean;
+    duplicate?: boolean;
+  };
+  // #region agent log
+  fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+    body: JSON.stringify({
+      sessionId: 'b4b4c1',
+      runId: 'parent-email-fix',
+      hypothesisId: 'F',
+      location: 'invoke-parent-email.ts:notifyStudentOnParentRegistration',
+      message: 'notify-student-on-parent-registration response',
+      data: {
+        ok: res.ok,
+        status: res.status,
+        hasRequestId: Boolean(input.registration_request_id?.trim()),
+        hasParentEmail: Boolean(input.parent_email?.trim()),
+        sent: json.sent,
+        failed: json.failed,
+        skipped: json.skipped,
+        duplicate: json.duplicate,
+        edgeError: typeof json.error === 'string' ? json.error : null,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!res.ok) {
     const err = json.error;
     const msg = typeof err === "string" ? err : JSON.stringify(json || {});

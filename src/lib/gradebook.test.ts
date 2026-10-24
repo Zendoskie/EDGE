@@ -3,6 +3,7 @@ import {
   classifyGradeInput,
   collectGradeChanges,
   countMissingGrades,
+  missingGradeAlertAllowed,
   missingGradeNotificationBody,
   studentIdsMissingScore,
   findDuplicateActivityTitle,
@@ -158,6 +159,25 @@ describe('gradebook', () => {
     expect(missingGradeNotificationBody('Activity 1', 'PL101')).toBe(
       'You have a missing grade for Activity 1 in PL101.',
     );
+  });
+
+  it('does not alert for a new Activity before any score is recorded', () => {
+    expect(missingGradeAlertAllowed({ assessmentType: 'activity', scoredSubmissionCount: 0 })).toBe(false);
+  });
+
+  it('does not alert for a new Project before any score is recorded', () => {
+    expect(missingGradeAlertAllowed({ assessmentType: 'project', scoredSubmissionCount: 0 })).toBe(false);
+  });
+
+  it('does not alert for a new Midterm Exam before any score is recorded', () => {
+    expect(missingGradeAlertAllowed({ assessmentType: 'midterm_exam', scoredSubmissionCount: 0 })).toBe(false);
+  });
+
+  it('alerts Activity, Project, and Midterm Exam once a score exists', () => {
+    for (const assessmentType of ['activity', 'project', 'midterm_exam']) {
+      expect(missingGradeAlertAllowed({ assessmentType, scoredSubmissionCount: 1 })).toBe(true);
+    }
+    expect(missingGradeAlertAllowed({ assessmentType: 'activity', scoredSubmissionCount: 0 })).toBe(false);
   });
 
   it('treats a blank score as missing and a zero as graded', () => {

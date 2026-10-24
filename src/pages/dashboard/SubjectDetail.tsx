@@ -32,6 +32,7 @@ import { classifyRiskScore, predictionCoverage, RISK_CATEGORIES, RISK_CATEGORY_L
 import { canonicalRiskLevel, riskLabel } from '@/lib/risk-utils';
 import { findDuplicateActivityTitle } from '@/lib/gradebook';
 import { publishMissingGradeAlertsForSubject } from '@/lib/missing-grade-notifications';
+import { emailEnrollmentDecision } from '@/lib/enrollment-decision-notification';
 import { GradebookTable } from '@/components/GradebookTable';
 import { subjectReleaseKey } from '@/lib/final-grade-freshness';
 import { flushSubjectRiskRecalc, recalculateSubjectRisk, scheduleSubjectRiskRecalc } from '@/lib/recalculate-risk';
@@ -357,12 +358,17 @@ function SubjectStudents({
         .eq('id', vars.enrollmentId)
         .eq('status', 'pending');
       if (error) throw error;
-      return vars.studentId;
+      const email = await emailEnrollmentDecision(vars.enrollmentId);
+      return { studentId: vars.studentId, emailError: email.emailError };
     },
-    onSuccess: (studentId) => {
+    onSuccess: ({ studentId, emailError }) => {
       queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
       invalidateStudentLinkedCaches(queryClient, studentId);
-      toast.success('Enrollment request rejected');
+      if (emailError) {
+        toast.warning(`Enrollment request rejected. ${emailError}`, { duration: 8000 });
+      } else {
+        toast.success('Enrollment request rejected');
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -463,7 +469,12 @@ function SubjectStudents({
                                 }
                                 queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
                                 invalidateStudentLinkedCaches(queryClient, e.student_id);
-                                toast.success('Enrollment approved');
+                                const decisionEmail = await emailEnrollmentDecision(e.id);
+                                if (decisionEmail.emailError) {
+                                  toast.warning(`Enrollment approved. ${decisionEmail.emailError}`, { duration: 8000 });
+                                } else {
+                                  toast.success('Enrollment approved');
+                                }
                                 try {
                                   await publishMissingGradeAlertsForSubject(subjectId);
                                 } catch {

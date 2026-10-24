@@ -69,6 +69,22 @@ export const AI_DISABLED_REPLY = "The AI coach is currently disabled by the syst
 export const GREETING_REPLY =
   "Hi, I'm your study coach. Ask me about a score (for example your Quiz 1 in a subject), your current grade, or tell me how much time you have and I'll build a study plan from your records.";
 
+/** Must match src/lib/ai-coach-proactive.ts PROACTIVE_AT_RISK_BRIEFING_PREFIX */
+export const PROACTIVE_AT_RISK_BRIEFING_PREFIX = "[EDGE_PROACTIVE_AT_RISK_BRIEFING]";
+
+export function isProactiveAtRiskBriefing(text: string): boolean {
+  return text.trim().startsWith(PROACTIVE_AT_RISK_BRIEFING_PREFIX);
+}
+
+const PROACTIVE_BRIEFING_OUTLINE = [
+  "PROACTIVE AT-RISK BRIEFING (this turn only): The student opened the coach as Crucial or Vulnerable. Do not ask what they want to focus on first.",
+  "Structure your reply in four plain-text sections with short headings:",
+  "1) Your status — quote official risk classification and risk score per subject from the record.",
+  "2) Why you are at risk — ranked weak components with exact percentages and effective weights; tie each to how it affects the provisional grade.",
+  "3) 7-day study plan — day-by-day (Day 1 through Day 7) with realistic tasks; default to about 1 hour on weekdays if no availability was given.",
+  "4) Moving to Stable — what Stable means (80%+ risk score band), 2–3 habits to avoid slipping back, and the next upcoming assessments to prepare for.",
+].join("\n");
+
 export const COACHING_ROLE_PROMPT = [
   "You are an academic coaching assistant for university students.",
   "CRITICAL: You do NOT determine, change, or override the student's risk classification, risk score, grades, attendance, or engagement.",
@@ -91,8 +107,9 @@ export function buildCoachSystemPrompt(opts: {
   availability: string | null;
   now: Date;
   repeatOrdinal?: number;
+  proactiveBriefing?: boolean;
 }): string {
-  const { record, focus, availability, now, repeatOrdinal } = opts;
+  const { record, focus, availability, now, repeatOrdinal, proactiveBriefing } = opts;
   const repeatNote =
     repeatOrdinal != null && repeatOrdinal >= 2
       ? [
@@ -129,6 +146,7 @@ export function buildCoachSystemPrompt(opts: {
     focus
       ? `Conversation focus subject: ${focus.code}. Treat follow-up questions such as "how can I improve?" as being about this subject unless the student names another.`
       : "Conversation focus subject: none identified. If the student must choose a subject, ask which one.",
+    ...(proactiveBriefing ? ["", PROACTIVE_BRIEFING_OUTLINE] : []),
     ...repeatNote,
     "",
     formatStudentRecordForPrompt(record, focus, now),
@@ -314,7 +332,15 @@ export async function runCoachChat(deps: CoachDeps, messages: ChatMessage[]): Pr
 
   const availability = parseStudyAvailability(messages.filter((m) => m.role === "user").map((m) => m.content));
   const repeatOrdinal = completedRepeatOrdinal(messages);
-  const system = buildCoachSystemPrompt({ record, focus, availability, now, repeatOrdinal });
+  const proactiveBriefing = isProactiveAtRiskBriefing(lastUser);
+  const system = buildCoachSystemPrompt({
+    record,
+    focus,
+    availability,
+    now,
+    repeatOrdinal,
+    proactiveBriefing,
+  });
 
   try {
     let raw = await deps.callModel(system, messages);

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useLayoutEffect, useState } from "react";
+import { useEffect, useMemo, useLayoutEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { syncLearningRecommendationsForStudent } from "@/lib/learning-recommendations-sync";
 import { Link, Navigate, useLocation, useOutlet } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -158,17 +160,33 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
     );
     const focus = coaching.focusSubject;
     if (!focus) return null;
+    const worst =
+      coaching.atRiskSubjects.length > 0 ? coaching.atRiskSubjects[0] : focus;
     return {
-      riskLevel: focus.riskClassification,
+      riskLevel: worst.riskClassification,
       subjectLabel:
         coaching.atRiskSubjects.length > 1
           ? `${coaching.atRiskSubjects.length} subjects need attention`
-          : formatSubjectLabel(focus),
+          : formatSubjectLabel(worst),
       atRiskSubjects: formatAtRiskSubjectLabels(coaching.atRiskSubjects),
-      metrics: focus,
+      atRiskMetrics: coaching.atRiskSubjects,
+      metrics: worst,
       coachingSubjects: coaching.subjects,
     };
   }, [predictionRows, enrolledSubjectIds]);
+
+  const queryClient = useQueryClient();
+  const recsSyncAttempted = useRef(false);
+  useEffect(() => {
+    if (role !== "student" || !coachContext?.atRiskMetrics?.length) return;
+    if (recsSyncAttempted.current) return;
+    recsSyncAttempted.current = true;
+    void syncLearningRecommendationsForStudent(userId, coachContext.riskLevel).then((result) => {
+      if (result.status === "synced") {
+        queryClient.invalidateQueries({ queryKey: ["ai-recommendations", userId] });
+      }
+    });
+  }, [role, userId, coachContext, queryClient]);
 
   const reduceMotion = useReducedMotion();
 
@@ -188,9 +206,11 @@ function DashboardShell({ userId, role }: { userId: string; role: AppRole | null
               <DashboardHeader />
               {shouldShowHeaderAiCoach(role) ? (
                 <AICoachPopup
+                  userId={userId}
                   riskLevel={coachContext?.riskLevel ?? null}
                   subjectLabel={coachContext?.subjectLabel ?? null}
                   atRiskSubjects={coachContext?.atRiskSubjects ?? []}
+                  atRiskMetrics={coachContext?.atRiskMetrics ?? []}
                   metrics={coachContext?.metrics ?? null}
                   coachingSubjects={coachContext?.coachingSubjects ?? []}
                   storageKey={`edge_ai_coach_dismissed_dashboard_header_v1:${userId}`}

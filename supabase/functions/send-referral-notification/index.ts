@@ -8,6 +8,7 @@ import {
   deliverEmail,
   emailLogKey,
 } from "../_shared/notification-channels.ts";
+import { emailLinkedParentsReferralUpdate } from "../_shared/parent-linked-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -520,6 +521,21 @@ serve(async (req) => {
           }),
         });
       }
+    }
+
+    try {
+      await emailLinkedParentsReferralUpdate(supabase, sendBrevoEmail, {
+        studentUserId: referral.student_id,
+        subjectId: referral.subject_id,
+        subjectCode,
+        referralId,
+        event,
+        decision: event === "referral_decided"
+          ? (referral.status === "approved" ? "approved" : "rejected")
+          : null,
+      });
+    } catch (parentEmailError) {
+      console.error("parent referral email failed:", parentEmailError);
     }
 
     const results: Array<{ to: string; success: boolean; error?: string }> = [];

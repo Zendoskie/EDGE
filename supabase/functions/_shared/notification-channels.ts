@@ -23,7 +23,14 @@ export function emailLogKey(
     | "feedback_reply"
     | "attendance_update"
     | "engagement_outcome"
-    | "parent_registration_decision",
+    | "parent_registration_decision"
+    | "parent_registration_submitted"
+    | "registration_rejected"
+    | "enrollment_decision"
+    | "parent_grades_posted"
+    | "parent_attendance_update"
+    | "parent_risk_update"
+    | "parent_referral_update",
   id: string,
 ): string {
   const key = `${kind}:${id}`;
@@ -42,9 +49,78 @@ export function enrollmentRequestLogId(enrollmentId: string, pendingStartedAt: s
   return `${enrollmentId}:${anchor}`;
 }
 
+/** One student email per enrollment decision cycle (pending anchor from enrolled_at). */
+export function enrollmentDecisionLogId(
+  enrollmentId: string,
+  decision: string,
+  cycleAnchor: string | null | undefined,
+): string {
+  const anchor = cycleAnchor?.trim() || "unknown";
+  return `${enrollmentId}:${decision}:${anchor}`;
+}
+
+/** One rejection email per registration request row. */
+export function registrationRequestRejectedLogId(requestId: string, kind: string): string {
+  return `${kind}:${requestId}`;
+}
+
+export function parentGradesPostedLogId(parentUserId: string, activityId: string, studentId: string): string {
+  return `${parentUserId}:${activityId}:${studentId}`;
+}
+
+export function parentAttendanceUpdateLogId(
+  parentUserId: string,
+  studentAttendanceLogKey: string,
+): string {
+  return `${parentUserId}:${studentAttendanceLogKey}`;
+}
+
+export function parentRiskTransitionLogId(
+  parentUserId: string,
+  predictionId: string,
+  previousLevel: string,
+  newLevel: string,
+  writeStamp: string,
+): string {
+  return `${parentUserId}:${predictionId}:${previousLevel}->${newLevel}:${writeStamp}`;
+}
+
+export function parentReferralUpdateLogId(
+  parentUserId: string,
+  referralId: string,
+  event: string,
+): string {
+  return `${parentUserId}:${referralId}:${event}`;
+}
+
+/** Display label for canonical risk bands stored on predictions. */
+export function canonicalRiskBandLabel(level: string | null | undefined): string {
+  const normalized = (level ?? "").trim().toLowerCase();
+  if (normalized === "critical") return "Crucial";
+  if (normalized === "at_risk") return "Vulnerable";
+  if (normalized === "stable") return "Stable";
+  if (normalized === "excelling") return "Excelling";
+  return escapeHtml(level?.trim() || "Updated");
+}
+
+export function shouldNotifyParentRiskTransition(
+  previousLevel: string | null | undefined,
+  newLevel: string | null | undefined,
+): boolean {
+  const prev = (previousLevel ?? "").trim().toLowerCase();
+  const next = (newLevel ?? "").trim().toLowerCase();
+  if (!prev || !next) return false;
+  return prev !== next;
+}
+
 /** One email per committed student decision on a registration request. */
 export function parentRegistrationDecisionLogId(requestId: string, decisionType: string): string {
   return `${requestId}:${decisionType}`;
+}
+
+/** One student email when a parent submits a registration access request. */
+export function parentRegistrationSubmittedLogId(requestId: string): string {
+  return requestId;
 }
 
 /** Caller may email grades for this subject. */
@@ -417,6 +493,118 @@ export function enrollmentRequestRecipient(input: {
   if (!input.callerId || input.callerId !== input.enrollment.studentId) return null;
   if (!input.enrollment.instructorId) return null;
   return input.enrollment.instructorId;
+}
+
+/** Student receiving an instructor's enrollment approve/reject decision. */
+export function enrollmentDecisionStudentId(input: {
+  enrollment: { studentId: string; status: string; instructorId: string | null } | null;
+  callerId: string;
+}): string | null {
+  if (!input.enrollment) return null;
+  if (!input.enrollment.instructorId || input.callerId !== input.enrollment.instructorId) return null;
+  if (input.enrollment.status !== "active" && input.enrollment.status !== "rejected") return null;
+  return input.enrollment.studentId || null;
+}
+
+export function registrationRequestRejectedEmail(input: {
+  fullName?: string | null;
+  roleLabel: string;
+  rejectionReason?: string | null;
+}): { subject: string; html: string } {
+  const name = escapeHtml(input.fullName?.trim() || "Applicant");
+  const role = escapeHtml(input.roleLabel.trim() || "applicant");
+  const reason = input.rejectionReason?.trim();
+  const reasonBlock = reason
+    ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>`
+    : "";
+  return {
+    subject: "EDGE: Your registration request was not approved",
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Hi ${name},</p><p>Your request to register as <strong>${role}</strong> on EDGE was <strong>not approved</strong> by the administrator.</p>${reasonBlock}<p>If you have questions, contact your institution's administrator.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function enrollmentDecisionEmail(input: {
+  subjectCode?: string | null;
+  decision: "approved" | "rejected";
+}): { subject: string; html: string } {
+  const code = escapeHtml(input.subjectCode?.trim() || "your course");
+  if (input.decision === "approved") {
+    return {
+      subject: `EDGE: Enrollment approved — ${code}`,
+      html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your enrollment request for <strong>${code}</strong> was <strong>approved</strong>.</p><p>Sign in to EDGE to access the course.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    };
+  }
+  return {
+    subject: `EDGE: Enrollment request declined — ${code}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your enrollment request for <strong>${code}</strong> was <strong>not approved</strong> at this time.</p><p>Sign in to EDGE if you would like to submit a new request.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function parentGradesPostedEmail(input: {
+  studentName?: string | null;
+  subjectCode?: string | null;
+  lines: Array<{ title: string; score: number }>;
+}): { subject: string; html: string } {
+  const student = escapeHtml(input.studentName?.trim() || "Your student");
+  const code = escapeHtml(input.subjectCode?.trim() || "a course");
+  const list = input.lines.map((line) => `${escapeHtml(line.title)}: ${line.score}`).join("<br>");
+  return {
+    subject: `EDGE: ${code} — Grade update for ${student}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A new grade is available for <strong>${student}</strong> in <strong>${code}</strong>.</p><p>${list}</p><p>Sign in to EDGE to review details for your linked student.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function parentAttendanceUpdateEmail(input: {
+  studentName?: string | null;
+  subjectCode?: string | null;
+  date: string;
+  status: string;
+}): { subject: string; html: string } {
+  const student = escapeHtml(input.studentName?.trim() || "your student");
+  const code = escapeHtml(input.subjectCode?.trim() || "a course");
+  const date = escapeHtml(input.date.trim());
+  const status = escapeHtml(input.status.trim() || "recorded");
+  return {
+    subject: `EDGE: Attendance update for ${student} — ${code}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Attendance for <strong>${student}</strong> in <strong>${code}</strong> on <strong>${date}</strong> was recorded as <strong>${status}</strong>.</p><p>Sign in to EDGE to review your linked student&apos;s record.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function parentRiskTransitionEmail(input: {
+  studentName?: string | null;
+  subjectCode?: string | null;
+  previousLevel: string;
+  newLevel: string;
+}): { subject: string; html: string } {
+  const student = escapeHtml(input.studentName?.trim() || "your student");
+  const code = escapeHtml(input.subjectCode?.trim() || "a course");
+  const fromLabel = canonicalRiskBandLabel(input.previousLevel);
+  const toLabel = canonicalRiskBandLabel(input.newLevel);
+  return {
+    subject: `EDGE: Risk status update for ${student} — ${code}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>The academic risk status for <strong>${student}</strong> in <strong>${code}</strong> changed from <strong>${fromLabel}</strong> to <strong>${toLabel}</strong>.</p><p>Sign in to EDGE for more context about your linked student.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function parentReferralUpdateEmail(input: {
+  studentName?: string | null;
+  subjectCode?: string | null;
+  event: "referral_created" | "referral_decided";
+  decision?: string | null;
+}): { subject: string; html: string } {
+  const student = escapeHtml(input.studentName?.trim() || "your student");
+  const code = escapeHtml(input.subjectCode?.trim() || "a course");
+  if (input.event === "referral_created") {
+    return {
+      subject: `EDGE: Counseling referral for ${student}`,
+      html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A counseling referral was submitted for <strong>${student}</strong> in <strong>${code}</strong>.</p><p>Sign in to EDGE if you need to follow up with your linked student or the school.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    };
+  }
+  const decision = input.decision === "approved" ? "approved" : "updated";
+  return {
+    subject: `EDGE: Counseling referral ${decision} — ${student}`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A counseling referral for <strong>${student}</strong> in <strong>${code}</strong> was <strong>${escapeHtml(decision)}</strong>.</p><p>Sign in to EDGE for available details.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
 }
 
 export function enrollmentRequestEmail(input: {

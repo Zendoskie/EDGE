@@ -93,7 +93,7 @@ export default function DiscussionForum() {
           .map(e => e.subject_id)
           .filter((id): id is string => !!id);
         if (subjectIds.length > 0) {
-          query = query.in('id', subjectIds);
+          query = query.in('id', subjectIds).not('instructor_id', 'is', null);
         } else {
           return [];
         }

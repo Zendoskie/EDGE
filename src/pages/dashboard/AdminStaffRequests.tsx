@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 import { getPublicAppUrl } from '@/lib/app-url';
+import { emailRegistrationRequestRejected } from '@/lib/registration-rejection-email';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -236,19 +237,19 @@ export default function AdminStaffRequests() {
     if (!rejectTarget) return;
     setRejectBusy(true);
     try {
-      const { error } = await (supabase as any)
-        .from('staff_registration_requests')
-        .update({
-          status:           'rejected',
-          reviewed_at:      new Date().toISOString(),
-          reviewed_by:      user?.id ?? null,
-          rejection_reason: rejectReason.trim() || null,
-        })
-        .eq('id', rejectTarget.id)
-        .eq('status', 'pending');
+      const { error } = await supabase.rpc('admin_review_staff_request' as never, {
+        p_request_id: rejectTarget.id,
+        p_status: 'rejected',
+        p_rejection_reason: rejectReason.trim() || null,
+      } as never);
 
       if (error) throw error;
-      toast.success(`${rejectTarget.full_name}'s request rejected.`);
+      const email = await emailRegistrationRequestRejected(rejectTarget.id, 'staff');
+      if (email.emailError) {
+        toast.warning(`${rejectTarget.full_name}'s request rejected. ${email.emailError}`, { duration: 8000 });
+      } else {
+        toast.success(`${rejectTarget.full_name}'s request rejected.`);
+      }
       setRejectTarget(null);
       await load();
     } catch (e: unknown) {

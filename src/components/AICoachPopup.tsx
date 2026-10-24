@@ -6,20 +6,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Brain, History, Send, Sparkles } from "lucide-react";
+import { Brain, History, Loader2, Send, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { canonicalRiskLevel, riskLabel, type CanonicalRiskLevel } from "@/lib/risk-utils";
+import { canonicalRiskLevel, type CanonicalRiskLevel } from "@/lib/risk-utils";
 import { RiskBadge } from "@/components/RiskBadge";
 import { invokeAiCoach } from "@/lib/invoke-ai-coach";
 import { FormattedAssistantContent } from "@/components/FormattedAssistantContent";
 import { AI_COACH_MODEL_LABEL } from "@/lib/ai-model";
-import {
-  coachingRiskLabel,
-  formatCoachingMetricsBlock,
-  type SubjectCoachingMetrics,
-} from "@/lib/coaching-context";
+import { formatCoachingMetricsBlock, type SubjectCoachingMetrics } from "@/lib/coaching-context";
 import { trackStudentActivity } from "@/lib/track-activity";
+import { buildContextualStarter } from "@/lib/ai-coach-starter";
+import {
+  PROACTIVE_AT_RISK_BRIEFING_PROMPT,
+  clearProactiveBriefingDoneThisSession,
+  isCoachClosedThisSession,
+  isProactiveBriefingDoneThisSession,
+  markCoachClosedThisSession,
+  markProactiveBriefingDoneThisSession,
+} from "@/lib/ai-coach-proactive";
 
 type ChatMsg = { role: "user" | "assistant"; content: string; ts?: number };
 type AICoachResponse = {
@@ -31,41 +36,6 @@ type AICoachResponse = {
 
 /** Legacy UI opener — drop stored chats that only contain this so we can show contextual copy. */
 const LEGACY_STARTER_SNIPPET = "biggest challenge right now";
-
-function buildContextualStarter(
-  canonical: CanonicalRiskLevel,
-  metrics?: SubjectCoachingMetrics | null,
-  subjectLabel?: string | null,
-): ChatMsg[] {
-  const status = metrics ? coachingRiskLabel(metrics) : riskLabel(canonical);
-  const subj = subjectLabel?.trim();
-  const metricsSummary = metrics ? formatCoachingMetricsBlock(metrics) : null;
-
-  let content: string;
-  if (metricsSummary && subj) {
-    content = [
-      `Hi—I've loaded your latest risk analysis for ${subj}. Your system-computed status is ${status}.`,
-      "",
-      metricsSummary,
-      "",
-      "I won't re-evaluate your risk level. You can ask me about a specific score, your current grade, or a study plan for the time you have. What would you like to focus on first?",
-    ].join("\n");
-  } else if (metricsSummary) {
-    content = [
-      `Hi—I've loaded your latest risk analysis (${status}).`,
-      "",
-      metricsSummary,
-      "",
-      "Ask me for coaching recommendations, study strategies, or a concrete plan for the next week.",
-    ].join("\n");
-  } else if (subj) {
-    content = `Hi—your risk analysis marks you as ${status} in ${subj}. I provide coaching based on computed results only. What would you like to work on first?`;
-  } else {
-    content = `Hi—your current risk classification is ${status} (computed by the risk analysis system). I can help with study strategies and improvement actions. What would help most right now?`;
-  }
-
-  return [{ role: "assistant", content, ts: Date.now() }];
-}
 
 const COACH_ERROR_REPLY = "I couldn't get a reply from the AI coach just now. Please try again in a moment.";
 
@@ -135,16 +105,20 @@ function readStoredMessages(dismissKey: string): ChatMsg[] | null {
 }
 
 export function AICoachPopup(props: {
+  userId?: string;
   riskLevel?: string | null;
   subjectLabel?: string | null;
   atRiskSubjects?: string[];
+  atRiskMetrics?: SubjectCoachingMetrics[];
   metrics?: SubjectCoachingMetrics | null;
   coachingSubjects?: SubjectCoachingMetrics[];
   storageKey?: string;
   variant?: "compact" | "detailed";
 }) {
   const canonical = canonicalRiskLevel(props.riskLevel);
-  const shouldAutoOpen = canonical === "critical" || canonical === "at_risk";
+  const isAtRisk =
+    (props.atRiskMetrics?.length ?? 0) > 0 || canonical === "critical" || canonical === "at_risk";
+  const shouldShowRiskBadge = isAtRisk;
   const storageKey = props.storageKey || "edge_ai_coach_dismissed_v1";
   const persistKey = messagesStorageKey(storageKey);
 
@@ -157,13 +131,23 @@ export function AICoachPopup(props: {
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLElement | null>(null);
   const inFlightRef = useRef(false);
   const messagesRef = useRef<ChatMsg[]>([]);
+  const proactiveStartedRef = useRef(false);
   messagesRef.current = messages;
 
   useEffect(() => {
-    // Portal the AI Coach trigger into the dashboard header (so it doesn't overlap cards/content).
     const el = typeof window !== "undefined" ? document.getElementById("ai-coach-header-slot") : null;
     setHeaderSlotEl(el);
   }, []);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(storageKey) === "1") {
+        localStorage.removeItem(storageKey);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [storageKey]);
 
   useEffect(() => {
     try {
@@ -174,7 +158,6 @@ export function AICoachPopup(props: {
   }, [messages, persistKey]);
 
   useEffect(() => {
-    // Chats now contain personal academic data, so unscoped legacy copies must not linger on shared browsers.
     try {
       for (const key of LEGACY_UNSCOPED_KEYS) localStorage.removeItem(key);
     } catch {
@@ -184,7 +167,12 @@ export function AICoachPopup(props: {
 
   useEffect(() => {
     const saved = readStoredMessages(storageKey);
-    const nextStarter = buildContextualStarter(canonical, props.metrics, props.subjectLabel);
+    const nextStarter = buildContextualStarter(
+      canonical,
+      props.metrics,
+      props.subjectLabel,
+      props.atRiskMetrics,
+    );
 
     if (saved?.some((m) => m.role === "user")) {
       setMessages(saved);
@@ -200,15 +188,13 @@ export function AICoachPopup(props: {
       if (prev.length > 1) return prev;
       return nextStarter;
     });
-  }, [storageKey, canonical, props.metrics, props.subjectLabel]);
+  }, [storageKey, canonical, props.metrics, props.subjectLabel, props.atRiskMetrics]);
 
   useEffect(() => {
-  // Auto-open only for crucial/vulnerable students.
-    if (!shouldAutoOpen) return;
-    const dismissed = localStorage.getItem(storageKey);
-    if (dismissed) return;
+    if (!isAtRisk) return;
+    if (props.userId && isCoachClosedThisSession(props.userId)) return;
     setOpen(true);
-  }, [shouldAutoOpen, storageKey]);
+  }, [isAtRisk, props.userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -220,12 +206,48 @@ export function AICoachPopup(props: {
     return () => window.clearTimeout(t);
   }, [open, messages.length]);
 
+  const proactiveMutation = useMutation({
+    mutationFn: async () => {
+      const data = (await invokeAiCoach({
+        messages: [{ role: "user", content: PROACTIVE_AT_RISK_BRIEFING_PROMPT }],
+      })) as AICoachResponse;
+      if (data?.error) throw new Error(data.error);
+      const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
+      if (!reply) throw new Error("AI coach returned an empty response");
+      return reply;
+    },
+    onSuccess: (reply) => {
+      if (props.userId) markProactiveBriefingDoneThisSession(props.userId);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply, ts: Date.now() }]);
+    },
+    onError: (error: Error) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: COACH_ERROR_REPLY,
+          ts: Date.now(),
+        },
+      ]);
+      console.error(error);
+    },
+  });
+
+  useEffect(() => {
+    if (!open || !isAtRisk || !props.userId) return;
+    if (isProactiveBriefingDoneThisSession(props.userId)) return;
+    if (messagesRef.current.some((m) => m.role === "user")) return;
+    if (messagesRef.current.filter((m) => m.role === "assistant").length >= 2) {
+      markProactiveBriefingDoneThisSession(props.userId);
+      return;
+    }
+    if (proactiveStartedRef.current || proactiveMutation.isPending) return;
+    proactiveStartedRef.current = true;
+    proactiveMutation.mutate();
+  }, [open, isAtRisk, props.userId, proactiveMutation.isPending]);
+
   const sendMutation = useMutation({
     mutationFn: async (vars: { text: string; history: ChatMsg[] }) => {
-      // Only real conversation turns are sent. The server loads the student's records itself
-      // (identity comes from the session), so no client-built context or student id is sent.
-      // history is the conversation captured at send time, before this turn is appended,
-      // so a completed question is sent again instead of being dropped.
       const payloadMessages = toApiMessages(vars.history, vars.text);
 
       const data = (await invokeAiCoach({ messages: payloadMessages })) as AICoachResponse;
@@ -260,9 +282,11 @@ export function AICoachPopup(props: {
     },
   });
 
+  const coachBusy = sendMutation.isPending || proactiveMutation.isPending;
+
   const submitDraft = (raw: string) => {
     const text = raw.trim();
-    if (!canSendCoachMessage(text, inFlightRef.current || sendMutation.isPending)) return;
+    if (!canSendCoachMessage(text, inFlightRef.current || coachBusy)) return;
     inFlightRef.current = true;
     const history = messagesRef.current;
     setDraft("");
@@ -279,12 +303,24 @@ export function AICoachPopup(props: {
   );
 
   const resetChat = () => {
-    const fresh = buildContextualStarter(canonical, props.metrics, props.subjectLabel);
+    proactiveStartedRef.current = false;
+    if (props.userId) clearProactiveBriefingDoneThisSession(props.userId);
+    const fresh = buildContextualStarter(
+      canonical,
+      props.metrics,
+      props.subjectLabel,
+      props.atRiskMetrics,
+    );
     setMessages(fresh);
     try {
       localStorage.removeItem(persistKey);
     } catch {
       /* ignore */
+    }
+    if (open && isAtRisk && props.userId) {
+      proactiveMutation.reset();
+      proactiveStartedRef.current = true;
+      proactiveMutation.mutate();
     }
   };
 
@@ -315,7 +351,7 @@ export function AICoachPopup(props: {
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) localStorage.setItem(storageKey, "1");
+          if (!next && props.userId) markCoachClosedThisSession(props.userId);
         }}
       >
         <DialogContent className="top-[4vh] translate-y-0 gap-0 p-0 overflow-hidden max-h-[92vh] w-[96vw] sm:max-w-2xl flex flex-col min-h-0">
@@ -324,7 +360,7 @@ export function AICoachPopup(props: {
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
                 AI Coach
-                {shouldAutoOpen ? (
+                {shouldShowRiskBadge ? (
                   <RiskBadge level={canonical} evidence={props.metrics?.riskEvidence} weights={props.metrics?.riskWeights} />
                 ) : null}
               </DialogTitle>
@@ -464,6 +500,12 @@ export function AICoachPopup(props: {
                   </div>
                 </div>
               ))}
+              {proactiveMutation.isPending ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                  Preparing your study plan from your records…
+                </div>
+              ) : null}
               <div ref={listEndRef} />
             </div>
           </div>
@@ -475,7 +517,7 @@ export function AICoachPopup(props: {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type your message…"
                 className="min-h-[44px] max-h-[120px]"
-                disabled={sendMutation.isPending}
+                disabled={coachBusy}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -486,7 +528,7 @@ export function AICoachPopup(props: {
               <Button
                 size="icon"
                 aria-label="Send message"
-                disabled={sendMutation.isPending || !draft.trim()}
+                disabled={coachBusy || !draft.trim()}
                 onClick={() => submitDraft(draft)}
               >
                 <Send className="h-4 w-4" />

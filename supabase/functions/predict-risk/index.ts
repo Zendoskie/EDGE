@@ -21,6 +21,7 @@ import {
   riskEmailsEnabled,
   type RiskEmailCandidate,
 } from "../_shared/risk-email.ts";
+import { emailLinkedParentsRiskTransitions } from "../_shared/parent-linked-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -440,6 +441,25 @@ serve(async (req) => {
       if (upsertError) {
         console.error("predict-risk predictions upsert:", upsertError);
         throw upsertError;
+      }
+
+      const parentTransitions = plan.upserts
+        .filter((row) => row.previous_risk_level && row.risk_level && row.previous_risk_level !== row.risk_level)
+        .map((row) => ({
+          studentUserId: row.student_id as string,
+          subjectId: subject_id,
+          subjectCode: subject.code,
+          predictionId: row.id as string,
+          previousLevel: row.previous_risk_level as string,
+          newLevel: row.risk_level as string,
+          writeStamp: (row.created_at as string) ?? new Date().toISOString(),
+        }));
+      if (parentTransitions.length > 0) {
+        try {
+          await emailLinkedParentsRiskTransitions(supabase, sendBrevoEmail, parentTransitions);
+        } catch (parentEmailError) {
+          console.error("parent risk transition email failed:", parentEmailError);
+        }
       }
     }
 

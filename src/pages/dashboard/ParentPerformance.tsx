@@ -147,6 +147,21 @@ export default function ParentPerformance() {
       if (error) throw new Error(parentLinkErrorMessage(error.message));
 
       if (typeof linkId === 'string' && linkId) {
+        // #region agent log
+        fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
+          body: JSON.stringify({
+            sessionId: 'b4b4c1',
+            runId: 'parent-email-fix',
+            hypothesisId: 'G',
+            location: 'ParentPerformance.tsx:requestAccess',
+            message: 'parent_request_student_link ok, invoking request_received email',
+            data: { flow: 'parent_student_link', linkIdLen: linkId.length },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
         sendParentLinkEmailBestEffort({
           type: 'request_received',
           link_id: linkId,

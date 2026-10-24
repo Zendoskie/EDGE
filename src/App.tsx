@@ -45,6 +45,8 @@ import NotFound from "./pages/NotFound";
 import RequestStaffAccount from "./pages/RequestStaffAccount";
 import CompleteStudentRegistration from "./pages/CompleteStudentRegistration";
 import CompleteParentRegistration from "./pages/CompleteParentRegistration";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,6 +70,8 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/request-staff-account" element={<RequestStaffAccount />} />
               <Route path="/complete-registration" element={<CompleteStudentRegistration />} />
               <Route path="/complete-parent-registration" element={<CompleteParentRegistration />} />

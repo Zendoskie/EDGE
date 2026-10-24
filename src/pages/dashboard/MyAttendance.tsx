@@ -41,14 +41,14 @@ export default function MyAttendance() {
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from('enrollments')
-        .select('subject_id, subjects(id, code, name)')
+        .select('subject_id, subjects(id, code, name, instructor_id)')
         .eq('student_id', user.id)
         .eq('status', 'active');
       if (error) {
         console.warn('MyAttendance: enrollments query failed', error);
         return [];
       }
-      return data ?? [];
+      return (data ?? []).filter((row: { subjects?: { instructor_id?: string | null } | null }) => row.subjects?.instructor_id);
     },
     enabled: !!user?.id,
   });

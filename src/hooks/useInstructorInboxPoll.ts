@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotificationInbox } from "@/contexts/NotificationInboxContext";
-import { instructorAtRiskNotification, instructorEngagementAlertNotification, instructorEngagementFeedbackNotification } from "@/lib/notification-events";
+import { instructorAtRiskNotification, instructorEngagementAlertNotification } from "@/lib/notification-events";
 import { PREDICTION_EVIDENCE_COLUMNS } from "@/lib/risk-scoring";
 
 const POLL_INTERVAL_MS = 180_000;
@@ -130,26 +130,6 @@ export function useInstructorInboxPoll(userId: string | undefined, role: string 
           }
         }
 
-        if (enrolledStudentIds.length > 0) {
-          const { data: feedbackRows } = await supabase
-            .from("student_engagement_feedback")
-            .select("id, student_id, subject, created_at")
-            .in("student_id", enrolledStudentIds)
-            .gt("created_at", lastPoll);
-
-          for (const row of feedbackRows ?? []) {
-            const studentId = (row as { student_id?: string }).student_id;
-            const feedbackId = (row as { id?: string }).id;
-            if (!studentId || !feedbackId) continue;
-            addRef.current(
-              instructorEngagementFeedbackNotification({
-                feedbackId,
-                studentName: nameById.get(studentId) ?? null,
-                subject: (row as { subject?: string | null }).subject ?? null,
-              }),
-            );
-          }
-        }
       } catch (e) {
         console.warn("useInstructorInboxPoll:", e);
       }
