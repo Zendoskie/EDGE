@@ -33,7 +33,7 @@ export function interpretNotificationInvokeResult(data: unknown): NotificationIn
   const body = data as Record<string, unknown>;
   if (body.error) return 'failed';
   if (body.duplicate === true) return 'duplicate';
-  if (body.skipped) return 'failed';
+  if (body.skipped === true) return 'sent';
   if (body.mode === 'single' && body.success === true) return 'sent';
   const failed = typeof body.failed === 'number' ? body.failed : 0;
   if (failed > 0) return 'failed';

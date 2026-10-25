@@ -12,7 +12,9 @@ import {
   counselorFollowupRecipient,
   deliverEmail,
   emailLogKey,
+  finalGradeReleasedEmail,
   enrollmentInstructors,
+  missingGradeEmail,
   engagementInterventionEmail,
   engagementInterventionRecipient,
   engagementOutcomeRecipient,
@@ -384,22 +386,27 @@ describe('student feedback instructor email', () => {
   });
 });
 
+describe('final_grade_released and missing_grade email helpers', () => {
+  it('formats final-grade and missing-grade subjects and bodies', () => {
+    expect(finalGradeReleasedEmail('PL101', 88.5).subject).toContain('Final grade released');
+    expect(finalGradeReleasedEmail('PL101', 88.5).html).toContain('88.50');
+    expect(missingGradeEmail('PL101', 'You have a missing grade for Quiz 1 in PL101.').subject).toContain('Missing grade');
+  });
+});
+
 describe('grades_posted email', () => {
   it('emails only stored non-null scores for A1 and Midterm and skips missing P1', () => {
     expect(authorizeGradesPostedCaller({
-      callerIsInstructor: true,
       callerId: instructor,
       subjectInstructorId: instructor,
     })).toBe(true);
     expect(authorizeGradesPostedCaller({
-      callerIsInstructor: true,
       callerId: otherInstructor,
       subjectInstructorId: instructor,
     })).toBe(false);
     expect(authorizeGradesPostedCaller({
-      callerIsInstructor: false,
       callerId: instructor,
-      subjectInstructorId: instructor,
+      subjectInstructorId: null,
     })).toBe(false);
 
     const subjectId = 'sub-1';
@@ -918,6 +925,8 @@ describe('email delivery safety', () => {
       notifyFn.indexOf('async function sendGradesPostedEmail'),
       notifyFn.indexOf('async function sendRiskFeedbackEmail'),
     );
+    expect(notifyFn).toContain('event === "final_grade_released"');
+    expect(notifyFn).toContain('event === "missing_grade"');
     expect(gradesFn).toContain('authorizeGradesPostedCaller');
     expect(gradesFn).toContain('selectGradesPostedLines');
     expect(gradesFn).toContain('omitLoggedGradesPostedLines');

@@ -58,7 +58,9 @@ describe('missing grade alerts', () => {
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke).toHaveBeenCalledWith('send-notification', {
       body: expect.objectContaining({
-        to: 'ana@example.com',
+        event: 'missing_grade',
+        activity_id: 'activity-1',
+        student_id: 'student-1',
         body: 'You have a missing grade for Activity 1 in PL101.',
       }),
     });

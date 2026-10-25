@@ -11,7 +11,11 @@ export function isReleaseRelevantRealtime(table: string, eventType: string): boo
 }
 
 /** Server-written inbox titles for a first score (notify_first_activity_grade) and a new activity (notify_missing_activity_grades). */
-export const RELEASE_RELEVANT_INBOX_TITLES: readonly string[] = ['Grade posted', 'Missing grade'];
+export const RELEASE_RELEVANT_INBOX_TITLES: readonly string[] = [
+  'Grade posted',
+  'Missing grade',
+  'Final grade released',
+];
 
 export function isReleaseRelevantInboxTitle(title: string | null | undefined): boolean {
   return !!title && RELEASE_RELEVANT_INBOX_TITLES.includes(title);

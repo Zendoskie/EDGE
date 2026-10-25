@@ -341,6 +341,7 @@ export async function runRelease(db: ReleaseClient, userId: string | null, body:
   const plan = planReleaseWrites(existing, candidates);
   let written = 0;
   let unchanged = plan.unchanged;
+  let newlyReleased: Array<{ student_id: string; final_grade: number }> = [];
   if (plan.writes.length > 0) {
     const { data, error } = await db.rpc("commit_final_grade_releases", {
       p_subject_id: subjectId,
@@ -358,12 +359,26 @@ export async function runRelease(db: ReleaseClient, userId: string | null, body:
     }
     written = Number(result.written) || 0;
     unchanged += plan.writes.length - written;
+    if (written > 0) {
+      newlyReleased = plan.writes.map((row) => ({
+        student_id: row.student_id,
+        final_grade: row.final_grade,
+      }));
+    }
   }
 
   const complete = written + unchanged;
   const outcome: ReleaseOutcome = complete === 0 ? "none_released" : incomplete.length === 0 ? "all_released" : "partial";
   return {
     status: 200,
-    body: { subject_id: subjectId, outcome, released: written, unchanged, incomplete, not_enrolled: notEnrolled },
+    body: {
+      subject_id: subjectId,
+      outcome,
+      released: written,
+      unchanged,
+      incomplete,
+      not_enrolled: notEnrolled,
+      newly_released: newlyReleased,
+    },
   };
 }

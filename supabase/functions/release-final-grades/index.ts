@@ -31,7 +31,8 @@ serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 
   try {
-    const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim() || null;
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace(/^Bearer\s+/i, "").trim() || null;
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     let userId: string | null = null;
@@ -42,6 +43,28 @@ serve(async (req) => {
     const body = await req.json().catch(() => null);
 
     const result = await runRelease(supabase, userId, body);
+    if (result.status === 200 && authHeader) {
+      const released = (result.body as { newly_released?: Array<{ student_id: string; final_grade: number }> })
+        .newly_released;
+      const subjectId = (result.body as { subject_id?: string }).subject_id;
+      if (released?.length && subjectId) {
+        const notifyRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-notification`, {
+          method: "POST",
+          headers: {
+            Authorization: authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            event: "final_grade_released",
+            subject_id: subjectId,
+            releases: released,
+          }),
+        });
+        if (!notifyRes.ok) {
+          console.error("final_grade_released notification failed:", await notifyRes.text().catch(() => ""));
+        }
+      }
+    }
     return json(result.status, result.body);
   } catch (e) {
     const message = serializeError(e);

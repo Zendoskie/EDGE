@@ -16,11 +16,11 @@ export async function publishMissingGradeAlerts(subjectId: string, activityIds: 
       if (!recipient.email) continue;
       const { data: emailData, error: emailError } = await supabase.functions.invoke('send-notification', {
         body: {
-          to: recipient.email,
+          event: 'missing_grade',
+          activity_id: activityId,
           student_id: recipient.student_id,
           subject_id: subjectId,
           subject_code: recipient.subject_code || 'EDGE',
-          subject_name: recipient.subject_name || 'Course',
           body: recipient.notification_body,
         },
       });

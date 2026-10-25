@@ -18,7 +18,8 @@ describe('student grade-posted inbox (database trigger)', () => {
   const migration = read('supabase/migrations/20261022153000_student_grade_posted_inbox_dedupe.sql');
   const phase1 = read('supabase/migrations/20261005043052_phase1_enrollment_notifications.sql');
   const parentInbox = read('supabase/migrations/20261021103000_round2_enrollment_and_parent_inbox.sql');
-  const missingGrade = read('supabase/migrations/20261018130000_missing_grade_requires_recorded_score.sql');
+  const missingGrade = read('supabase/migrations/20261025120100_missing_grade_inbox_dedupe.sql');
+  const finalGradeInbox = read('supabase/migrations/20261025120000_final_grade_released_inbox.sql');
 
   it('writes one inbox row per first recorded score via notify_first_activity_grade on submissions', () => {
     expect(migration).toContain('notify_first_activity_grade');
@@ -93,6 +94,10 @@ describe('student grade-posted inbox (database trigger)', () => {
     expect(missingGrade).toContain('notify_missing_activity_grades');
     expect(missingGrade).toContain("'Missing grade'");
     expect(missingGrade).toContain('submission.score IS NOT NULL');
+    expect(missingGrade).toContain("'missing-grade:'");
+    expect(finalGradeInbox).toContain('notify_final_grade_released');
+    expect(finalGradeInbox).toContain("'Final grade released'");
+    expect(finalGradeInbox).toContain("'final-grade:'");
   });
 
   it('restricts inbox visibility to the notified student', () => {
@@ -116,7 +121,7 @@ describe('student grade-posted inbox (database trigger)', () => {
     const notifyFn = read('supabase/functions/send-notification/index.ts');
     const gradesFn = notifyFn.slice(
       notifyFn.indexOf('async function sendGradesPostedEmail'),
-      notifyFn.indexOf('async function sendRiskFeedbackEmail'),
+      notifyFn.indexOf('async function subjectOwnerContext'),
     );
     expect(gradesFn).not.toContain('user_inbox_notifications');
   });

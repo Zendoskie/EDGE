@@ -339,7 +339,14 @@ describe('runRelease', () => {
       p_released_by: USER,
       p_rows: [{ student_id: S1, final_grade: S1_GRADE, weights: W }],
     });
-    expect(res.body).toMatchObject({ subject_id: SUBJECT, outcome: 'partial', released: 1, unchanged: 0, not_enrolled: [] });
+    expect(res.body).toMatchObject({
+      subject_id: SUBJECT,
+      outcome: 'partial',
+      released: 1,
+      unchanged: 0,
+      not_enrolled: [],
+      newly_released: [{ student_id: S1, final_grade: S1_GRADE }],
+    });
     expect((res.body.incomplete as any[])[0]).toEqual({
       student_id: S2,
       missing: [{ kind: 'assessment_unscored', category: 'exam_final', activity_id: FIN, title: 'Final', type: 'final_exam', reason: 'no_submission' }],
@@ -417,11 +424,16 @@ describe('release-final-grades source checks', () => {
   const shared = read('supabase/functions/_shared/final-grade-release.ts');
   const migration = read('supabase/migrations/20261013130000_final_grade_releases.sql');
 
-  it('has no email, prediction, AI, invoke, delete or direct upsert side effects', () => {
-    for (const src of [index, shared]) {
-      expect(src).not.toMatch(/sendBrevoEmail|predictions|functions\.invoke|\.delete\(|\.upsert\(|ai-coach|channel\(/);
-    }
+  it('has no direct Brevo send, prediction, AI, delete or direct upsert side effects in shared release logic', () => {
+    expect(shared).not.toMatch(/sendBrevoEmail|predictions|functions\.invoke|\.delete\(|\.upsert\(|ai-coach|channel\(/);
     expect(shared).toContain('db.rpc("commit_final_grade_releases"');
+    expect(shared).toContain('newly_released');
+  });
+
+  it('fans out final-grade release emails through send-notification after a successful commit', () => {
+    expect(index).toContain('final_grade_released');
+    expect(index).toContain('send-notification');
+    expect(index).not.toContain('sendBrevoEmail');
   });
 
   it('verifies the caller before running the release', () => {

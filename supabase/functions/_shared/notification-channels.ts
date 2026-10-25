@@ -17,6 +17,8 @@ export function emailLogKey(
     | "engagement_intervention"
     | "logged_intervention"
     | "grades_posted"
+    | "final_grade_released"
+    | "missing_grade"
     | "risk_feedback"
     | "counselor_followup"
     | "enrollment_request"
@@ -123,14 +125,12 @@ export function parentRegistrationSubmittedLogId(requestId: string): string {
   return requestId;
 }
 
-/** Caller may email grades for this subject. */
+/** Caller may email grades for this subject (subject owner; role row optional). */
 export function authorizeGradesPostedCaller(input: {
-  callerIsInstructor: boolean;
   callerId: string;
   subjectInstructorId: string | null;
 }): boolean {
-  if (!input.callerIsInstructor || !input.callerId) return false;
-  if (!input.subjectInstructorId) return false;
+  if (!input.callerId || !input.subjectInstructorId) return false;
   return input.callerId === input.subjectInstructorId;
 }
 
@@ -170,6 +170,37 @@ export function gradesPostedEmail(
     subject: `EDGE: ${code} — Grades posted`,
     html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A grade is now available for <strong>${escapeHtml(code)}</strong>.</p><p>${list}</p><p>Sign in to EDGE to review your scores.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
   };
+}
+
+export function finalGradeReleasedLogId(subjectId: string, studentId: string, finalGrade: number): string {
+  return `${subjectId}:${studentId}:${finalGrade}`;
+}
+
+export function finalGradeReleasedEmail(
+  subjectCode: string | null | undefined,
+  finalGrade: number,
+): { subject: string; html: string } {
+  const code = subjectCode?.trim() || "your subject";
+  const grade = Number.isFinite(finalGrade) ? finalGrade.toFixed(2) : String(finalGrade);
+  return {
+    subject: `EDGE: ${code} — Final grade released`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your final grade for <strong>${escapeHtml(code)}</strong> is <strong>${escapeHtml(grade)}</strong>.</p><p>Sign in to EDGE to review your gradebook.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function missingGradeEmail(
+  subjectCode: string | null | undefined,
+  message: string,
+): { subject: string; html: string } {
+  const code = subjectCode?.trim() || "your subject";
+  return {
+    subject: `EDGE: ${code} — Missing grade`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>${escapeHtml(message)}</p><p>Sign in to EDGE to see which activity still needs a score.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+  };
+}
+
+export function missingGradeLogId(activityId: string, studentId: string): string {
+  return `${activityId}:${studentId}`;
 }
 
 /**

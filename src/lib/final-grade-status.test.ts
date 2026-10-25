@@ -82,6 +82,7 @@ describe('release-status freshness signals', () => {
   it('only grade inbox titles count', () => {
     expect(isReleaseRelevantInboxTitle('Grade posted')).toBe(true);
     expect(isReleaseRelevantInboxTitle('Missing grade')).toBe(true);
+    expect(isReleaseRelevantInboxTitle('Final grade released')).toBe(true);
     expect(isReleaseRelevantInboxTitle('Account approved')).toBe(false);
     expect(isReleaseRelevantInboxTitle(null)).toBe(false);
   });

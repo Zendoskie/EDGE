@@ -24,8 +24,12 @@ import {
   registrationRequestRejectedLogId,
   feedbackReplyEmail,
   feedbackReplyRecipient,
+  finalGradeReleasedEmail,
+  finalGradeReleasedLogId,
   gradesPostedEmail,
   gradesPostedLogId,
+  missingGradeEmail,
+  missingGradeLogId,
   instructorFeedbackEmail,
   interventionStudentEmail,
   loggedInterventionRecipient,
@@ -148,13 +152,6 @@ async function sendGradesPostedEmail(
     : [];
   if (items.length === 0) throw new Error("items are required");
 
-  const { data: roleCheck } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", callerId)
-    .eq("role", "instructor")
-    .maybeSingle();
-
   const { data: subject, error: subjectError } = await supabase
     .from("subjects")
     .select("id, code, instructor_id")
@@ -162,7 +159,6 @@ async function sendGradesPostedEmail(
     .maybeSingle();
   if (subjectError) throw subjectError;
   if (!authorizeGradesPostedCaller({
-    callerIsInstructor: Boolean(roleCheck),
     callerId,
     subjectInstructorId: subject?.instructor_id ?? null,
   })) {
@@ -203,7 +199,7 @@ async function sendGradesPostedEmail(
     titleByActivityId,
   });
   if (lines.length === 0) {
-    return json({ success: true, sent: 0, failed: 0, skipped: "no_recorded_score" });
+    return json({ success: true, sent: 0, failed: 0, skipped: true, reason: "no_recorded_score" });
   }
 
   const byStudent = new Map<string, typeof lines>();
@@ -288,6 +284,161 @@ async function sendGradesPostedEmail(
     failed,
     duplicate: duplicates > 0 && sent === 0 && failed === 0,
   });
+}
+
+async function subjectOwnerContext(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  subjectId: string,
+): Promise<{ code: string | null } | null> {
+  const { data: subject, error } = await supabase
+    .from("subjects")
+    .select("code, instructor_id")
+    .eq("id", subjectId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!authorizeGradesPostedCaller({ callerId, subjectInstructorId: subject?.instructor_id ?? null })) {
+    return null;
+  }
+  return { code: subject?.code ?? null };
+}
+
+async function sendFinalGradesReleasedEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  subjectId: string | null,
+  releasesRaw: unknown,
+) {
+  if (!subjectId) throw new Error("subject_id is required");
+  const subject = await subjectOwnerContext(supabase, callerId, subjectId);
+  if (!subject) throw new Error("Not allowed");
+
+  const releases = Array.isArray(releasesRaw)
+    ? releasesRaw
+      .map((row) => {
+        const record = row && typeof row === "object" ? row as Record<string, unknown> : null;
+        const studentId = safeString(record?.student_id);
+        const grade = record?.final_grade;
+        const finalGrade = typeof grade === "number" ? grade : typeof grade === "string" ? Number(grade) : NaN;
+        if (!studentId || !Number.isFinite(finalGrade)) return null;
+        return { studentId, finalGrade };
+      })
+      .filter((row): row is { studentId: string; finalGrade: number } => !!row)
+    : [];
+  if (releases.length === 0) throw new Error("releases are required");
+
+  let sent = 0;
+  let failed = 0;
+  let duplicates = 0;
+
+  for (const release of releases) {
+    const logKey = emailLogKey(
+      "final_grade_released",
+      finalGradeReleasedLogId(subjectId, release.studentId, release.finalGrade),
+    );
+    const { data: existing } = await supabase
+      .from("email_notifications")
+      .select("id")
+      .eq("student_id", release.studentId)
+      .eq("risk_level", logKey)
+      .limit(1);
+    if ((existing ?? []).length > 0) {
+      duplicates += 1;
+      continue;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("user_id", release.studentId)
+      .maybeSingle();
+    const to = normalizeEmail(profile?.email);
+    if (!to) {
+      failed += 1;
+      continue;
+    }
+
+    const email = finalGradeReleasedEmail(subject.code, release.finalGrade);
+    const delivery = await deliverEmail({
+      alreadyLogged: false,
+      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+      log: async () => {
+        const { error: logError } = await supabase.from("email_notifications").insert({
+          student_id: release.studentId,
+          subject_id: subjectId,
+          risk_level: logKey,
+          channel: "email",
+        });
+        if (logError) throw logError;
+      },
+    });
+    if (delivery === "failed") failed += 1;
+    else if (delivery === "duplicate") duplicates += 1;
+    else sent += 1;
+  }
+
+  return json({
+    success: true,
+    sent,
+    failed,
+    duplicate: duplicates > 0 && sent === 0 && failed === 0,
+  });
+}
+
+async function sendMissingGradeEmail(
+  supabase: ReturnType<typeof createClient>,
+  callerId: string,
+  subjectId: string | null,
+  activityId: string | null,
+  studentId: string | null,
+  subjectCode: string | null,
+  message: string | null,
+) {
+  if (!subjectId) throw new Error("subject_id is required");
+  if (!activityId) throw new Error("activity_id is required");
+  if (!studentId) throw new Error("student_id is required");
+  if (!message) throw new Error("body is required");
+
+  const subject = await subjectOwnerContext(supabase, callerId, subjectId);
+  if (!subject) throw new Error("Not allowed");
+
+  const logKey = emailLogKey("missing_grade", missingGradeLogId(activityId, studentId));
+  const { data: existing } = await supabase
+    .from("email_notifications")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("risk_level", logKey)
+    .limit(1);
+  if ((existing ?? []).length > 0) {
+    return json({ success: true, mode: "single", duplicate: true });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("user_id", studentId)
+    .maybeSingle();
+  const to = normalizeEmail(profile?.email);
+  if (!to) throw new Error("Student email not found");
+
+  const email = missingGradeEmail(subjectCode ?? subject.code, message);
+  const delivery = await deliverEmail({
+    alreadyLogged: false,
+    send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+    log: async () => {
+      const { error: logError } = await supabase.from("email_notifications").insert({
+        student_id: studentId,
+        subject_id: subjectId,
+        risk_level: logKey,
+        channel: "email",
+      });
+      if (logError) throw logError;
+    },
+  });
+  if (delivery === "failed") throw new Error("Email delivery failed");
+  if (delivery === "duplicate") return json({ success: true, mode: "single", duplicate: true });
+
+  return json({ success: true, mode: "single", sent: 1 });
 }
 
 async function sendRiskFeedbackEmail(
@@ -1202,6 +1353,25 @@ serve(async (req) => {
         body?.items,
       );
     }
+    if (body?.event === "final_grade_released") {
+      return await sendFinalGradesReleasedEmail(
+        supabase,
+        user.id,
+        safeString(body?.subject_id),
+        body?.releases,
+      );
+    }
+    if (body?.event === "missing_grade") {
+      return await sendMissingGradeEmail(
+        supabase,
+        user.id,
+        safeString(body?.subject_id),
+        safeString(body?.activity_id),
+        safeString(body?.student_id),
+        safeString(body?.subject_code),
+        safeString(body?.body),
+      );
+    }
     if (body?.event === "risk_feedback") {
       return await sendRiskFeedbackEmail(supabase, user.id, safeString(body?.feedback_id));
     }
@@ -1250,13 +1420,19 @@ serve(async (req) => {
       );
     }
 
-    const { data: roleCheck } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "instructor")
-      .single();
-    if (!roleCheck) throw new Error("Only instructors can send notifications");
+    const subjectId = safeString(body?.subject_id);
+    if (subjectId) {
+      const owned = await subjectOwnerContext(supabase, user.id, subjectId);
+      if (!owned) throw new Error("Not allowed");
+    } else {
+      const { data: roleCheck } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "instructor")
+        .maybeSingle();
+      if (!roleCheck) throw new Error("Only instructors can send notifications");
+    }
     const subjectCode = safeString(body?.subject_code);
     const subjectName = safeString(body?.subject_name);
     const message = safeString(body?.body);
@@ -1318,7 +1494,6 @@ serve(async (req) => {
     const to = normalizeEmail(body?.to);
     const riskLevel = safeRiskLevel(body?.risk_level);
     const studentId = safeString(body?.student_id);
-    const subjectId = safeString(body?.subject_id);
 
     if (!to) throw new Error("to (student email) is required");
 
