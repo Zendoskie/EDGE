@@ -160,15 +160,35 @@ export function selectGradesPostedLines(input: {
   return out;
 }
 
+/** Activities in this subject with no recorded score. A stored 0 is not missing. */
+export function missingActivityTitles(input: {
+  studentId: string;
+  activities: Array<{ id: string; title: string | null }>;
+  scoreByPair: ReadonlyMap<string, number | null | undefined>;
+}): string[] {
+  const titles: string[] = [];
+  for (const activity of input.activities) {
+    const score = input.scoreByPair.get(gradesPostedLogId(activity.id, input.studentId));
+    if (score != null && Number.isFinite(score)) continue;
+    titles.push(activity.title?.trim() || "Activity");
+  }
+  return titles;
+}
+
 export function gradesPostedEmail(
   subjectCode: string | null | undefined,
   lines: Array<{ title: string; score: number }>,
+  missingTitles: string[] = [],
 ): { subject: string; html: string } {
   const code = subjectCode?.trim() || "your subject";
   const list = lines.map((line) => `${escapeHtml(line.title)}: ${line.score}`).join("<br>");
+  const missing = missingTitles.map((title) => title.trim()).filter(Boolean);
+  const missingBlock = missing.length
+    ? `<p>You have a missing grade in ${missing.map((title) => `<strong>${escapeHtml(title)}</strong>`).join(", ")}.</p>`
+    : "";
   return {
     subject: `EDGE: ${code} — Grades posted`,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A grade is now available for <strong>${escapeHtml(code)}</strong>.</p><p>${list}</p><p>Sign in to EDGE to review your scores.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A grade is now available for <strong>${escapeHtml(code)}</strong>.</p><p>${list}</p>${missingBlock}<p>Sign in to EDGE to review your scores.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
   };
 }
 
@@ -785,7 +805,8 @@ export async function deliverEmail(opts: {
   if (opts.alreadyLogged) return "duplicate";
   try {
     await opts.send();
-  } catch {
+  } catch (e) {
+    console.error(e);
     return "failed";
   }
   try {

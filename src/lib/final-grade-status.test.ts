@@ -134,6 +134,14 @@ describe('invokeReleaseFinalGrades', () => {
     expect(await invokeReleaseFinalGrades('sub-1')).toEqual({ kind: 'conflict', message: RELEASE_CONFLICT_FALLBACK });
   });
 
+  it('401 Unauthorized tells the instructor to sign in again', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(401, { error: 'Unauthorized' }) });
+    expect(await invokeReleaseFinalGrades('sub-1')).toEqual({
+      kind: 'error',
+      message: 'Your sign-in session expired. Sign in again, then release final grades.',
+    });
+  });
+
   it('other HTTP errors, unreadable error bodies and thrown errors are errors', async () => {
     invoke.mockResolvedValueOnce({ data: null, error: httpError(403, { error: 'Not the subject instructor' }) });
     expect(await invokeReleaseFinalGrades('sub-1')).toEqual({ kind: 'error', message: 'Not the subject instructor' });

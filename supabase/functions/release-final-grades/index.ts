@@ -39,6 +39,16 @@ serve(async (req) => {
     if (token) {
       const { data, error } = await supabase.auth.getUser(token);
       if (!error && data.user) userId = data.user.id;
+      // getUser requires a live session row. A still-valid access token can 403 with
+      // session_not_found while PostgREST accepts it, so the gradebook loads and this button 401s.
+      if (!userId) {
+        const auth = supabase.auth as {
+          getClaims?: (jwt: string) => Promise<{ data: { claims?: { sub?: string } } | null; error: unknown }>;
+        };
+        const claims = await auth.getClaims?.(token);
+        const sub = claims?.data?.claims?.sub;
+        if (claims && !claims.error && typeof sub === "string" && sub) userId = sub;
+      }
     }
     const body = await req.json().catch(() => null);
 

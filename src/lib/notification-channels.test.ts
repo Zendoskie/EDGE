@@ -23,6 +23,7 @@ import {
   attendanceUpdateRecipient,
   gradesPostedEmail,
   gradesPostedLogId,
+  missingActivityTitles,
   instructorFeedbackEmail,
   interventionStudentEmail,
   isRiskEmailLevel,
@@ -456,6 +457,29 @@ describe('grades_posted email', () => {
     expect(email.html).toContain('Activity A1: 16');
     expect(email.html).toContain('Midterm Exam: 45');
     expect(email.html).not.toContain('Project P1');
+    expect(missingActivityTitles({
+      studentId: student,
+      activities: [
+        { id: a1, title: 'Activity A1' },
+        { id: p1, title: 'Project P1' },
+        { id: mid, title: 'Midterm Exam' },
+        { id: 'act-zero', title: 'Quiz 0' },
+      ],
+      scoreByPair: new Map([
+        [gradesPostedLogId(a1, student), 16],
+        [gradesPostedLogId(p1, student), null],
+        [gradesPostedLogId(mid, student), 45],
+        [gradesPostedLogId('act-zero', student), 0],
+      ]),
+    })).toEqual(['Project P1']);
+    const withMissing = gradesPostedEmail(
+      'PL101',
+      lines.map((line) => ({ title: line.title, score: line.score })),
+      ['Project P1'],
+    );
+    expect(withMissing.html).toContain('Activity A1: 16');
+    expect(withMissing.html).toContain('You have a missing grade in <strong>Project P1</strong>.');
+    expect(withMissing.html).not.toContain('Project P1:');
     expect(isRiskEmailLevel(emailLogKey('grades_posted', gradesPostedLogId(a1, student)))).toBe(false);
 
     const pending = omitLoggedGradesPostedLines(lines, new Set([gradesPostedLogId(a1, student)]));

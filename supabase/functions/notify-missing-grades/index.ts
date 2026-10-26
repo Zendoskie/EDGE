@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { missingGradeAlertAllowed } from "../_shared/missing-grade.ts";
+import { sendBrevoEmailBatch } from "../_shared/brevo-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,55 +18,6 @@ function normalizeEmail(s: unknown): string | null {
   const trimmed = s.trim();
   if (!trimmed) return null;
   return trimmed;
-}
-
-async function sendBrevoEmail(opts: { to: string; subject: string; html: string }) {
-  const brevoKey = Deno.env.get("BREVO_API_KEY");
-  if (!brevoKey) throw new Error("Email not configured. Add BREVO_API_KEY to Edge Function secrets.");
-
-  const fromRaw = Deno.env.get("BREVO_FROM") || "EDGE <noreply@example.com>";
-  const match = fromRaw.match(/^(.*)<(.+)>$/);
-  const fromName = match ? match[1].trim() : "EDGE";
-  const fromEmail = match ? match[2].trim() : fromRaw;
-
-  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": brevoKey,
-    },
-    body: JSON.stringify({
-      sender: { name: fromName, email: fromEmail },
-      to: [{ email: opts.to }],
-      subject: opts.subject,
-      htmlContent: opts.html,
-    }),
-  });
-
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (result && (result.message || result.error)) ? (result.message || result.error) : `Brevo error (${res.status})`;
-    throw new Error(msg);
-  }
-  return result as { messageId?: string };
-}
-
-async function sendBrevoBatch(emails: Array<{ to: string; subject: string; html: string }>) {
-  const results: { index: number; success: boolean; error?: string }[] = [];
-
-  for (let i = 0; i < emails.length; i++) {
-    const e = emails[i];
-    try {
-      await sendBrevoEmail(e);
-      results.push({ index: i, success: true });
-    } catch (err) {
-      results.push({ index: i, success: false, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  const sent = results.filter((r) => r.success).length;
-  const errors = results.filter((r) => !r.success).map((r) => ({ index: r.index, message: r.error || "Unknown error" }));
-  return { sent, failed: errors.length, errors };
 }
 
 serve(async (req) => {
@@ -250,7 +202,7 @@ serve(async (req) => {
       ].join("");
     };
 
-    const batch = await sendBrevoBatch(
+    const batch = await sendBrevoEmailBatch(
       withEmail.map((r) => ({
         to: r.email,
         subject: emailSubject,

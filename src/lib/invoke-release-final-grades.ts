@@ -54,7 +54,9 @@ export async function invokeReleaseFinalGrades(subjectId: string): Promise<Relea
         if (ctx.status === 409 && j?.error === 'inputs_changed') {
           return { kind: 'conflict', message: j.message || RELEASE_CONFLICT_FALLBACK };
         }
-        if (j?.error) message = j.error;
+        if (j?.error === 'Unauthorized') {
+          message = 'Your sign-in session expired. Sign in again, then release final grades.';
+        } else if (j?.error) message = j.error;
       } catch {
         /* keep message */
       }

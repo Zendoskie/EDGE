@@ -437,7 +437,8 @@ describe('release-final-grades source checks', () => {
   });
 
   it('verifies the caller before running the release', () => {
-    expect(index.indexOf('auth.getUser(token)')).toBeLessThan(index.indexOf('runRelease(supabase, userId, body)'));
+    expect(index.indexOf('auth.getUser(token)')).toBeLessThan(index.indexOf('getClaims'));
+    expect(index.indexOf('getClaims')).toBeLessThan(index.indexOf('runRelease(supabase, userId, body)'));
     expect(read('supabase/config.toml')).toMatch(/\[functions\.release-final-grades\]\s*verify_jwt = false/);
   });
 
