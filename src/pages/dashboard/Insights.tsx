@@ -52,7 +52,7 @@ import {
   riskSummaryCaption,
   summarizeRiskStatuses,
 } from '@/lib/risk-scoring';
-import { averageOf } from '@/lib/weighted-grading';
+import { averageOf, gradeItemPercent } from '@/lib/weighted-grading';
 import {
   filterAttendanceBySubjectIds,
   filterPredictionsBySubjectIds,
@@ -175,7 +175,12 @@ function submissionScorePercent(sub: any): number | null {
   const act = getActivityFromSubmission(sub);
   const maxRaw = act?.max_score;
   const max = maxRaw != null && Number(maxRaw) > 0 ? Number(maxRaw) : 100;
-  return (scoreNum / max) * 100;
+  return gradeItemPercent({
+    type: act?.type,
+    assessmentType: sub?.assessment_type ?? act?.type,
+    score: scoreNum,
+    maxScore: max,
+  });
 }
 
 /** Prefer graded_at; fall back to submitted_at so trends show when instructors didn’t set graded_at */

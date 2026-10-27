@@ -81,15 +81,20 @@ describe('classifyStudentRisk', () => {
   ];
 
   it('classifies a computed 89.995 as Excelling (90.00)', () => {
-    const r = classifyStudentRisk({ items: full(89.98, 90, 90), attendancePercent: 90, weights: null });
+    // Raw scores on max 100 are transmuted (50 + raw/2); ~80 raw across buckets yields ~89.995 weighted with 90% attendance.
+    const r = classifyStudentRisk({ items: full(79.99, 79.99, 79.99), attendancePercent: 90, weights: null });
     expect(r.risk_score).toBe(90);
     expect(r.risk_level).toBe('excelling');
     expect(r.coverage.complete).toBe(true);
   });
 
   it('stores the same two-decimal value it classifies', () => {
-    const r = classifyStudentRisk({ items: full(89.6, 89.6, 89.6), attendancePercent: 89.6, weights: null });
-    expect(r.risk_score).toBe(89.6);
+    const items = full(79.06, 79.06, 79.06);
+    const expected = roundGrade2(
+      computeSubjectWeightedGrade({ items, attendancePercent: 89.6, weights: null }).weightedAverage,
+    );
+    const r = classifyStudentRisk({ items, attendancePercent: 89.6, weights: null });
+    expect(r.risk_score).toBe(expected);
     expect(r.risk_level).toBe('stable');
   });
 
@@ -110,7 +115,7 @@ describe('classifyStudentRisk', () => {
 
   it('holds Crucial at Vulnerable without full coverage', () => {
     const r = classifyStudentRisk({ items: [item('activity', 20)], attendancePercent: null, weights: null });
-    expect(r.risk_score).toBe(20);
+    expect(r.risk_score).toBe(60);
     expect(r.band).toBe('critical');
     expect(r.risk_level).toBe('at_risk');
   });
@@ -135,9 +140,9 @@ describe('classifyStudentRisk', () => {
   });
 
   it('Vulnerable and Stable bands are not changed by coverage', () => {
-    const vulnerable = classifyStudentRisk({ items: [item('activity', 77)], attendancePercent: null, weights: null });
+    const vulnerable = classifyStudentRisk({ items: [item('activity', 48)], attendancePercent: null, weights: null });
     expect(vulnerable.risk_level).toBe('at_risk');
-    const stable = classifyStudentRisk({ items: [item('activity', 85)], attendancePercent: null, weights: null });
+    const stable = classifyStudentRisk({ items: [item('activity', 60)], attendancePercent: null, weights: null });
     expect(stable.risk_level).toBe('stable');
   });
 

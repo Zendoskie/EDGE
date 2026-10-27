@@ -11,7 +11,7 @@ import {
   type ExistingPrediction,
   type PredictionValues,
 } from "../_shared/risk-scoring.ts";
-import type { GradeItem, GradeWeights } from "../_shared/weighted-grading.ts";
+import { gradeItemPercent, type GradeItem, type GradeWeights } from "../_shared/weighted-grading.ts";
 import {
   buildRiskEmail,
   isDefinitiveRiskEmail,
@@ -288,22 +288,34 @@ serve(async (req) => {
         activityMap[assessmentType].push({ score, max });
       }
 
-      const avg = (items: { score: number; max: number }[]) =>
-        items.length > 0 ? items.reduce((s, i) => s + (i.score / i.max) * 100, 0) / items.length : null;
+      const avgByType = (assessmentType: AssessmentType, items: { score: number; max: number }[]) => {
+        if (items.length === 0) return null;
+        const percents = items
+          .map((i) =>
+            gradeItemPercent({
+              type: assessmentType,
+              assessmentType,
+              score: i.score,
+              maxScore: i.max,
+            }),
+          )
+          .filter((p): p is number => p != null);
+        return percents.length > 0 ? percents.reduce((s, p) => s + p, 0) / percents.length : null;
+      };
 
       const mergeAvg = (...values: Array<number | null>) => {
         const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
         return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
       };
 
-      const quizAvg = avg(activityMap.quiz);
-      const assignmentAvg = avg(activityMap.assignment);
-      const projectScore = avg(activityMap.project);
-      const rawActivityAvg = avg(activityMap.activity);
+      const quizAvg = avgByType("quiz", activityMap.quiz);
+      const assignmentAvg = avgByType("assignment", activityMap.assignment);
+      const projectScore = avgByType("project", activityMap.project);
+      const rawActivityAvg = avgByType("activity", activityMap.activity);
       const activityAvg = mergeAvg(rawActivityAvg, assignmentAvg);
-      const labExamAvg = avg(activityMap.laboratory_exam);
-      const midtermExamAvg = avg(activityMap.midterm_exam);
-      const finalExamAvg = avg(activityMap.final_exam);
+      const labExamAvg = avgByType("laboratory_exam", activityMap.laboratory_exam);
+      const midtermExamAvg = avgByType("midterm_exam", activityMap.midterm_exam);
+      const finalExamAvg = avgByType("final_exam", activityMap.final_exam);
       const totalActivities = (activities || []).length;
       const completedActivities = studentSubs.filter((s) => s.score != null).length;
       const completionRate = totalActivities > 0 ? completedActivities / totalActivities : null;

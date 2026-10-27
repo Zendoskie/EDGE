@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, AlertCircle } from 'lucide-react';
-import { computeSubjectWeightedGrade } from '@/lib/weighted-grading';
+import { computeSubjectWeightedGrade, gradeItemPercent, GRADING_PERCENT_HELP } from '@/lib/weighted-grading';
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 import { FinalGradeBadge } from '@/components/FinalGradeBadge';
 import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
@@ -164,7 +164,13 @@ export default function MyScores() {
       pct: (() => {
         const s = getScore(a.id);
         if (s == null || a.max_score == null) return null;
-        return Math.round((Number(s) / Number(a.max_score)) * 100);
+        const p = gradeItemPercent({
+          type: a.type,
+          assessmentType: getAssessmentType(a.id) ?? a.type,
+          score: s,
+          maxScore: a.max_score,
+        });
+        return p == null ? null : Math.round(p);
       })(),
     }));
     const avg = withScores.filter(x => x.pct != null).length
@@ -213,9 +219,10 @@ export default function MyScores() {
         <CardContent>
           <div className="mb-5 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
             <p className="font-medium text-foreground">How your exact grades and averages are computed</p>
+            <p>{GRADING_PERCENT_HELP}</p>
             <p>
-              For each graded activity, the system computes a percentage using
-              <span className="font-medium text-foreground"> (score / max score) x 100</span>. Example: <span className="font-medium text-foreground">18 / 20 = 90%</span>.
+              Example (Activity, transmuted): raw <span className="font-medium text-foreground">18 / 20</span> →{' '}
+              <span className="font-medium text-foreground">95%</span> (50 + half of 90%).
             </p>
             <p>
               The <span className="font-medium text-foreground">Activity Avg</span> beside each subject is the mean of all available activity percentages in that subject:

@@ -76,8 +76,8 @@ describe('AI-down fallback uses the Phase 2 weak-area analysis', () => {
     subjectOf(
       [
         { type: 'activity', score: 80, title: 'Activity 1' },
-        { type: 'project', score: 55, title: 'Web App Project' },
-        { type: 'midterm_exam', score: 68, title: 'Midterm Exam' },
+        { type: 'project', score: 40, title: 'Web App Project' },
+        { type: 'midterm_exam', score: 45, title: 'Midterm Exam' },
         { type: 'final_exam', title: 'Final Exam', due: FUTURE },
       ],
       { present: 9, absent: 1, storedEvidence: true },
@@ -93,8 +93,8 @@ describe('AI-down fallback uses the Phase 2 weak-area analysis', () => {
     const r = res.reply;
     expect(r).toContain('temporarily unavailable');
     expect(r).toContain('Official risk classification: Crucial (risk score 60.00).');
-    expect(r).toContain('1. Project: 55.00%, effective weight 25.00% of your provisional grade. Low scores: Web App Project 55/100 (55.00%).');
-    expect(r).toContain('2. Midterm Exam: 68.00%, effective weight 35.00% of your provisional grade. Low scores: Midterm Exam 68/100 (68.00%).');
+    expect(r).toContain('1. Project: 70.00%, effective weight 25.00% of your provisional grade. Low scores: Web App Project 40/100 (70.00%).');
+    expect(r).toContain('2. Midterm Exam: 72.50%, effective weight 35.00% of your provisional grade. Low scores: Midterm Exam 45/100 (72.50%).');
     expect(r.indexOf('1. Project')).toBeLessThan(r.indexOf('2. Midterm Exam'));
     expect(r).toContain('Next step: Check the project requirements with your instructor');
     expect(r).toContain('Use them to prepare for the Final Exam.');
@@ -108,14 +108,14 @@ describe('AI-down fallback uses the Phase 2 weak-area analysis', () => {
     const ranked = analyzeWeakAreas(s, NOW).ranked.map((c) => c.label);
     expect(ranked).toEqual(['Project', 'Midterm Exam']);
     const prompt = formatStudentRecordForPrompt(recordOf(s), s, NOW);
-    expect(prompt).toContain('1. Project: 55.00%');
-    expect(prompt).toContain('2. Midterm Exam: 68.00%');
+    expect(prompt).toContain('1. Project: 70.00%');
+    expect(prompt).toContain('2. Midterm Exam: 72.50%');
   });
 
   it('separates incomplete evidence from low scores and never calls it zero', () => {
     const s = subjectOf(
       [
-        { type: 'activity', score: 60, title: 'Activity A' },
+        { type: 'activity', score: 40, title: 'Activity A' },
         { type: 'activity', title: 'Activity B', due: PAST },
         { type: 'midterm_exam', score: 70, title: 'Midterm Exam' },
         { type: 'final_exam', title: 'Final Exam', due: FUTURE },
@@ -123,7 +123,7 @@ describe('AI-down fallback uses the Phase 2 weak-area analysis', () => {
       { present: 8, absent: 2 },
     );
     const r = fallbackOf(s);
-    expect(r).toContain('Low scores: Activity A 60/100 (60.00%).');
+    expect(r).toContain('Low scores: Activity A 40/100 (70.00%).');
     expect(r).toContain(
       'Missing or not yet scored (not counted as zero): Activity B [Activity]: no score recorded and its due date has passed; Project: no assessments recorded yet (configured weight 25).',
     );
@@ -142,8 +142,8 @@ describe('AI-down fallback uses the Phase 2 weak-area analysis', () => {
       { present: 10 },
     );
     const r = fallbackOf(s);
-    expect(r).toContain('1. Project: 0.00%');
-    expect(r).toContain('Low scores: Capstone Proposal 0/100 (0.00%), a recorded score of 0.');
+    expect(r).toContain('1. Project: 50.00%');
+    expect(r).toContain('Low scores: Capstone Proposal 0/100 (50.00%), a recorded score of 0.');
     expect(r).not.toMatch(/Capstone Proposal[^\n]*not counted as zero/);
   });
 

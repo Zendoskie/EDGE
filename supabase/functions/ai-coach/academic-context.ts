@@ -11,6 +11,7 @@
 
 import {
   assessmentPercent,
+  gradeItemPercent,
   averageOf,
   computeSubjectWeightedGrade,
   DEFAULT_SUBJECT_GRADING_WEIGHTS,
@@ -776,7 +777,7 @@ export function analyzeWeakAreas(s: SubjectRecord, now: Date): WeakAreaAnalysis 
     typeLabel: a.typeLabel,
     score: a.score,
     maxScore: a.maxScore,
-    percent: assessmentPercent(a.score, a.maxScore),
+    percent: gradeItemPercent({ type: a.type, assessmentType: a.type, score: a.score, maxScore: a.maxScore }),
     effectiveWeight: null,
     dueDate: a.dueDate,
     pastDue: a.score == null && !!a.dueDate && Date.parse(a.dueDate) < now.getTime(),

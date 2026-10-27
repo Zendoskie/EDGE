@@ -204,20 +204,23 @@ describe('GradebookTable', () => {
       expect(rpc).toHaveBeenCalledWith('notify_missing_activity_grades', { p_activity_id: 'act-1' }),
     );
     expect(rpc).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith(
+    await waitFor(() => {
+      const missingCall = invoke.mock.calls.find(
+        (call) => (call[1] as { body?: { event?: string } })?.body?.event === 'missing_grade',
+      );
+      expect(missingCall).toEqual([
         'send-notification',
         expect.objectContaining({
           body: expect.objectContaining({
-            to: 'ana@example.com',
+            event: 'missing_grade',
             student_id: 's1',
             subject_id: 'sub-1',
             subject_code: 'PL101',
             body: 'You have a missing grade for Activity 1 in PL101.',
           }),
         }),
-      ),
-    );
+      ]);
+    });
     const missingCalls = invoke.mock.calls.filter((call) =>
       String((call[1] as { body?: { body?: string } })?.body?.body ?? '').includes('missing grade'),
     );

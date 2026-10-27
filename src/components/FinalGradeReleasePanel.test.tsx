@@ -56,9 +56,11 @@ function renderPanel(props: Partial<Parameters<typeof FinalGradeReleasePanel>[0]
 
 async function confirmRelease() {
   fireEvent.click(await screen.findByRole('button', { name: /release final grades/i }));
-  expect(await screen.findByText(/The preview shows 2 of 3 students complete/)).toBeTruthy();
+  expect(await screen.findByText(/Release final grades for 2 of 3 enrolled students/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /^release$/i }));
 }
+
+const defaultStudentIds = ['s1', 's2'];
 
 beforeEach(() => {
   invoke.mockReset();
@@ -95,7 +97,7 @@ describe('FinalGradeReleasePanel', () => {
         outcome: 'partial',
         released: 1,
         unchanged: 1,
-        incomplete: [{ student_id: 's3', missing: [{ kind: 'attendance_missing' }] }],
+        incomplete: [],
         not_enrolled: [],
       },
       error: null,
@@ -103,10 +105,11 @@ describe('FinalGradeReleasePanel', () => {
     const { invalidate } = renderPanel();
     await confirmRelease();
     expect(await screen.findByText('Some final grades were released')).toBeTruthy();
-    expect(screen.getByText(/1 released, 1 already final and unchanged, 1 incomplete, 0 not enrolled\./)).toBeTruthy();
-    expect(screen.getAllByText('Cara Lim').length).toBe(2);
+    expect(screen.getByText(/1 released, 1 already final and unchanged, 0 incomplete among selected/)).toBeTruthy();
     expect(invoke).toHaveBeenCalledTimes(1);
-    expect(invoke).toHaveBeenCalledWith('release-final-grades', { body: { subject_id: 'sub-1' } });
+    expect(invoke).toHaveBeenCalledWith('release-final-grades', {
+      body: { subject_id: 'sub-1', student_ids: defaultStudentIds },
+    });
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['final-grade-releases', 'subject', 'sub-1'] });
   });
@@ -141,7 +144,7 @@ describe('FinalGradeReleasePanel', () => {
     invoke.mockResolvedValueOnce({ data: { outcome: 'all_released' }, error: null });
     await confirmRelease();
     expect(await screen.findByText(/unexpected response/)).toBeTruthy();
-    expect(screen.queryByText(/Every enrolled student has a released final grade/)).toBeNull();
+    expect(screen.queryByText(/Every selected student has a released final grade/)).toBeNull();
     expect(invoke).toHaveBeenCalledTimes(2);
   });
 
@@ -158,7 +161,7 @@ describe('FinalGradeReleasePanel', () => {
       data: { subject_id: 'sub-1', outcome: 'all_released', released: 3, unchanged: 0, incomplete: [], not_enrolled: [] },
       error: null,
     });
-    expect(await screen.findByText('Every enrolled student has a released final grade')).toBeTruthy();
+    expect(await screen.findByText('Every selected student has a released final grade')).toBeTruthy();
   });
 
   it('disables release while the gradebook has unsaved drafts', async () => {
@@ -173,16 +176,62 @@ describe('FinalGradeReleasePanel', () => {
 
   it('30 students: one release request and one status read', async () => {
     const many = Array.from({ length: 30 }, (_, i) => ({ id: `s${i}`, name: `Student ${i}` }));
+    const manyPreview = new Map(
+      many.map((s) => [s.id, { complete: true, missing: [], provisionalGrade: 80 }] as const),
+    );
     invoke.mockResolvedValue({
       data: { subject_id: 'sub-1', outcome: 'all_released', released: 30, unchanged: 0, incomplete: [], not_enrolled: [] },
       error: null,
     });
-    renderPanel({ students: many, preview: null });
+    renderPanel({ students: many, preview: manyPreview });
     await waitFor(() => expect(fromCalls).toHaveLength(1));
     fireEvent.click(await screen.findByRole('button', { name: /release final grades/i }));
     fireEvent.click(await screen.findByRole('button', { name: /^release$/i }));
-    expect(await screen.findByText('Every enrolled student has a released final grade')).toBeTruthy();
+    expect(await screen.findByText('Every selected student has a released final grade')).toBeTruthy();
     expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0][1].body.student_ids).toHaveLength(30);
     await waitFor(() => expect(fromCalls).toHaveLength(2));
+  });
+
+  it('checks complete students by default and leaves incomplete students disabled', async () => {
+    renderPanel();
+    expect((await screen.findByLabelText('Include Ana Cruz in final grade release')).getAttribute('data-state')).toBe(
+      'checked',
+    );
+    expect(screen.getByLabelText('Include Ben Diaz in final grade release').getAttribute('data-state')).toBe('checked');
+    const cara = screen.getByLabelText('Include Cara Lim in final grade release');
+    expect(cara.getAttribute('data-state')).toBe('unchecked');
+    expect((cara as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('sends only selected student ids when a complete student is excluded', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        subject_id: 'sub-1',
+        outcome: 'all_released',
+        released: 1,
+        unchanged: 0,
+        incomplete: [],
+        not_enrolled: [],
+      },
+      error: null,
+    });
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Include Ben Diaz in final grade release'));
+    fireEvent.click(await screen.findByRole('button', { name: /release final grades/i }));
+    expect(await screen.findByText(/1 complete student excluded/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^release$/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    expect(invoke).toHaveBeenCalledWith('release-final-grades', {
+      body: { subject_id: 'sub-1', student_ids: ['s1'] },
+    });
+  });
+
+  it('disables release when no students are selected', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: /clear selection/i }));
+    expect(((await screen.findByRole('button', { name: /release final grades/i })) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 });

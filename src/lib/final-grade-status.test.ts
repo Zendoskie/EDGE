@@ -112,12 +112,20 @@ describe('invokeReleaseFinalGrades', () => {
       context: new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }),
     });
 
-  it('sends only the subject id, once', async () => {
+  it('sends only the subject id when no student list is passed', async () => {
     invoke.mockResolvedValue({ data: okBody, error: null });
     const res = await invokeReleaseFinalGrades('sub-1');
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith('release-final-grades', { body: { subject_id: 'sub-1' } });
     expect(res).toEqual({ kind: 'ok', body: okBody });
+  });
+
+  it('sends student_ids when an inclusion list is provided', async () => {
+    invoke.mockResolvedValue({ data: okBody, error: null });
+    await invokeReleaseFinalGrades('sub-1', { studentIds: ['s1', 's2'] });
+    expect(invoke).toHaveBeenCalledWith('release-final-grades', {
+      body: { subject_id: 'sub-1', student_ids: ['s1', 's2'] },
+    });
   });
 
   it('409 inputs_changed is a conflict with the server message and no retry', async () => {

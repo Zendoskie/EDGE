@@ -68,13 +68,39 @@ export const isExamType = (v: string | null | undefined) => !!v && EXAM_TYPES.ha
 export const isMidtermSideType = (v: string | null | undefined) => !!v && MIDTERM_SIDE_TYPES.has(v);
 export const isFinalExamType = (v: string | null | undefined) => !!v && FINAL_EXAM_TYPES.has(v);
 
-/** Unrounded score percentage, or null for a missing score or an invalid max score. Zero is a grade. */
-export function assessmentPercent(score: unknown, maxScore: unknown): number | null {
+export const TRANSMUTATION_BASE = 50;
+
+/** Linear (score / max) × 100, or null for a missing score or invalid max. Zero is a grade. */
+export function linearAssessmentPercent(score: unknown, maxScore: unknown): number | null {
   if (score == null || maxScore == null) return null;
   const s = Number(score);
   const m = Number(maxScore);
   if (!Number.isFinite(s) || !Number.isFinite(m) || m <= 0) return null;
   return (s / m) * 100;
+}
+
+export const assessmentPercent = linearAssessmentPercent;
+
+/** Base-50 transmutation: 50 + linear/2 (raw 0 → 50, raw max → 100). */
+export function transmutedAssessmentPercent(score: unknown, maxScore: unknown): number | null {
+  const linear = linearAssessmentPercent(score, maxScore);
+  if (linear == null) return null;
+  return TRANSMUTATION_BASE + linear / 2;
+}
+
+export function usesTransmutation(type: string | null | undefined): boolean {
+  if (!type) return false;
+  if (type === "activity") return true;
+  if (isProjectType(type)) return true;
+  if (isFinalExamType(type)) return true;
+  if (isMidtermSideType(type)) return true;
+  return false;
+}
+
+export function gradeItemPercent(item: GradeItem): number | null {
+  const type = item.assessmentType || item.type;
+  if (usesTransmutation(type)) return transmutedAssessmentPercent(item.score, item.maxScore);
+  return linearAssessmentPercent(item.score, item.maxScore);
 }
 
 /**
@@ -111,7 +137,7 @@ export function computeSubjectWeightedGrade(input: {
   const final: number[] = [];
 
   for (const item of input.items) {
-    const pct = assessmentPercent(item.score, item.maxScore);
+    const pct = gradeItemPercent(item);
     if (pct == null) continue;
     const type = item.assessmentType || item.type;
     if (isCourseworkType(type)) activity.push(pct);

@@ -995,9 +995,9 @@ function SubjectActivities({ subjectId, userId }: { subjectId: string; userId?: 
         <div className="mx-4 mb-3 rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
           <p className="font-medium text-foreground">How grading percentages and struggle signals work</p>
           <p>
-            Per-student activity percentage is calculated as
-            <span className="font-medium text-foreground"> (entered score / activity max score) x 100</span>.
-            Example: score <span className="font-medium text-foreground">35</span> out of <span className="font-medium text-foreground">50</span> gives <span className="font-medium text-foreground">70%</span>.
+            Per-assessment grade percent uses base-50 transmutation for Activity, Project, and Exams (raw 0 → 50%, max → 100%).
+            Example Activity: score <span className="font-medium text-foreground">35</span> / <span className="font-medium text-foreground">50</span> →{' '}
+            <span className="font-medium text-foreground">85%</span> transmuted (not 70% linear). Quiz/assignment rows stay linear.
           </p>
           <p>
             Subject-level trends are built from these percentages across activities. When several low percentages appear over time

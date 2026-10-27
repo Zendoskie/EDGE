@@ -35,12 +35,23 @@ function parseReleaseBody(data: unknown): ReleaseResponse | null {
   return data as ReleaseResponse;
 }
 
+export type InvokeReleaseOptions = {
+  /** Inclusion whitelist; only these enrolled students are evaluated and released. */
+  studentIds?: string[];
+};
+
 /** One call to release-final-grades. Never retries: a stale release must be rechecked by the instructor. */
-export async function invokeReleaseFinalGrades(subjectId: string): Promise<ReleaseCallResult> {
+export async function invokeReleaseFinalGrades(
+  subjectId: string,
+  options?: InvokeReleaseOptions,
+): Promise<ReleaseCallResult> {
+  const requestBody: { subject_id: string; student_ids?: string[] } = { subject_id: subjectId };
+  if (options?.studentIds) requestBody.student_ids = options.studentIds;
+
   let data: unknown;
   let error: unknown;
   try {
-    ({ data, error } = await supabase.functions.invoke('release-final-grades', { body: { subject_id: subjectId } }));
+    ({ data, error } = await supabase.functions.invoke('release-final-grades', { body: requestBody }));
   } catch (e) {
     return { kind: 'error', message: e instanceof Error ? e.message : 'The release request failed.' };
   }

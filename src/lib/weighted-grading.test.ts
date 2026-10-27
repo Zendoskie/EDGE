@@ -8,8 +8,12 @@ import {
   computeSubjectWeightedGrade,
   computeWeightedGrade,
   formatGradePercent,
+  gradeItemPercent,
+  linearAssessmentPercent,
   roundGrade2,
   sameGradingWeights,
+  transmutedAssessmentPercent,
+  usesTransmutation,
 } from './weighted-grading';
 import { GRADE_CASES, attendancePercentOf } from './weighted-grading.fixtures';
 
@@ -48,9 +52,9 @@ describe('weighted grading', () => {
     expect(share).toBeCloseTo(8.3333, 4);
   });
 
-  it('normalizes scores and treats zero as a grade, never dividing by zero', () => {
-    expect(assessmentPercent(45, 50)).toBe(90);
-    expect(assessmentPercent(0, 50)).toBe(0);
+  it('normalizes linear scores and treats zero as a grade, never dividing by zero', () => {
+    expect(linearAssessmentPercent(45, 50)).toBe(90);
+    expect(linearAssessmentPercent(0, 50)).toBe(0);
     expect(assessmentPercent(null, 50)).toBeNull();
     expect(assessmentPercent(undefined, 50)).toBeNull();
     expect(assessmentPercent(10, 0)).toBeNull();
@@ -58,6 +62,22 @@ describe('weighted grading', () => {
     expect(assessmentPercent(10, null)).toBeNull();
     expect(assessmentPercent(Number.NaN, 50)).toBeNull();
     expect(assessmentPercent(10, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  it('applies base-50 transmutation for activity, project, and exams', () => {
+    expect(transmutedAssessmentPercent(0, 50)).toBe(50);
+    expect(transmutedAssessmentPercent(50, 50)).toBe(100);
+    expect(transmutedAssessmentPercent(45, 50)).toBe(95);
+    expect(usesTransmutation('activity')).toBe(true);
+    expect(usesTransmutation('project')).toBe(true);
+    expect(usesTransmutation('midterm_exam')).toBe(true);
+    expect(usesTransmutation('quiz')).toBe(false);
+    expect(
+      gradeItemPercent({ type: 'quiz', score: 0, maxScore: 50 }),
+    ).toBe(0);
+    expect(
+      gradeItemPercent({ type: 'activity', score: 0, maxScore: 50 }),
+    ).toBe(50);
   });
 
   it('splits the Exam category only once a Final score exists', () => {

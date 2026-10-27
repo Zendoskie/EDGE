@@ -26,6 +26,7 @@ import { publishMissingGradeAlerts } from '@/lib/missing-grade-notifications';
 import { recalculateSubjectRisk } from '@/lib/recalculate-risk';
 import { subjectReleaseKey } from '@/lib/final-grade-freshness';
 import { missingItemLabel } from '@/lib/final-grade-status';
+import { gradeItemPercent } from '@/lib/weighted-grading';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { FinalGradeReleasePanel, type ReleasePreview } from '@/components/FinalGradeReleasePanel';
 import {
@@ -149,6 +150,17 @@ export function GradebookTable({
       scores[key] = row.score;
     }
     return scores;
+  }, [submissions]);
+
+  const savedAssessmentTypes = useMemo(() => {
+    const types: Record<string, string | null> = {};
+    for (const row of submissions) {
+      if (!row.student_id || !row.activity_id) continue;
+      const key = gradeCellKey(row.student_id, row.activity_id);
+      if (key in types) continue;
+      types[key] = row.assessment_type;
+    }
+    return types;
   }, [submissions]);
 
   const enrolledIds = useMemo(() => students.map((student) => student.student_id), [students]);
@@ -416,7 +428,14 @@ export function GradebookTable({
                         {invalid
                           ? classified.message
                           : classified.status === 'valid'
-                            ? `${((classified.score / activity.maxScore) * 100).toFixed(1)}%`
+                            ? `${(
+                                gradeItemPercent({
+                                  type: activity.type,
+                                  assessmentType: savedAssessmentTypes[key] ?? activity.type,
+                                  score: classified.score,
+                                  maxScore: activity.maxScore,
+                                }) ?? 0
+                              ).toFixed(1)}%`
                             : 'Missing'}
                       </p>
                     </TableCell>

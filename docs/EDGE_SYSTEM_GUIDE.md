@@ -71,7 +71,11 @@ Rounding: `roundGrade2` uses half-up style at two decimals (e.g. 89.995 → 90.0
 
 Per subject (`computeSubjectWeightedGrade` in `src/lib/weighted-grading.ts`):
 
-1. Each assessment score is converted to a **percentage** of max score (`assessmentPercent`). **Missing score (`null`) is omitted**; **zero is a valid grade**.
+1. Each assessment score is converted to a **grade percentage** for weighting (`gradeItemPercent`), using the activity’s type (and submission `assessment_type` when present):
+   - **Base-50 transmutation** (raw score stays in the database): `activity`, `project`, `midterm_exam`, `final_exam`, and legacy midterm-side types (`exam`, `laboratory_exam`). Formula: `50 + (score ÷ max) × 50` (so raw 0 → 50%, raw max → 100%).
+   - **Linear percent**: `quiz`, `assignment`, and other coursework types use `(score ÷ max) × 100`.
+   - **`assessmentPercent`** remains an alias for the linear formula where callers only need “has a valid numeric score.”
+   - **Missing score (`null`) is omitted**; **zero is a valid grade** (transmuted types record zero raw as 50%).
 2. Assessments are grouped into categories by type:
    - **Activities** (coursework types)
    - **Projects**
@@ -104,6 +108,12 @@ Risk **classification** can be stored while evidence is incomplete. `riskDisplay
 **Engagement:** Separate engagement summaries and cron-driven scans (`scan-engagement`, see deploy checklist) can drive inbox alerts and counselor views. They are **not** substitutes for the four-band classification unless a future migration explicitly wires them in (not evidenced for banding today).
 
 **Student feedback:** `comprehension_rating` is derived in `predict-risk` from quiz/activity averages and recent feedback reasons; it is stored on predictions and may inform recommendation text, but it does **not** change the 90/80/75 thresholds.
+
+### 2.4.1 Final grade release (instructor)
+
+- Saved gradebook scores stay in `submissions`; **release** writes a row to `final_grade_releases` so students and parents see **Final** instead of **Provisional**.
+- In the gradebook release panel, instructors choose **which complete students to include** in each run (unchecked students are **excluded** for that session only). Excluded learners keep all recorded scores and remain Provisional until included in a later release.
+- The `release-final-grades` Edge Function accepts an optional `student_ids` inclusion whitelist; omitted means all active enrollments.
 
 ### 2.5 When classification is calculated or refreshed
 

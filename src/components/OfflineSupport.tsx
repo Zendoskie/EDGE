@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { usePWA } from '@/hooks/usePWA';
+import { gradeItemPercent } from '@/lib/weighted-grading';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -167,7 +168,15 @@ export default function OfflineSupport() {
     const total = validScores.reduce((sum, s) => {
       const maxScore = s.activities?.max_score || 100;
       const score = s.score ?? 0;
-      return sum + (score / maxScore) * 100;
+      return (
+        sum +
+        (gradeItemPercent({
+          type: s.activities?.type,
+          assessmentType: s.assessment_type ?? s.activities?.type,
+          score,
+          maxScore,
+        }) ?? 0)
+      );
     }, 0);
     
     return Math.round(total / validScores.length);

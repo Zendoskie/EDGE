@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RiskBadge } from '@/components/RiskBadge';
 import { riskDisplayStatus } from '@/lib/risk-scoring';
-import type { SubjectGradingWeights } from '@/lib/weighted-grading';
+import { gradeItemPercent, GRADING_PERCENT_HELP, type SubjectGradingWeights } from '@/lib/weighted-grading';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -461,7 +461,16 @@ export default function StudentDashboard() {
                             ) : null}
                           </div>
                           <Badge variant="secondary" className="shrink-0">
-                            {s.score != null ? `${Math.round((Number(s.score) / Number(maxScore)) * 100)}%` : '—'}
+                            {s.score != null
+                              ? `${Math.round(
+                                  gradeItemPercent({
+                                    type: act?.type,
+                                    assessmentType: s.assessment_type ?? act?.type,
+                                    score: s.score,
+                                    maxScore,
+                                  }) ?? 0,
+                                )}%`
+                              : '—'}
                           </Badge>
                         </li>
                       );
@@ -494,7 +503,7 @@ export default function StudentDashboard() {
               <CollapsibleContent>
                 <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
                   <p>
-                    Activity percentages are computed as <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                    {GRADING_PERCENT_HELP}
                   </p>
                   <p>
                     For each subject, your instructor can configure a grading system that must total 100%:

@@ -9,7 +9,7 @@ import {
   resolveStudentRiskSummary,
 } from '@/lib/student-performance-scope';
 import { PREDICTION_EVIDENCE_COLUMNS, type RiskEvidenceRow } from '@/lib/risk-scoring';
-import type { SubjectGradingWeights } from '@/lib/weighted-grading';
+import { gradeItemPercent, type SubjectGradingWeights } from '@/lib/weighted-grading';
 import {
   buildStudentCoachingContext,
   formatAtRiskSubjectLabels,
@@ -174,11 +174,21 @@ async function loadSnapshot(
   let overallAvg: number | null = null;
   if (subs.length) {
     const weighted: number[] = [];
-    subs.forEach((s: { score?: number | null; activities?: { max_score?: number } | null }) => {
-      const max = s.activities && typeof s.activities === 'object' && 'max_score' in s.activities
-        ? s.activities.max_score
-        : 100;
-      if (s.score != null && max) weighted.push((Number(s.score) / Number(max)) * 100);
+    subs.forEach((s: {
+      score?: number | null;
+      assessment_type?: string | null;
+      activities?: { max_score?: number; type?: string } | null;
+    }) => {
+      const act = s.activities && typeof s.activities === 'object' ? s.activities : null;
+      const max = act && 'max_score' in act ? act.max_score : 100;
+      if (s.score == null || !max) return;
+      const pct = gradeItemPercent({
+        type: act?.type,
+        assessmentType: s.assessment_type ?? act?.type,
+        score: s.score,
+        maxScore: max,
+      });
+      if (pct != null) weighted.push(pct);
     });
     overallAvg = weighted.length ? Math.round(weighted.reduce((a, b) => a + b, 0) / weighted.length) : null;
   }

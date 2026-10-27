@@ -283,8 +283,8 @@ const TABLES = {
     ...[ACT, PROJ, MID].map((a) => subRow(S2, a, 50)), // S2 has no Final row
   ],
 };
-// Default weights; Activity 80, Project 80, Exam (80 + 80) / 2 = 80, attendance 100.
-const S1_GRADE = 83;
+// Default weights; transmuted percents from ACT 40/50, PROJ/MID/FIN 80/100, attendance 100.
+const S1_GRADE = 91.5;
 
 describe('runRelease', () => {
   it('returns 401 without a verified user and makes no query', async () => {
@@ -378,7 +378,7 @@ describe('runRelease', () => {
   it('makes no RPC call when every complete student is already released unchanged', async () => {
     const f = fakeDb({
       subject: ownedSubject(),
-      tables: { ...TABLES, final_grade_releases: [{ student_id: S1, final_grade: '83.00', weights: W, status: 'released' }] },
+      tables: { ...TABLES, final_grade_releases: [{ student_id: S1, final_grade: '91.50', weights: W, status: 'released' }] },
     });
     const res = await runRelease(f.db, USER, { subject_id: SUBJECT });
     expect(f.rpcCalls).toHaveLength(0);

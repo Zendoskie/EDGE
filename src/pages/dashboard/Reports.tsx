@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { formatAssessmentTypeLabel } from '@/lib/assessment-types';
 
 import { PREDICTION_EVIDENCE_COLUMNS, riskDisplayStatus } from '@/lib/risk-scoring';
-import { averageOf } from '@/lib/weighted-grading';
+import { averageOf, gradeItemPercent } from '@/lib/weighted-grading';
 import { RiskBadge } from '@/components/RiskBadge';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { engagementLabel, canonicalEngagementLevel, formatActivityTypeLabel } from '@/lib/engagement-utils';
@@ -104,7 +104,13 @@ export default function Reports() {
             for (const sub of studentSubs) {
               const act = activities?.find((a) => a.id === sub.activity_id);
               if (!act || sub.score == null) continue;
-              const pct = (sub.score / act.max_score) * 100;
+              const pct = gradeItemPercent({
+                type: act.type,
+                assessmentType: sub.assessment_type ?? act.type,
+                score: sub.score,
+                maxScore: act.max_score,
+              });
+              if (pct == null) continue;
               if (act.type === 'quiz') quizScores.push(pct);
               else if (act.type === 'assignment' || act.type === 'project') assignScores.push(pct);
             }
@@ -202,7 +208,14 @@ export default function Reports() {
       const prof = profiles.find((p) => p.user_id === sub.student_id);
       const act = activitiesList.find((a) => a.id === sub.activity_id);
       const max = act?.max_score ?? null;
-      const pct = max ? (Number(sub.score) / Number(max)) * 100 : null;
+      const pct = max
+        ? gradeItemPercent({
+            type: act?.type,
+            assessmentType: sub.assessment_type ?? act?.type,
+            score: sub.score,
+            maxScore: max,
+          })
+        : null;
       records.push({
         student_id: sub.student_id,
         full_name: prof?.full_name ?? '—',

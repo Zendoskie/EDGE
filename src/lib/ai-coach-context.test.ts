@@ -145,13 +145,21 @@ describe('A. actual quiz score question', () => {
 describe('B. current subject grade', () => {
   it('returns the Phase 1 weighted grade, labelled provisional, not an AI formula', async () => {
     const pl = record.subjects.find((s) => s.code === 'PL101')!;
-    const expected = officialComputeWeightedGrade({
-      activityAverage: officialAverageOf([82, 60, 90]),
-      projectAverage: null,
+    const expected = officialComputeSubjectWeightedGrade({
+      items: input.activities
+        .filter((a) => a.subject_id === 'pl')
+        .map((a) => {
+          const sub = input.submissions.find((s) => s.activity_id === a.id);
+          return {
+            type: a.type,
+            assessmentType: sub?.assessment_type ?? a.type,
+            score: sub?.score ?? null,
+            maxScore: a.max_score,
+          };
+        }),
       attendancePercent: (9 / 12) * 100,
-      examAverage: 75,
       weights: input.gradingSystems[0],
-    })!;
+    }).weightedAverage!;
     expect(pl.provisionalGrade).toBeCloseTo(expected, 10);
 
     const { deps, callModel } = makeDeps();
@@ -860,7 +868,7 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   });
 
   it('1. flags 74% as below the benchmark (above the old 70% cut-off)', () => {
-    const s = subjectOf([{ type: 'activity', score: 74, title: 'Lab Activity 3' }]);
+    const s = subjectOf([{ type: 'activity', score: 48, title: 'Lab Activity 3' }]);
     const a = analyzeWeakAreas(s, NOW);
     expect(comp(a, 'activity').gap).toBeCloseTo(1, 10);
     expect(a.ranked.map((c) => c.key)).toEqual(['activity']);
@@ -869,7 +877,7 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   });
 
   it('2. does not flag exactly 75%', () => {
-    const s = subjectOf([{ type: 'activity', score: 75 }]);
+    const s = subjectOf([{ type: 'activity', score: 50 }]);
     const a = analyzeWeakAreas(s, NOW);
     expect(comp(a, 'activity').gap).toBe(0);
     expect(a.ranked).toEqual([]);
@@ -882,11 +890,11 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   it('3. treats a score of zero as real evidence', () => {
     const s = subjectOf([{ type: 'project', score: 0, title: 'Capstone Proposal' }, { type: 'activity', score: 90 }]);
     const a = analyzeWeakAreas(s, NOW);
-    expect(comp(a, 'project').percent).toBe(0);
-    expect(comp(a, 'project').gap).toBe(75);
+    expect(comp(a, 'project').percent).toBe(50);
+    expect(comp(a, 'project').gap).toBe(25);
     expect(a.ranked[0].key).toBe('project');
-    expect(a.belowBenchmarkAssessments[0]).toMatchObject({ title: 'Capstone Proposal', percent: 0, gap: 75 });
-    expect(promptOf(s)).toContain('Capstone Proposal 0/100 (0.00%)');
+    expect(a.belowBenchmarkAssessments[0]).toMatchObject({ title: 'Capstone Proposal', percent: 50, gap: 25 });
+    expect(promptOf(s)).toContain('Capstone Proposal 0/100 (50.00%)');
   });
 
   it('4. never turns a missing or null score into zero or a low-score weakness', () => {
@@ -898,7 +906,7 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     ]);
     const a = analyzeWeakAreas(s, NOW);
     const act = comp(a, 'activity');
-    expect(act.percent).toBe(90);
+    expect(act.percent).toBe(95);
     expect(act.scored).toHaveLength(1);
     expect(act.unscored.map((x) => x.percent)).toEqual([null, null]);
     expect(comp(a, 'project')).toMatchObject({ percent: null, effectiveWeight: null, gap: null, priority: null });
@@ -918,9 +926,9 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   it('5. ranks weaknesses by effective weight x gap', () => {
     const s = subjectOf(
       [
-        { type: 'activity', score: 70 },
-        { type: 'project', score: 50 },
-        { type: 'midterm_exam', score: 60 },
+        { type: 'activity', score: 40 },
+        { type: 'project', score: 0 },
+        { type: 'midterm_exam', score: 20 },
       ],
       { present: 10 },
     );
@@ -974,7 +982,7 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     expect(comp(a, 'final')).toMatchObject({ percent: null, effectiveWeight: null, priority: null });
     expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
     const p = promptOf(s);
-    expect(p).toContain('- Midterm Exam: SCORED, 60.00% (effective weight 35.00% of the provisional grade; the full Exam weight because no Final Exam score is recorded)');
+    expect(p).toContain('- Midterm Exam: SCORED, 80.00% (effective weight 35.00% of the provisional grade; the full Exam weight because no Final Exam score is recorded)');
     expect(p).toContain('- Final Exam: PENDING, no score recorded. It is not a zero.');
     expect(p).not.toContain('Final Exam: SCORED');
   });
@@ -992,8 +1000,8 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     const a = analyzeWeakAreas(s, NOW);
     expect(comp(a, 'midterm').effectiveWeight).toBeCloseTo(17.5, 10);
     expect(comp(a, 'final').effectiveWeight).toBeCloseTo(17.5, 10);
-    expect(comp(a, 'final').percent).toBe(0);
-    expect(a.ranked[0]).toMatchObject({ key: 'final', priority: expect.closeTo(13.125, 10) });
+    expect(comp(a, 'final').percent).toBe(50);
+    expect(a.ranked[0]).toMatchObject({ key: 'final', priority: expect.closeTo(4.375, 10) });
     expect(rebuiltGrade(a)).toBeCloseTo(s.provisionalGrade!, 10);
   });
 
@@ -1004,14 +1012,14 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     ]);
     const p = promptOf(s);
     expect(p).toContain('Exam records (Midterm and Final are separate):');
-    expect(p).toContain('- Midterm Exam: SCORED, 80.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Midterm Exam 40/50 (80.00%), weight 50.00%.');
-    expect(p).toContain('- Final Exam: SCORED, 50.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Final Exam 30/60 (50.00%), weight 50.00%.');
-    expect(p).toContain('exam combined 65%');
+    expect(p).toContain('- Midterm Exam: SCORED, 90.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Midterm Exam 40/50 (90.00%), weight 50.00%.');
+    expect(p).toContain('- Final Exam: SCORED, 75.00% (effective weight 50.00% of the provisional grade; half of the Exam weight because both Midterm and Final are scored). Assessments: Final Exam 30/60 (75.00%), weight 50.00%.');
+    expect(p).toContain('exam combined 83%');
   });
 
   it('10. different weakness profiles produce different ranked evidence', () => {
     const projectWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 45 }, { type: 'midterm_exam', score: 80 }], { present: 10 });
-    const midtermWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 88 }, { type: 'midterm_exam', score: 52 }], { present: 10 });
+    const midtermWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 88 }, { type: 'midterm_exam', score: 48 }], { present: 10 });
     const attendanceWeak = subjectOf([{ type: 'activity', score: 85 }, { type: 'project', score: 88 }, { type: 'midterm_exam', score: 80 }], { present: 4, absent: 6 });
     const first = [projectWeak, midtermWeak, attendanceWeak].map((s) => analyzeWeakAreas(s, NOW).ranked.map((c) => c.key));
     expect(first).toEqual([['project'], ['midterm'], ['attendance']]);
@@ -1021,14 +1029,14 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   });
 
   it('11. custom subject weights change the priorities', () => {
-    const items: Item[] = [{ type: 'activity', score: 100 }, { type: 'project', score: 50 }, { type: 'midterm_exam', score: 60 }];
+    const items: Item[] = [{ type: 'activity', score: 100 }, { type: 'project', score: 48 }, { type: 'midterm_exam', score: 48 }];
     const byDefault = analyzeWeakAreas(subjectOf(items, { present: 10 }), NOW);
     const examHeavy = subjectOf(items, { present: 10, weights: { activity_weight: 15, project_weight: 10, attendance_weight: 15, exam_weight: 60 } });
     const custom = analyzeWeakAreas(examHeavy, NOW);
-    expect(byDefault.ranked.map((c) => c.key)).toEqual(['project', 'midterm']);
+    expect(byDefault.ranked.map((c) => c.key)).toEqual(['midterm', 'project']);
     expect(custom.ranked.map((c) => c.key)).toEqual(['midterm', 'project']);
-    expect(comp(custom, 'midterm').priority).toBeCloseTo(9, 10);
-    expect(comp(custom, 'project').priority).toBeCloseTo(2.5, 10);
+    expect(comp(custom, 'midterm').priority).toBeCloseTo(0.6, 10);
+    expect(comp(custom, 'project').priority).toBeCloseTo(0.1, 10);
     expect(rebuiltGrade(custom)).toBeCloseTo(examHeavy.provisionalGrade!, 10);
   });
 
@@ -1049,7 +1057,7 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
   });
 
   it('13. gives a Crucial student the ranked evidence and the coaching rules, with no extra query', async () => {
-    const s = subjectOf([{ type: 'activity', score: 80 }, { type: 'project', score: 55, title: 'Web App Project' }, { type: 'midterm_exam', score: 68 }], { present: 9, absent: 1 });
+    const s = subjectOf([{ type: 'activity', score: 80 }, { type: 'project', score: 40, title: 'Web App Project' }, { type: 'midterm_exam', score: 45 }], { present: 9, absent: 1 });
     const rec: StudentRecord = { subjects: [s], engagement: null, riskAvailable: true };
     const { deps, callModel } = makeDeps({ loadRecord: vi.fn(async () => rec) });
     const res = await runCoachChat(deps, [user('How can I improve in WK101?')]);
@@ -1058,8 +1066,8 @@ describe('Phase 2 coaching: weighted weak-area priority', () => {
     expect(callModel).toHaveBeenCalledTimes(1);
     const system = callModel.mock.calls[0][0] as string;
     expect(system).toContain('Official risk classification: Crucial');
-    expect(system).toMatch(/1\. Project: 55\.00% from 1 scored of 1 \(effective weight 25\.00%[^\n]*Low sources: Web App Project 55\/100 \(55\.00%\)/);
-    expect(system).toContain('2. Midterm Exam: 68.00%');
+    expect(system).toMatch(/1\. Project: 70\.00% from 1 scored of 1 \(effective weight 25\.00%[^\n]*Low sources: Web App Project 40\/100 \(70\.00%\)/);
+    expect(system).toContain('2. Midterm Exam: 72.50%');
     expect(system).toContain("Address them in the listed order, starting with priority 1");
     expect(system).toContain('When the official risk classification is Crucial, lead with the priority 1 area');
     expect(system).toContain("Items under 'Incomplete or missing evidence' are not low scores");

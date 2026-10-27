@@ -29,6 +29,7 @@ import {
 import { riskLabel, riskChartColor, RISK_LEVEL_ORDER, canonicalRiskLevel } from '@/lib/risk-utils';
 import { KpiCard } from '@/components/shell/KpiCard';
 import { fetchInstructorCourseBundle, instructorCourseBundleKey } from '@/lib/instructor-course-bundle';
+import { gradeItemPercent, GRADING_PERCENT_HELP } from '@/lib/weighted-grading';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { InstructorFeedbackSummary } from '@/pages/dashboard/InstructorFeedback';
 import { countPendingEngagementFeedback } from '@/lib/instructor-feedback';
@@ -330,7 +331,13 @@ export default function InstructorDashboard() {
         const max = Number(activity?.max_score ?? 0);
         if (typeof studentId !== 'string' || typeof subjectId !== 'string') continue;
         if (score == null || !Number.isFinite(max) || max <= 0) continue;
-        const pct = (Number(score) / max) * 100;
+        const pct =
+          gradeItemPercent({
+            type: activity?.type,
+            assessmentType: row?.assessment_type ?? activity?.type,
+            score,
+            maxScore: max,
+          }) ?? 0;
         if (!Number.isFinite(pct)) continue;
         const tsRaw = row?.graded_at ?? row?.submitted_at ?? null;
         const ts = tsRaw ? Date.parse(String(tsRaw)) : 0;
@@ -725,7 +732,7 @@ export default function InstructorDashboard() {
             <CollapsibleContent>
               <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
                 <p>
-                  Student percentages use <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                  {GRADING_PERCENT_HELP}
                 </p>
                 <p>
                   Configure Activity, Project, Attendance, and Exam weights per subject (total 100%).

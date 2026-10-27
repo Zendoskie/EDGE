@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { officialBandCounts, RISK_BANDS } from '@/lib/risk-scoring';
+import { gradeItemPercent } from '@/lib/weighted-grading';
 import { riskChartColor } from '@/lib/risk-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -179,7 +180,13 @@ export default function EnhancedAnalytics() {
         groupedByPeriod.set(period, { scores: [], attendance: [], risk: [] });
       }
       
-      const normalizedScore = (score.score / score.activities.max_score) * 100;
+      const normalizedScore = gradeItemPercent({
+        type: score.activities?.type,
+        assessmentType: score.assessment_type ?? score.activities?.type,
+        score: score.score,
+        maxScore: score.activities.max_score,
+      });
+      if (normalizedScore == null) return;
       groupedByPeriod.get(period)!.scores.push(normalizedScore);
     });
 
@@ -222,7 +229,13 @@ export default function EnhancedAnalytics() {
         subjectMap.set(subjectCode, { scores: [], subjectName });
       }
 
-      const normalizedScore = (score.score / score.activities.max_score) * 100;
+      const normalizedScore = gradeItemPercent({
+        type: score.activities?.type,
+        assessmentType: score.assessment_type ?? score.activities?.type,
+        score: score.score,
+        maxScore: score.activities.max_score,
+      });
+      if (normalizedScore == null) return;
       subjectMap.get(subjectCode)!.scores.push(normalizedScore);
     });
 

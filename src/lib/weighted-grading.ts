@@ -79,14 +79,48 @@ export function averageOf(values: Array<number | null | undefined>): number | nu
   return valid.reduce((a, b) => a + b, 0) / valid.length;
 }
 
-/** Unrounded score percentage, or null for a missing score or an invalid max score. Zero is a grade. */
-export function assessmentPercent(score: unknown, maxScore: unknown): number | null {
+/** Base of the transmutation scale: raw 0 maps to 50%, raw max maps to 100%. */
+export const TRANSMUTATION_BASE = 50;
+
+/** Linear (score / max) × 100, or null for a missing score or invalid max. Zero is a grade. */
+export function linearAssessmentPercent(score: unknown, maxScore: unknown): number | null {
   if (score == null || maxScore == null) return null;
   const s = Number(score);
   const m = Number(maxScore);
   if (!Number.isFinite(s) || !Number.isFinite(m) || m <= 0) return null;
   return (s / m) * 100;
 }
+
+/** Alias for callers that only need linear percent (e.g. score presence checks). */
+export const assessmentPercent = linearAssessmentPercent;
+
+/** Base-50 transmutation: 50 + linear/2 (raw 0 → 50, raw max → 100). */
+export function transmutedAssessmentPercent(score: unknown, maxScore: unknown): number | null {
+  const linear = linearAssessmentPercent(score, maxScore);
+  if (linear == null) return null;
+  return TRANSMUTATION_BASE + linear / 2;
+}
+
+/** Activity, project, and exams use transmutation; quiz/assignment stay linear. */
+export function usesTransmutation(type: string | null | undefined): boolean {
+  if (!type) return false;
+  if (type === 'activity') return true;
+  if (isProjectAssessmentType(type)) return true;
+  if (isFinalExamAssessmentType(type)) return true;
+  if (isMidtermSideAssessmentType(type)) return true;
+  return false;
+}
+
+/** Percent used in category averages and weighted grades for one assessment row. */
+export function gradeItemPercent(item: GradeItem): number | null {
+  const type = item.assessmentType || item.type;
+  if (usesTransmutation(type)) return transmutedAssessmentPercent(item.score, item.maxScore);
+  return linearAssessmentPercent(item.score, item.maxScore);
+}
+
+/** Short explanation for student/instructor grade help panels. */
+export const GRADING_PERCENT_HELP =
+  'Activity, project, and exam scores use base-50 transmutation (raw 0 → 50%, raw max → 100%). Legacy quiz and assignment rows still use (score / max) × 100.';
 
 /**
  * Midterm side alone until the student has a Final Exam score, then an equal split.
@@ -123,7 +157,7 @@ export function computeSubjectWeightedGrade(input: {
   const final: number[] = [];
 
   for (const item of input.items) {
-    const pct = assessmentPercent(item.score, item.maxScore);
+    const pct = gradeItemPercent(item);
     if (pct == null) continue;
     const type = item.assessmentType || item.type;
     if (isCourseworkAssessmentType(type)) activity.push(pct);

@@ -200,6 +200,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const STALE_MESSAGE =
   "Grades, attendance, assessments or weights changed while the release was running. Nothing was released. Recheck the gradebook and release again.";
 
+/** `student_ids`, when set, is an inclusion whitelist (partial release); omitted means all active enrollments. */
 function parseBody(body: unknown): { subjectId: string; studentIds: string[] | null } | null {
   if (!body || typeof body !== "object") return null;
   const { subject_id, student_ids } = body as { subject_id?: unknown; student_ids?: unknown };

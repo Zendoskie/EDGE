@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/shell/PageHeader';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { computeSubjectWeightedGrade } from '@/lib/weighted-grading';
+import { computeSubjectWeightedGrade, gradeItemPercent, GRADING_PERCENT_HELP } from '@/lib/weighted-grading';
 import { PREDICTION_EVIDENCE_COLUMNS } from '@/lib/risk-scoring';
 import { FinalGradeBadge } from '@/components/FinalGradeBadge';
 import { useStudentFinalGradeReleases } from '@/hooks/useFinalGradeReleases';
@@ -449,7 +449,14 @@ export default function ParentPerformance() {
         if (submission?.score == null) return null;
         const max = Number(s?.max_score ?? 100);
         if (!Number.isFinite(max) || max <= 0) return null;
-        return (Number(submission.score) / max) * 100;
+        return (
+          gradeItemPercent({
+            type: s?.type,
+            assessmentType: submission?.assessment_type ?? s?.type,
+            score: submission.score,
+            maxScore: max,
+          }) ?? 0
+        );
       })
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
     if (scored.length === 0) return null;
@@ -531,7 +538,16 @@ export default function ParentPerformance() {
         const submission = submissionByActivityId.get(a.id);
         const score = submission?.score ?? null;
         const max = Number(a?.max_score ?? 100);
-        const pct = score != null && Number.isFinite(max) && max > 0 ? Math.round((Number(score) / max) * 100) : null;
+        const rawPct =
+          score != null && Number.isFinite(max) && max > 0
+            ? gradeItemPercent({
+                type: a?.type,
+                assessmentType: submission?.assessment_type ?? a?.type,
+                score,
+                maxScore: max,
+              })
+            : null;
+        const pct = rawPct == null ? null : Math.round(rawPct);
         return {
           id: a.id as string,
           title: (a?.title as string) || 'Untitled activity',
@@ -910,7 +926,7 @@ export default function ParentPerformance() {
               <CollapsibleContent>
                 <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
                   <p>
-                    Each activity percentage is computed as <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                    {GRADING_PERCENT_HELP}
                   </p>
                   <p>
                     The unweighted average is the simple mean of graded activity percentages. The weighted grade follows
@@ -998,7 +1014,7 @@ export default function ParentPerformance() {
           <CollapsibleContent>
             <CardContent className="pt-0 text-sm text-muted-foreground space-y-2 border-t border-border/50">
               <p>
-                Each activity uses percentage scoring: <span className="font-medium text-foreground">(score / max score) x 100</span>.
+                {GRADING_PERCENT_HELP}
               </p>
               <p>
                 Per subject, the instructor may define a 100% grading system using Activity, Project, Attendance, and Exam weights.
