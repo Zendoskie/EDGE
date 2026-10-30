@@ -1096,6 +1096,9 @@ describe('proactive at-risk briefing', () => {
     });
     expect(system).toContain('PROACTIVE AT-RISK BRIEFING');
     expect(system).toContain('7-day study plan');
+    expect(system).toContain('Day 1 through Day 7');
+    expect(system).toContain('one continuous 1. 2. 3. sequence');
+    expect(system).toContain('Never restart at 1');
   });
 
   it('runs proactive briefing through the coach with AI', async () => {

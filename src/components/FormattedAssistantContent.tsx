@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { sanitizeAssistantPlainText } from "@/lib/format-assistant-text";
 
-function renderBlockLines(block: string, baseKey: string): ReactNode[] {
+function renderBlockLines(block: string, baseKey: string, order: { next: number }): ReactNode[] {
   const lines = block.split("\n");
   const out: ReactNode[] = [];
   let i = 0;
@@ -42,9 +42,12 @@ function renderBlockLines(block: string, baseKey: string): ReactNode[] {
         items.push(m[2]);
         i++;
       }
+      const start = order.next;
+      order.next += items.length;
       out.push(
         <ol
           key={`${baseKey}-ol-${i}`}
+          start={start}
           className="list-decimal space-y-2 pl-5 [list-style-position:outside] marker:font-medium marker:text-foreground/85"
         >
           {items.map((item, j) => (
@@ -94,12 +97,13 @@ export function FormattedAssistantContent({ text, className }: FormattedAssistan
     .split(/\n\s*\n/)
     .map((b) => b.trim())
     .filter(Boolean);
+  const order = { next: 1 };
 
   return (
     <div className={cn("text-sm leading-7 text-foreground space-y-4 break-words", className)}>
       {blocks.map((block, idx) => (
         <div key={idx} className="space-y-2">
-          {renderBlockLines(block, `blk-${idx}`)}
+          {renderBlockLines(block, `blk-${idx}`, order)}
         </div>
       ))}
     </div>
