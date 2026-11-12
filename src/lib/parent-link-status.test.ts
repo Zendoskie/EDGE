@@ -12,6 +12,7 @@ import { parentLinkDecisionNotification } from "./parent-link-notifications";
 describe("normalizeParentLinkStatus", () => {
   it("keeps the two-step statuses", () => {
     expect(normalizeParentLinkStatus("pending_admin")).toBe("pending_admin");
+    expect(normalizeParentLinkStatus("pending_verification")).toBe("pending_verification");
     expect(normalizeParentLinkStatus("ADMIN_REJECTED")).toBe("admin_rejected");
     expect(normalizeParentLinkStatus("approved")).toBe("approved");
   });
@@ -26,6 +27,7 @@ describe("approval step states", () => {
   it.each([
     ["pending", "pending", "not_started"],
     ["pending_admin", "approved", "pending"],
+    ["pending_verification", "approved", "pending"],
     ["approved", "approved", "approved"],
     ["rejected", "rejected", "not_started"],
     ["admin_rejected", "approved", "rejected"],
@@ -37,6 +39,7 @@ describe("approval step states", () => {
   it("labels every status", () => {
     expect(parentLinkStatusLabel("pending")).toBe("Awaiting student approval");
     expect(parentLinkStatusLabel("pending_admin")).toBe("Awaiting admin approval");
+    expect(parentLinkStatusLabel("pending_verification")).toBe("Awaiting ID verification");
     expect(parentLinkStatusLabel("approved")).toBe("Active");
     expect(parentLinkStatusLabel("rejected")).toBe("Rejected by student");
     expect(parentLinkStatusLabel("admin_rejected")).toBe("Rejected by admin");
@@ -54,6 +57,10 @@ describe("parentLoginBlockedMessage", () => {
 
   it("blocks while waiting for an administrator", () => {
     expect(parentLoginBlockedMessage("pending", ["pending_admin"])).toMatch(/administrator approval/i);
+  });
+
+  it("allows sign-in while the ID awaits administrator verification", () => {
+    expect(parentLoginBlockedMessage("approved", ["pending_verification"])).toBeNull();
   });
 
   it("blocks after a student rejection", () => {

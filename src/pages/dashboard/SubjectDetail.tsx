@@ -1222,8 +1222,8 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const { user } = useAuth();
   const [generating, setGenerating] = useState(false);
   const [interventionPrediction, setInterventionPrediction] = useState<PredictionRow | null>(null);
-  // DB constraint for interventions.type only allows a limited set of values:
-  // email | meeting | counseling | other
+  // Guidance support goes through the counseling-referral flow, so the logged intervention
+  // type offers only email | meeting | other (the DB still accepts historical counseling rows).
   const [interventionType, setInterventionType] = useState<string>('email');
   const [interventionMessage, setInterventionMessage] = useState('');
   const [bulkNotifyOpen, setBulkNotifyOpen] = useState(false);
@@ -1410,64 +1410,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
   const logIntervention = useMutation({
     mutationFn: async () => {
       if (!interventionPrediction?.id || !interventionPrediction?.student_id) throw new Error('Missing prediction');
-      // DB check constraint only allows: email | meeting | counseling | other.
+      // The DB check constraint also allows counseling, but the UI offers only email | meeting | other.
       const dbInterventionType =
-        interventionType === 'email' ||
-        interventionType === 'meeting' ||
-        interventionType === 'counseling' ||
-        interventionType === 'other'
+        interventionType === 'email' || interventionType === 'meeting' || interventionType === 'other'
           ? interventionType
           : 'other';
-
-      if (dbInterventionType === 'counseling') {
-        if (!user?.id) throw new Error('Missing instructor session');
-
-        const pendingReferral = counselingReferrals.find(
-          (r) =>
-            r.student_id === interventionPrediction.student_id &&
-            r.subject_id === subjectId &&
-            normalizeReferralStatus(r.status) === 'pending',
-        );
-        if (pendingReferral) {
-          throw new Error('A pending counseling referral already exists for this student in this subject.');
-        }
-
-        const approvedReferral = counselingReferrals.find(
-          (r) =>
-            r.student_id === interventionPrediction.student_id &&
-            normalizeReferralStatus(r.status) === 'approved',
-        );
-
-        if (!approvedReferral) {
-          const { data: inserted, error: referralError } = await supabase
-            .from('counseling_referrals')
-            .insert({
-              student_id: interventionPrediction.student_id,
-              subject_id: subjectId,
-              instructor_id: user.id,
-              prediction_id: interventionPrediction.id,
-              recommendation_message:
-                interventionMessage ||
-                interventionPrediction.recommendation ||
-                `Guidance support is recommended for ${subjectCode}.`,
-              status: 'pending',
-            })
-            .select('id')
-            .single();
-          if (referralError) throw referralError;
-
-          const email = await sendReferralNotification({
-            event: 'referral_created',
-            referralId: inserted.id,
-          });
-
-          return {
-            mode: 'referral_created' as const,
-            studentId: interventionPrediction.student_id,
-            emailError: email.emailError,
-          };
-        }
-      }
 
       const { data: inserted, error } = await supabase.from('interventions').insert({
         prediction_id: interventionPrediction.id,
@@ -1478,18 +1425,11 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
       }).select('id').single();
       if (error) throw error;
       const email = await emailLoggedIntervention(inserted.id);
-      return { mode: 'intervention_logged' as const, emailError: email.emailError };
+      return { emailError: email.emailError };
     },
     onSuccess: (result) => {
-      if (result?.mode === 'referral_created') {
-        toast.success('Counseling referral submitted.');
-        if (result.emailError) toast.message(result.emailError);
-        else toast.message('Student and guidance counselors have been notified.');
-        invalidateReferralCaches(result.studentId);
-      } else {
-        toast.success('Intervention logged');
-        if (result?.emailError) toast.message(result.emailError);
-      }
+      toast.success('Intervention logged');
+      if (result?.emailError) toast.message(result.emailError);
       setInterventionPrediction(null);
       setInterventionMessage('');
       setInterventionType('email');
@@ -1755,7 +1695,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                   <SelectContent>
                     <SelectItem value="email">email</SelectItem>
                     <SelectItem value="meeting">meeting</SelectItem>
-                    <SelectItem value="counseling">counseling</SelectItem>
                     <SelectItem value="other">other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1764,11 +1703,6 @@ function SubjectPredictions({ subjectId, subjectCode, subjectName }: { subjectId
                 <Label>Message (optional)</Label>
                 <Input placeholder="Note or summary" value={interventionMessage} onChange={e => setInterventionMessage(e.target.value)} />
               </div>
-              {interventionType === 'counseling' && (
-                <p className="text-xs text-muted-foreground">
-                  Counseling interventions require guidance counselor approval first. Saving will create a counseling referral and automatically notify the student and guidance counselors.
-                </p>
-              )}
               <Button type="submit" disabled={logIntervention.isPending}>{logIntervention.isPending ? 'Saving...' : 'Save'}</Button>
             </form>
           )}

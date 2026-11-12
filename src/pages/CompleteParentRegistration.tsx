@@ -9,6 +9,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { sendParentRegistrationWelcomeEmail } from '@/lib/invoke-parent-email';
 import { AuthFrame } from '@/components/shell/AuthSlider';
+import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
+import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
 
 type Invitation = {
   email: string;
@@ -42,6 +44,7 @@ export default function CompleteParentRegistration() {
   const [state, setState] = useState<TokenState>({ phase: 'loading' });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [idImages, setIdImages] = useState<IdVerificationValue>({ front: null, back: null });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -87,11 +90,19 @@ export default function CompleteParentRegistration() {
     else if (password.length < 8) errs.password = 'Password must be at least 8 characters.';
     if (!confirmPassword) errs.confirmPassword = 'Please confirm your password.';
     else if (password !== confirmPassword) errs.confirmPassword = 'Passwords do not match.';
+    if (!idImages.front) errs.idFront = 'The front of your ID is required.';
+    if (!idImages.back) errs.idBack = 'The back of your ID is required.';
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
 
     setErrors({});
     setSubmitting(true);
     try {
+      const folder = newIdFolder('parent');
+      const [idFrontPath, idBackPath] = await Promise.all([
+        uploadIdImage(idImages.front!, folder, 'front'),
+        uploadIdImage(idImages.back!, folder, 'back'),
+      ]);
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: inv.email,
         password,
@@ -124,6 +135,8 @@ export default function CompleteParentRegistration() {
       const { error: completeError } = await (supabase as any).rpc('complete_parent_invitation', {
         p_token: token,
         p_user_id: signUpData.user.id,
+        p_id_front_path: idFrontPath,
+        p_id_back_path: idBackPath,
       });
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
@@ -173,8 +186,10 @@ export default function CompleteParentRegistration() {
     body = (
       <div className="edge-auth-status">
         <CheckCircle2 aria-hidden />
-        <h2>Account active</h2>
-        <p className="edge-auth-lead">Sign in with {state.email} and the password you just created. You will only see the student linked to this request.</p>
+        <h2>Account created</h2>
+        <p className="edge-auth-lead">
+          Your parent account is set up. An administrator will verify your ID before you can view the student&apos;s records.
+        </p>
         {state.welcomeEmailWarning ? (
           <p className="text-sm text-amber-700 dark:text-amber-400">{state.welcomeEmailWarning}</p>
         ) : null}
@@ -186,7 +201,7 @@ export default function CompleteParentRegistration() {
     body = (
       <>
         <h2>Create your password</h2>
-        <p className="edge-auth-lead">The student and an administrator approved this request. This link works once.</p>
+        <p className="edge-auth-lead">An administrator approved this request. This link works once.</p>
         <form onSubmit={handleRegister} noValidate className="edge-auth-fields">
           <div className="edge-auth-notice">
             <AlertTriangle aria-hidden />
@@ -208,6 +223,12 @@ export default function CompleteParentRegistration() {
             <ReadonlyField label="Student ID" value={inv.student_id} />
             <ReadonlyField label="Role" value="Parent / Guardian" />
           </fieldset>
+          <IdVerificationUpload
+            value={idImages}
+            onChange={(next) => { setIdImages(next); setErrors((p) => { const n = { ...p }; delete n.idFront; delete n.idBack; return n; }); }}
+            disabled={submitting}
+            error={errors.idFront || errors.idBack || null}
+          />
           <div className="space-y-2">
             <Label htmlFor="parent-password">Password <span className="text-destructive">*</span></Label>
             <PasswordInput
@@ -251,9 +272,9 @@ export default function CompleteParentRegistration() {
     <div className="edge-auth-staff">
       <AuthFrame
         headline="Finish your parent account"
-        sub="The student and an administrator approved your request. Create a password to activate it."
+        sub="An administrator approved your request. Create a password to activate it."
         steps={[
-          { title: 'Student approved', body: 'The request used their Student ID.', icon: ClipboardList },
+          { title: 'Parent email verified', body: 'The email matches the student\'s registered parent email.', icon: ClipboardList },
           { title: 'Administrator approved', body: 'This link was sent to your email.', icon: Lock },
           { title: 'Sign in', body: 'Use the password you create here.', icon: UserCheck },
         ]}

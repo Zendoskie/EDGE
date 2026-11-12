@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FinalGradeReleasePanel, type ReleasePreview } from '@/components/FinalGradeReleasePanel';
 
@@ -233,5 +233,30 @@ describe('FinalGradeReleasePanel', () => {
     expect(((await screen.findByRole('button', { name: /release final grades/i })) as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+
+  it('confirms before marking an active student inactive', async () => {
+    const onSetEnrollmentStatus = vi.fn();
+    renderPanel({
+      students: students.map((s) => ({ ...s, enrollmentId: `e-${s.id}` })),
+      onSetEnrollmentStatus,
+    });
+    fireEvent.click(await screen.findByLabelText('Mark Ana Cruz inactive'));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    expect(dialog.getByText(/Mark Ana Cruz as inactive\?/)).toBeTruthy();
+    expect(onSetEnrollmentStatus).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole('button', { name: /^mark inactive$/i }));
+    expect(onSetEnrollmentStatus).toHaveBeenCalledWith('e-s1', 'inactive');
+  });
+
+  it('lists inactive students and restores them', async () => {
+    const onSetEnrollmentStatus = vi.fn();
+    renderPanel({
+      inactiveStudents: [{ enrollmentId: 'e3', studentId: 's3', name: 'Cara Lim' }],
+      onSetEnrollmentStatus,
+    });
+    expect(await screen.findByText('Inactive students')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Restore Cara Lim'));
+    expect(onSetEnrollmentStatus).toHaveBeenCalledWith('e3', 'active');
   });
 });

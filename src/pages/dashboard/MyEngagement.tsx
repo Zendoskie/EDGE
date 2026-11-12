@@ -1,7 +1,6 @@
 import { Navigate, Link } from 'react-router-dom';
 import {
   Activity,
-  Clock,
   LogIn,
   MessageSquare,
   Bot,
@@ -16,12 +15,14 @@ import { useStudentEngagementSummary } from '@/hooks/useStudentEngagementSummary
 import { useStudentEngagementAlerts } from '@/hooks/useEngagementAlerts';
 import { StudentEngagementCharts } from '@/components/StudentEngagementCharts';
 import { StudentImprovementCelebration } from '@/components/StudentImprovementCelebration';
+import { EngagementTimeSpentCard } from '@/components/EngagementTimeSpentCard';
+import { EngagementScoreInfo } from '@/components/EngagementScoreInfo';
 import { AnimatedNumber } from '@/components/motion/AnimatedNumber';
 import { EngagementBadge } from '@/components/EngagementBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import { formatLastLogin } from '@/lib/engagement-format';
 import { buildEngagementNextSteps } from '@/lib/engagement-next-steps';
 import { useTrackPageView } from '@/hooks/useActivityTracker';
 import { canonicalEngagementLevel } from '@/lib/engagement-utils';
@@ -130,12 +131,22 @@ export default function MyEngagement() {
         </CardContent>
       </Card>
 
+      {studentId ? (
+        <EngagementTimeSpentCard
+          studentId={studentId}
+          description="Your measured active time in EDGE for the selected period. Only time while this tab is visible and you are interacting is counted."
+        />
+      ) : null}
+
       <Card className="edge-glass-card">
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Gauge className="h-5 w-5 text-primary" />
-            Engagement Overview
-          </CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Gauge className="h-5 w-5 text-primary" />
+              Engagement Overview
+            </CardTitle>
+            <EngagementScoreInfo variant="student" />
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -167,15 +178,6 @@ export default function MyEngagement() {
                 </div>
                 <p className="text-2xl font-semibold tabular-nums">
                   <AnimatedNumber value={summary?.total_login_count ?? 0} />
-                </p>
-              </div>
-              <div className="edge-metric-card space-y-1 rounded-xl border p-3">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  Total Time Spent
-                </div>
-                <p className="text-lg font-semibold leading-snug">
-                  {formatTimeSpent(summary?.total_time_spent_seconds)}
                 </p>
               </div>
               <div className="edge-metric-card space-y-1 rounded-xl border p-3">

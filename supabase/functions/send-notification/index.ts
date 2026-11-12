@@ -47,6 +47,9 @@ import {
   emailLinkedParentsGradesPosted,
 } from "../_shared/parent-linked-email.ts";
 import { sendBrevoEmail, sendBrevoEmailBatch } from "../_shared/brevo-email.ts";
+import { computeSubjectWeightedGrade, type GradeItem } from "../_shared/weighted-grading.ts";
+import { effectiveWeights, type GradeWeights } from "../_shared/final-grade-release.ts";
+import type { FinalGradeBreakdownRow } from "../_shared/notification-channels.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,7 +117,7 @@ async function sendGradesPostedEmail(
 
   const { data: subjectActivities, error: subjectActivitiesError } = await supabase
     .from("activities")
-    .select("id, title")
+    .select("id, title, type")
     .eq("subject_id", subjectId);
   if (subjectActivitiesError) throw subjectActivitiesError;
 
@@ -124,15 +127,17 @@ async function sendGradesPostedEmail(
   ])];
   const { data: activities, error: activitiesError } = await supabase
     .from("activities")
-    .select("id, title, subject_id")
+    .select("id, title, subject_id, type")
     .in("id", activityIds);
   if (activitiesError) throw activitiesError;
 
   const activitySubjectId = new Map<string, string>();
   const titleByActivityId = new Map<string, string>();
+  const typeByActivityId = new Map<string, string>();
   for (const activity of activities ?? []) {
     activitySubjectId.set(activity.id, activity.subject_id);
     titleByActivityId.set(activity.id, activity.title);
+    if (activity.type) typeByActivityId.set(activity.id, activity.type);
   }
 
   const { data: submissions, error: submissionsError } = await supabase
@@ -183,9 +188,13 @@ async function sendGradesPostedEmail(
         loggedPairKeys.add(gradesPostedLogId(line.activityId, studentId));
       }
     }
-    const pending = omitLoggedGradesPostedLines(studentLines, loggedPairKeys);
-    duplicates += studentLines.length - pending.length;
-    if (pending.length === 0) continue;
+    const pendingLines = omitLoggedGradesPostedLines(studentLines, loggedPairKeys);
+    duplicates += studentLines.length - pendingLines.length;
+    if (pendingLines.length === 0) continue;
+    const pending = pendingLines.map((line) => ({
+      ...line,
+      assessmentType: typeByActivityId.get(line.activityId) ?? null,
+    }));
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -200,7 +209,11 @@ async function sendGradesPostedEmail(
 
     const email = gradesPostedEmail(
       subject?.code,
-      pending.map((line) => ({ title: line.title, score: line.score })),
+      pending.map((line) => ({
+        title: line.title,
+        score: line.score,
+        assessmentType: line.assessmentType,
+      })),
       missingActivityTitles({
         studentId,
         activities: subjectActivities ?? [],
@@ -209,7 +222,7 @@ async function sendGradesPostedEmail(
     );
     const delivery = await deliverEmail({
       alreadyLogged: false,
-      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html, text: email.text }),
       log: async () => {
         const rows = pending.map((line) => ({
           student_id: studentId,
@@ -264,6 +277,52 @@ async function subjectOwnerContext(
   return { code: subject?.code ?? null };
 }
 
+/**
+ * Weighted components of the released grade, using the same math and attendance convention as
+ * release-final-grades. Rows with a zero weight are dropped by the email builder.
+ */
+function finalGradeBreakdownRows(input: {
+  studentId: string;
+  activities: Array<{ id: string; type: string | null; max_score: number | null }>;
+  submissions: Array<{
+    activity_id: string | null;
+    student_id: string | null;
+    score: number | null;
+    assessment_type: string | null;
+  }>;
+  attendanceStatuses: string[];
+  savedWeights: GradeWeights | null;
+}): FinalGradeBreakdownRow[] {
+  const items: GradeItem[] = [];
+  for (const activity of input.activities) {
+    const submission = input.submissions.find(
+      (row) => row.activity_id === activity.id && row.student_id === input.studentId,
+    );
+    if (!submission || submission.score == null) continue;
+    items.push({
+      type: activity.type,
+      assessmentType: submission.assessment_type,
+      score: Number(submission.score),
+      maxScore: Number(activity.max_score),
+    });
+  }
+  const total = input.attendanceStatuses.length;
+  const present = input.attendanceStatuses.filter((s) => s === "present" || s === "late").length;
+  const attendancePercent = total > 0 ? (present / total) * 100 : null;
+  const grade = computeSubjectWeightedGrade({
+    items,
+    attendancePercent,
+    weights: input.savedWeights,
+  });
+  const weights = effectiveWeights(input.savedWeights);
+  return [
+    { label: "Activity", weight: weights.activity_weight, average: grade.activityAverage },
+    { label: "Project", weight: weights.project_weight, average: grade.projectAverage },
+    { label: "Attendance", weight: weights.attendance_weight, average: attendancePercent },
+    { label: "Exam", weight: weights.exam_weight, average: grade.examAverage },
+  ].filter((row) => row.weight > 0);
+}
+
 async function sendFinalGradesReleasedEmail(
   supabase: ReturnType<typeof createClient>,
   callerId: string,
@@ -287,6 +346,31 @@ async function sendFinalGradesReleasedEmail(
       .filter((row): row is { studentId: string; finalGrade: number } => !!row)
     : [];
   if (releases.length === 0) throw new Error("releases are required");
+
+  const { data: gradingSystem } = await supabase
+    .from("subjects")
+    .select("subject_grading_systems(activity_weight, project_weight, attendance_weight, exam_weight)")
+    .eq("id", subjectId)
+    .maybeSingle();
+  const embeddedWeights = gradingSystem?.subject_grading_systems;
+  const savedWeights = ((Array.isArray(embeddedWeights) ? embeddedWeights[0] : embeddedWeights) ?? null) as
+    | GradeWeights
+    | null;
+
+  const { data: subjectActivities, error: subjectActivitiesError } = await supabase
+    .from("activities")
+    .select("id, type, max_score")
+    .eq("subject_id", subjectId);
+  if (subjectActivitiesError) throw subjectActivitiesError;
+  const activityIds = (subjectActivities ?? []).map((activity) => activity.id);
+  const submissions = activityIds.length === 0 ? [] : ((await supabase
+    .from("submissions")
+    .select("activity_id, student_id, score, assessment_type")
+    .in("activity_id", activityIds)).data ?? []);
+  const attendanceRows = (await supabase
+    .from("attendance")
+    .select("student_id, status")
+    .eq("subject_id", subjectId)).data ?? [];
 
   let sent = 0;
   let failed = 0;
@@ -319,10 +403,19 @@ async function sendFinalGradesReleasedEmail(
       continue;
     }
 
-    const email = finalGradeReleasedEmail(subject.code, release.finalGrade);
+    const breakdown = finalGradeBreakdownRows({
+      studentId: release.studentId,
+      activities: subjectActivities ?? [],
+      submissions,
+      attendanceStatuses: attendanceRows
+        .filter((row) => row.student_id === release.studentId)
+        .map((row) => row.status),
+      savedWeights,
+    });
+    const email = finalGradeReleasedEmail(subject.code, release.finalGrade, breakdown);
     const delivery = await deliverEmail({
       alreadyLogged: false,
-      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html }),
+      send: () => sendBrevoEmail({ to, subject: email.subject, html: email.html, text: email.text }),
       log: async () => {
         const { error: logError } = await supabase.from("email_notifications").insert({
           student_id: release.studentId,

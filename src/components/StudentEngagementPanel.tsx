@@ -1,8 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useStudentEngagementMetrics } from '@/hooks/useStudentEngagementMetrics';
+import { useStudentEngagementSummary } from '@/hooks/useStudentEngagementSummary';
+import { useStudentParentEngagement } from '@/hooks/useParentEngagement';
 import { StudentEngagementCharts } from '@/components/StudentEngagementCharts';
 import { StudentEngagementActions } from '@/components/StudentEngagementActions';
+import { EngagementBadge } from '@/components/EngagementBadge';
+import { EngagementScoreInfo } from '@/components/EngagementScoreInfo';
+import { ParentEngagementCard } from '@/components/ParentEngagementCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { LogIn, Clock, MessageSquare } from 'lucide-react';
@@ -28,6 +33,14 @@ type FeedbackRow = {
 export function StudentEngagementPanel({ studentId, studentName, subjectIds }: Props) {
   const { role } = useAuth();
   const { metrics, isLoading: summaryLoading, error: summaryError } = useStudentEngagementMetrics(studentId);
+  const { summary, isLoading: gradeLoading } = useStudentEngagementSummary(studentId);
+  const showTimeSpent = role !== 'instructor';
+  const canSeeParentEngagement = role === 'instructor' || role === 'admin';
+  const {
+    summary: parentEngagement,
+    isLoading: parentEngagementLoading,
+    error: parentEngagementError,
+  } = useStudentParentEngagement(studentId, canSeeParentEngagement);
 
   const { data: profile } = useQuery({
     queryKey: ['engagement-panel-profile', studentId],
@@ -70,6 +83,21 @@ export function StudentEngagementPanel({ studentId, studentName, subjectIds }: P
         </p>
       ) : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {gradeLoading ? (
+            <Skeleton className="h-6 w-32" />
+          ) : (
+            <EngagementBadge
+              level={summary?.engagement_level ?? 'low'}
+              score={summary?.engagement_score}
+            />
+          )}
+          <span className="text-sm text-muted-foreground">Engagement grade</span>
+        </div>
+        <EngagementScoreInfo variant="student" />
+      </div>
+
       {loading ? (
         <div className="space-y-2">
           <Skeleton className="h-8 w-40" />
@@ -80,7 +108,7 @@ export function StudentEngagementPanel({ studentId, studentName, subjectIds }: P
           Could not load engagement metrics. {summaryError.message}
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3 text-sm">
+        <div className={`grid gap-3 text-sm ${showTimeSpent ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           <div className="rounded-lg border p-3">
             <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
               <LogIn className="h-3.5 w-3.5" />
@@ -88,13 +116,15 @@ export function StudentEngagementPanel({ studentId, studentName, subjectIds }: P
             </div>
             <p className="font-semibold tabular-nums text-lg">{metrics?.total_login_count ?? 0}</p>
           </div>
-          <div className="rounded-lg border p-3">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
-              <Clock className="h-3.5 w-3.5" />
-              Total Time Spent
+          {showTimeSpent ? (
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
+                <Clock className="h-3.5 w-3.5" />
+                Total Time Spent
+              </div>
+              <p className="font-semibold">{formatTimeSpent(metrics?.total_time_spent_seconds)}</p>
             </div>
-            <p className="font-semibold">{formatTimeSpent(metrics?.total_time_spent_seconds)}</p>
-          </div>
+          ) : null}
           <div className="rounded-lg border p-3">
             <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
               <LogIn className="h-3.5 w-3.5" />
@@ -104,6 +134,16 @@ export function StudentEngagementPanel({ studentId, studentName, subjectIds }: P
           </div>
         </div>
       )}
+
+      {canSeeParentEngagement ? (
+        <ParentEngagementCard
+          variant="instructor"
+          summary={parentEngagement?.best ?? null}
+          parentCount={parentEngagement?.parentCount ?? 0}
+          isLoading={parentEngagementLoading}
+          error={parentEngagementError}
+        />
+      ) : null}
 
       <StudentEngagementCharts studentId={studentId} subjectIds={subjectIds} />
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,8 +26,13 @@ import { AcademicDisclaimer } from '@/components/AcademicDisclaimer';
 import { sendParentLinkEmailBestEffort } from '@/lib/invoke-parent-email';
 import { parentLinkErrorMessage, parentLinkStatusLabel } from '@/lib/parent-link-status';
 import { EngagementBadge } from '@/components/EngagementBadge';
-import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import { EngagementTimeSpentCard } from '@/components/EngagementTimeSpentCard';
+import { EngagementScoreInfo } from '@/components/EngagementScoreInfo';
+import { ParentEngagementCard } from '@/components/ParentEngagementCard';
+import { formatLastLogin } from '@/lib/engagement-format';
 import { canonicalEngagementLevel } from '@/lib/engagement-utils';
+import { useParentEngagement } from '@/hooks/useParentEngagement';
+import { trackParentStudentView } from '@/lib/parent-view-tracking';
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
@@ -101,7 +106,7 @@ function RequestStudentAccessForm({
           required
         />
         <p className="text-xs text-muted-foreground">
-          Enter the student&apos;s ID number. The student must approve your request, then an administrator.
+          Enter the student&apos;s ID number. An administrator will review your request.
         </p>
       </div>
       <Button type="submit" disabled={isPending || !studentIdNo.trim()}>
@@ -147,21 +152,6 @@ export default function ParentPerformance() {
       if (error) throw new Error(parentLinkErrorMessage(error.message));
 
       if (typeof linkId === 'string' && linkId) {
-        // #region agent log
-        fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
-          body: JSON.stringify({
-            sessionId: 'b4b4c1',
-            runId: 'parent-email-fix',
-            hypothesisId: 'G',
-            location: 'ParentPerformance.tsx:requestAccess',
-            message: 'parent_request_student_link ok, invoking request_received email',
-            data: { flow: 'parent_student_link', linkIdLen: linkId.length },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
         sendParentLinkEmailBestEffort({
           type: 'request_received',
           link_id: linkId,
@@ -174,7 +164,7 @@ export default function ParentPerformance() {
       void queryClient.invalidateQueries({ queryKey: ['parent-latest-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-approved-link', user?.id] });
       void queryClient.invalidateQueries({ queryKey: ['parent-my-links', user?.id] });
-      toast.success('Access request submitted. The student must approve it, then an administrator.');
+      toast.success('Access request submitted. An administrator will review it.');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -265,6 +255,28 @@ export default function ParentPerformance() {
       return data;
     },
   });
+
+  const {
+    engagement: parentEngagement,
+    isLoading: parentEngagementLoading,
+    error: parentEngagementError,
+  } = useParentEngagement(studentId, role === 'parent');
+
+  // One check-in is recorded when the parent opens this student's page.
+  // The database deduplicates repeats inside 30 minutes.
+  const trackedCheckInRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (role !== 'parent' || !studentId) return;
+    if (trackedCheckInRef.current === studentId) return;
+    trackedCheckInRef.current = studentId;
+
+    void trackParentStudentView(studentId).then((recorded) => {
+      if (!recorded) return;
+      void queryClient.invalidateQueries({
+        queryKey: ['parent-engagement', user?.id, studentId],
+      });
+    });
+  }, [role, studentId, queryClient, user?.id]);
 
   const { data: predictionInterventions = [] } = useQuery({
     queryKey: ['parent-prediction-interventions', studentId],
@@ -625,6 +637,34 @@ export default function ParentPerformance() {
     );
   }
 
+  if (!approvedLink && latestLink.status === 'pending_verification') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <section className="page-section overflow-hidden">
+          <div className="page-section-header bg-gradient-to-r from-card via-card to-primary/5">
+            <div>
+              <h1 className="text-2xl font-display font-bold">Student Performance</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your account is set up. Waiting for ID verification.
+              </p>
+            </div>
+          </div>
+        </section>
+        <Card className="bg-card/90">
+          <CardHeader>
+            <CardTitle className="text-lg">Awaiting ID Verification</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Badge variant="outline">{parentLinkStatusLabel(latestLink.status)}</Badge>
+            <p className="text-sm text-muted-foreground">
+              An administrator must verify your ID before academic information becomes available.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!approvedLink && latestLink.status === 'pending_admin') {
     return (
       <div className="space-y-6 animate-fade-in">
@@ -707,7 +747,7 @@ export default function ParentPerformance() {
               Student ID/No.: {latestLink.student_id_no}
             </p>
             <p className="text-sm text-muted-foreground">
-              You can submit a new request. It will need the student&apos;s approval and then an administrator&apos;s approval again.
+              You can submit a new request. An administrator will review it directly.
             </p>
             <RequestStudentAccessForm
               initialStudentId={latestLink.student_id_no}
@@ -791,13 +831,16 @@ export default function ParentPerformance() {
       ) : (
         <Card className="bg-card/90 border-border/70">
           <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              Platform engagement
-            </CardTitle>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                Platform engagement
+              </CardTitle>
+              <EngagementScoreInfo variant="student" />
+            </div>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 text-sm">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 text-sm">
               <div className="rounded-lg border p-2 space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Level</p>
                 <EngagementBadge level={canonicalEngagementLevel(engagementSummary.engagement_level)} />
@@ -813,10 +856,6 @@ export default function ParentPerformance() {
                 <p className="text-lg font-semibold tabular-nums">{engagementSummary.total_login_count ?? 0}</p>
               </div>
               <div className="rounded-lg border p-2 space-y-0.5">
-                <p className="text-[10px] text-muted-foreground">Time</p>
-                <p className="text-xs font-medium leading-snug">{formatTimeSpent(engagementSummary.total_time_spent_seconds)}</p>
-              </div>
-              <div className="rounded-lg border p-2 space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Last login</p>
                 <p className="text-xs font-medium">{formatLastLogin(engagementSummary.last_login_at)}</p>
               </div>
@@ -829,6 +868,20 @@ export default function ParentPerformance() {
         </Card>
       )}
         </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <EngagementTimeSpentCard
+          studentId={studentId}
+          title="Student's time spent"
+          description="Measured active time in EDGE. Only time while the student's tab is visible and they are interacting is counted."
+        />
+        <ParentEngagementCard
+          variant="parent"
+          summary={parentEngagement}
+          isLoading={parentEngagementLoading}
+          error={parentEngagementError}
+        />
       </div>
 
       <Tabs defaultValue="predictions" className="w-full min-w-0">

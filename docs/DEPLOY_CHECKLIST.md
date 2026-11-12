@@ -45,3 +45,21 @@ Supabase Auth → URL Configuration:
 
 - Local `.env` may use localhost for UI only.
 - Prefer `VITE_APP_URL` pointing at production when testing invitation emails from a local admin session.
+
+## 6. Engagement time accuracy (required for the period filters)
+
+Applied on the linked project (versions `20261110130000`, `20261110131500`, `20261110132000`). For a new environment, apply all three in order.
+
+- `supabase db push` fails on this project with `permission denied to alter role "cli_login_postgres"` when initialising its login role. Apply SQL through the Management API instead:
+
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/apply-supabase-sql.ps1 -File supabase/migrations/<file>.sql
+  ```
+
+  The script uses `SUPABASE_ACCESS_TOKEN` when set, otherwise the token stored by `supabase login`, runs the file in one transaction, and records the migration version. It is the same endpoint as the dashboard SQL editor.
+- The migration adds `student_login_history.active_seconds` / `last_heartbeat_at`, `student_daily_time`, `parent_student_views`, the session RPCs (`start_student_session`, `touch_student_session`, `get_student_time_spent`, `record_parent_student_view`), and rewrites `recompute_student_engagement_internal` to use measured active time.
+- Unverifiable pre-fix wall-clock time is reset to zero (not estimated); logins, activity, submissions, AI sessions, and feedback history remain.
+- Redeploy the session functions after the migration: `npx supabase functions deploy sync-student-session track-student-login`.
+- Smoke check as a student: sign in, stay on one page for two minutes, then run `select * from public.get_student_time_spent('<student-uuid>');` — `today_seconds` should be about 120, not the whole time the tab was open.
+- Parents: open Parent Performance once; a `parent_student_views` row should appear and the parent check-in card should show a score.
+

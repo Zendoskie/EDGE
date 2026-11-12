@@ -61,3 +61,12 @@ export async function adminDecideParentRequest(linkId: string, decision: ParentL
   });
   return String(data ?? "");
 }
+
+/** Admin decision on the parent's submitted ID: verify (activate) or reject. */
+export async function adminVerifyParentId(requestId: string, decision: ParentLinkDecision): Promise<void> {
+  const { error } = await (supabase as any).rpc("admin_verify_parent_id", {
+    p_request_id: requestId,
+    p_decision: decision === "approve" ? "verify" : "reject",
+  });
+  if (error) throw new Error(parentLinkErrorMessage(error.message));
+}

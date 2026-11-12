@@ -13,6 +13,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { parentLinkErrorMessage } from '@/lib/parent-link-status';
 import { notifyStudentOnParentRegistrationBestEffort } from '@/lib/invoke-parent-email';
+import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
+import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
 
 const DEFAULT_PROGRAMS: Array<{ id: string; code: string; name: string }> = [
   {
@@ -56,6 +58,9 @@ export default function Login() {
   const [signupStudentNumber, setSignupStudentNumber] = useState('');
   const [signupParentEmail, setSignupParentEmail] = useState('');
   const [signupGuardianStudentId, setSignupGuardianStudentId] = useState('');
+  const [signupIdImages, setSignupIdImages] = useState<IdVerificationValue>({ front: null, back: null });
+  const [idUploadError, setIdUploadError] = useState<string | null>(null);
+  const [submittingIdImages, setSubmittingIdImages] = useState(false);
   const [programs, setPrograms] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
 
@@ -188,12 +193,36 @@ export default function Login() {
           toast.error("Please enter the student's Student ID.");
           return;
         }
+        if (!signupIdImages.front || !signupIdImages.back) {
+          setIdUploadError('Please provide the front and back of your ID.');
+          toast.error('Please provide the front and back of your ID.');
+          return;
+        }
+
+        setSubmittingIdImages(true);
+        let idFrontPath: string;
+        let idBackPath: string;
+        try {
+          const folder = newIdFolder('parent');
+          [idFrontPath, idBackPath] = await Promise.all([
+            uploadIdImage(signupIdImages.front!, folder, 'front'),
+            uploadIdImage(signupIdImages.back!, folder, 'back'),
+          ]);
+        } catch (uploadErr: unknown) {
+          toast.error(uploadErr instanceof Error ? uploadErr.message : 'Could not upload your ID. Please try again.');
+          return;
+        } finally {
+          setSubmittingIdImages(false);
+        }
+
         const { data: parentRequestId, error: requestError } = await (supabase as any).rpc(
           'submit_parent_registration_request',
           {
             p_full_name: signupName.trim(),
             p_email: signupEmail.trim(),
             p_student_id: signupGuardianStudentId.trim(),
+            p_id_front_path: idFrontPath,
+            p_id_back_path: idBackPath,
           },
         );
         if (requestError) {
@@ -201,21 +230,6 @@ export default function Login() {
           return;
         }
         if (typeof parentRequestId === 'string' && parentRequestId) {
-          // #region agent log
-          fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
-            body: JSON.stringify({
-              sessionId: 'b4b4c1',
-              runId: 'parent-email-fix',
-              hypothesisId: 'F',
-              location: 'Login.tsx:parentRegistration',
-              message: 'submit_parent_registration_request ok, invoking student email',
-              data: { flow: 'parent_registration_request', requestIdLen: parentRequestId.length },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion
           notifyStudentOnParentRegistrationBestEffort({
             registration_request_id: parentRequestId,
           });
@@ -224,7 +238,7 @@ export default function Login() {
         setLoginEmail(signupEmail);
         setLoginPassword('');
         toast.success(
-          'Request submitted. The student must approve it before an administrator can. You cannot sign in yet. After both approvals, check your email for a link to create your password.'
+          'Request submitted. An administrator will review it. You cannot sign in yet. After approval, check your email for a link to create your password.'
         );
         return;
       }
@@ -401,22 +415,33 @@ export default function Login() {
                       </>
                     )}
                     {signupRole === 'parent' && (
-                      <div className="space-y-2">
-                        <Label htmlFor="signup-guardian-student-id">Student ID</Label>
-                        <Input
-                          id="signup-guardian-student-id"
-                          value={signupGuardianStudentId}
-                          onChange={e => setSignupGuardianStudentId(e.target.value)}
-                          required
-                          placeholder="e.g. 22-1-7-0008"
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="signup-guardian-student-id">Student ID</Label>
+                          <Input
+                            id="signup-guardian-student-id"
+                            value={signupGuardianStudentId}
+                            onChange={e => setSignupGuardianStudentId(e.target.value)}
+                            required
+                            placeholder="e.g. 22-1-7-0008"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Required. The email above must match the parent/guardian Gmail this student registered. The Student ID only locates the student. An administrator reviews the request directly.
+                          </p>
+                        </div>
+                        <IdVerificationUpload
+                          value={signupIdImages}
+                          onChange={(next) => {
+                            setSignupIdImages(next);
+                            setIdUploadError(null);
+                          }}
+                          disabled={loading || submittingIdImages}
+                          error={idUploadError}
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Required. The email above must match the parent/guardian Gmail this student registered. The Student ID only locates the student. The student approves first, then an administrator.
-                        </p>
-                      </div>
+                      </>
                     )}
-                    <Button type="submit" className="w-full" disabled={loading}>
-                      {loading ? 'Submitting request...' : 'Submit request'}
+                    <Button type="submit" className="w-full" disabled={loading || submittingIdImages}>
+                      {loading || submittingIdImages ? 'Submitting request...' : 'Submit request'}
                     </Button>
                   </form>
           <p className="edge-auth-switch">

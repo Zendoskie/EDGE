@@ -8,31 +8,38 @@ export type StudentAuthContext = {
   userId: string;
 };
 
-const LOGIN_SESSION_KEY = 'edge_login_session_id';
-const LOGIN_IN_PROGRESS_KEY = 'edge_login_in_progress';
-const LOGIN_TRACKED_KEY = 'edge_login_tracked_token';
-const DEDUP_PREFIX = 'edge_activity_dedup_';
-const HEARTBEAT_INTERVAL_MS = 60_000;
-const LOGIN_DEDUP_MS = 60_000;
-
 export type EngagementMetrics = {
   total_login_count: number;
   total_time_spent_seconds: number;
   last_login_at: string | null;
 };
 
-type SessionAction = 'resume' | 'heartbeat' | 'finalize';
+/** How a session beat is credited. See touch_student_session in the database. */
+export type SessionBeatMode = 'heartbeat' | 'resume' | 'finalize';
 
-type SyncSessionResponse = {
-  ok?: boolean;
-  skipped?: boolean;
-  sessionId?: string;
-  closed?: boolean;
-  metrics?: EngagementMetrics;
-  error?: string;
+const LOGIN_SESSION_KEY = 'edge_login_session_id';
+const LOGIN_IN_PROGRESS_KEY = 'edge_login_in_progress';
+const LOGIN_TRACKED_KEY = 'edge_login_tracked_token';
+const DEDUP_PREFIX = 'edge_activity_dedup_';
+
+const HEARTBEAT_INTERVAL_MS = 60_000;
+const LOGIN_DEDUP_MS = 60_000;
+
+/**
+ * The student is considered idle after this long without interaction.
+ * Heartbeats pause while idle, so a tab left open does not keep adding time.
+ */
+export const TRACKING_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+/** Fired after a heartbeat/login so open time-spent views can refresh. */
+export const ENGAGEMENT_TICK_EVENT = 'edge-engagement-tick';
+
+export type EngagementTickDetail = {
+  studentId: string;
+  at: number;
 };
 
-export type TrackActivityParams = {
+type TrackActivityParams = {
   activityType: EngagementActivityType;
   subjectId?: string | null;
   description?: string | null;
@@ -76,9 +83,11 @@ function markTracked(key: string): void {
   }
 }
 
+const LOGIN_IN_PROGRESS_MAX_MS = 30_000;
+
 function setLoginInProgress(active: boolean): void {
   try {
-    if (active) sessionStorage.setItem(LOGIN_IN_PROGRESS_KEY, '1');
+    if (active) sessionStorage.setItem(LOGIN_IN_PROGRESS_KEY, String(Date.now()));
     else sessionStorage.removeItem(LOGIN_IN_PROGRESS_KEY);
   } catch {
     /* ignore */
@@ -87,7 +96,15 @@ function setLoginInProgress(active: boolean): void {
 
 function isLoginInProgress(): boolean {
   try {
-    return sessionStorage.getItem(LOGIN_IN_PROGRESS_KEY) === '1';
+    const raw = sessionStorage.getItem(LOGIN_IN_PROGRESS_KEY);
+    if (!raw) return false;
+    const startedAt = Number(raw);
+    // A tab that was closed mid-login leaves the marker behind; expire it.
+    if (!Number.isFinite(startedAt) || Date.now() - startedAt > LOGIN_IN_PROGRESS_MAX_MS) {
+      sessionStorage.removeItem(LOGIN_IN_PROGRESS_KEY);
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -153,80 +170,91 @@ function getAnonKey(): string | null {
   return (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ?? null;
 }
 
-async function callSyncStudentSession(
-  action: SessionAction,
-  auth: StudentAuthContext,
-  sessionId?: string,
-): Promise<SyncSessionResponse | null> {
-  const base = getSupabaseFunctionBase();
-  const anonKey = getAnonKey();
-  if (!base || !anonKey) return null;
-
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const body: Record<string, string> = { action };
-  if (sessionId) body.sessionId = sessionId;
-  if (action === 'resume') body.userAgent = ua;
-
-  try {
-    const res = await fetch(`${base}/functions/v1/sync-student-session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${auth.accessToken}`,
-        apikey: anonKey,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const json = (await res.json().catch(() => ({}))) as SyncSessionResponse;
-    if (!res.ok) {
-      console.warn(`sync-student-session ${action} failed:`, json.error ?? res.statusText);
-      if (json.closed) return json;
-      return null;
-    }
-    return json;
-  } catch (err) {
-    console.warn(`sync-student-session ${action} failed:`, err);
-    return null;
-  }
+function isMissingRpc(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  return (error.message ?? '').toLowerCase().includes('could not find the function');
 }
 
-function markLoginTracked(accessToken: string): void {
+function warnOnce(key: string, message: string): void {
   try {
-    sessionStorage.setItem(LOGIN_TRACKED_KEY, accessToken.slice(-24));
-    sessionStorage.setItem(`${LOGIN_TRACKED_KEY}_at`, String(Date.now()));
+    const marker = `edge_warned_${key}`;
+    if (sessionStorage.getItem(marker) === '1') return;
+    sessionStorage.setItem(marker, '1');
   } catch {
     /* ignore */
   }
+  console.warn(message);
 }
 
-function wasLoginTrackedRecently(accessToken: string): boolean {
-  try {
-    const token = sessionStorage.getItem(LOGIN_TRACKED_KEY);
-    const trackedAt = Number(sessionStorage.getItem(`${LOGIN_TRACKED_KEY}_at`) || 0);
-    if (!token || token !== accessToken.slice(-24)) return false;
-    return Date.now() - trackedAt < LOGIN_DEDUP_MS;
-  } catch {
-    return false;
-  }
+function notifyEngagementTick(studentId: string): void {
+  if (typeof window === 'undefined' || !studentId) return;
+  window.dispatchEvent(
+    new CustomEvent<EngagementTickDetail>(ENGAGEMENT_TICK_EVENT, {
+      detail: { studentId, at: Date.now() },
+    }),
+  );
 }
 
-async function findOpenSessionId(studentId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('student_login_history')
-    .select('id')
-    .eq('student_id', studentId)
-    .is('logout_time', null)
-    .order('login_time', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+type SessionBeatRow = {
+  ok?: boolean;
+  session_id?: string;
+  active_seconds?: number;
+  closed?: boolean;
+};
+
+async function touchTrackedSession(
+  sessionId: string,
+  mode: SessionBeatMode,
+): Promise<SessionBeatRow | null> {
+  const { data, error } = await supabase.rpc('touch_student_session', {
+    p_session_id: sessionId,
+    p_mode: mode,
+  });
 
   if (error) {
-    console.warn('findOpenSessionId failed:', error.message);
+    if (typeof error.code === 'string' && error.code === 'P0002') {
+      clearStoredLoginSessionId();
+    } else if (isMissingRpc(error)) {
+      warnOnce(
+        'touch-session-rpc',
+        '[engagement] touch_student_session is missing. Apply migration 20261110130000_engagement_active_time_and_periods.sql.',
+      );
+    } else {
+      console.warn('[engagement] session beat failed:', error.message);
+    }
     return null;
   }
 
-  return data?.id ?? null;
+  const row = (Array.isArray(data) ? data[0] : data) as SessionBeatRow | null;
+  return row ?? null;
+}
+
+/**
+ * Reuse the live session, or open one that does not count as a login.
+ * Returns the session id, or null when tracking is unavailable.
+ */
+export async function ensureTrackedSession(): Promise<string | null> {
+  const stored = getStoredLoginSessionId();
+  if (stored) return stored;
+
+  const { data, error } = await supabase.rpc('start_student_session');
+
+  if (error) {
+    if (isMissingRpc(error)) {
+      warnOnce(
+        'start-session-rpc',
+        '[engagement] start_student_session is missing. Apply migration 20261110130000_engagement_active_time_and_periods.sql.',
+      );
+    } else {
+      console.warn('[engagement] start_student_session failed:', error.message);
+    }
+    return null;
+  }
+
+  const sessionId = typeof data === 'string' ? data : null;
+  if (sessionId) storeLoginSessionId(sessionId);
+  return sessionId;
 }
 
 async function insertLoginSessionDirect(
@@ -235,11 +263,12 @@ async function insertLoginSessionDirect(
   device: string,
   browser: string,
 ): Promise<string | undefined> {
-  const { data: inserted, error } = await supabase
+  // login_time is left to the database default so it uses server time, not the
+  // student's clock. The first heartbeat measures from it and is capped at 90s.
+  const { data, error } = await supabase
     .from('student_login_history')
     .insert({
       student_id: studentId,
-      login_time: new Date().toISOString(),
       device,
       browser,
       counts_as_login: countsAsLogin,
@@ -248,11 +277,11 @@ async function insertLoginSessionDirect(
     .single();
 
   if (error) {
-    console.warn('[engagement] insertLoginSessionDirect failed:', error.message, error.details, error.hint);
+    console.warn('[engagement] insert login session failed:', error.message);
     return undefined;
   }
 
-  return inserted.id;
+  return data?.id;
 }
 
 async function insertLoginSessionViaEdge(
@@ -276,16 +305,7 @@ async function insertLoginSessionViaEdge(
       body: JSON.stringify({ userAgent: ua, device, browser }),
     });
 
-    const json = (await res.json().catch(() => ({}))) as {
-      loginId?: string;
-      skipped?: boolean;
-      error?: string;
-      recomputeError?: string | null;
-    };
-
-    if (json.recomputeError) {
-      console.warn('track-student-login recompute failed:', json.recomputeError);
-    }
+    const json = (await res.json().catch(() => ({}))) as { loginId?: string; error?: string };
 
     if (json.loginId) return json.loginId;
 
@@ -299,49 +319,50 @@ async function insertLoginSessionViaEdge(
   return undefined;
 }
 
-async function insertLoginSession(
-  countsAsLogin: boolean,
-  auth: StudentAuthContext,
-): Promise<string | undefined> {
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const { device, browser } = parseUserAgent(ua);
-
-  let loginId: string | undefined;
-
-  if (countsAsLogin) {
-    loginId = await insertLoginSessionDirect(auth.userId, true, device, browser);
-    if (!loginId) {
-      loginId = await insertLoginSessionViaEdge(auth.accessToken, ua, device, browser);
-    }
-  } else {
-    loginId = await insertLoginSessionDirect(auth.userId, false, device, browser);
-    if (!loginId) {
-      const edgeResult = await callSyncStudentSession('resume', auth);
-      loginId = edgeResult?.sessionId;
-    }
+function markLoginTracked(accessToken: string): void {
+  try {
+    sessionStorage.setItem(LOGIN_TRACKED_KEY, accessToken.slice(-24));
+    sessionStorage.setItem(`${LOGIN_TRACKED_KEY}_at`, String(Date.now()));
+  } catch {
+    /* ignore */
   }
+}
 
-  if (!loginId) return undefined;
-
-  invalidateEngagementQueries(auth.userId);
-  return loginId;
+function wasLoginTrackedRecently(accessToken: string): boolean {
+  try {
+    const token = sessionStorage.getItem(LOGIN_TRACKED_KEY);
+    const trackedAt = Number(sessionStorage.getItem(`${LOGIN_TRACKED_KEY}_at`) || 0);
+    if (!token || token !== accessToken.slice(-24)) return false;
+    return Date.now() - trackedAt < LOGIN_DEDUP_MS;
+  } catch {
+    return false;
+  }
 }
 
 /** Called only after a successful sign-in — increments Total Logins. */
 export async function trackStudentLogin(auth?: StudentAuthContext | null): Promise<void> {
   if (isLoginInProgress()) return;
 
-  const resolved = await resolveAuthContext(auth);
-  if (!resolved) {
-    console.warn('[engagement] trackStudentLogin skipped: no auth session');
-    return;
-  }
-
-  if (wasLoginTrackedRecently(resolved.accessToken)) return;
-
+  // Set the guard before awaiting so two near-simultaneous sign-in callbacks
+  // (explicit signIn() plus the SIGNED_IN event) cannot record two logins.
   setLoginInProgress(true);
   try {
-    const loginId = await insertLoginSession(true, resolved);
+    const resolved = await resolveAuthContext(auth);
+    if (!resolved) {
+      console.warn('[engagement] trackStudentLogin skipped: no auth session');
+      return;
+    }
+
+    if (wasLoginTrackedRecently(resolved.accessToken)) return;
+
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const { device, browser } = parseUserAgent(ua);
+
+    let loginId = await insertLoginSessionDirect(resolved.userId, true, device, browser);
+    if (!loginId) {
+      loginId = await insertLoginSessionViaEdge(resolved.accessToken, ua, device, browser);
+    }
+
     if (!loginId) {
       console.warn('[engagement] trackStudentLogin failed: could not create login session');
       return;
@@ -349,7 +370,8 @@ export async function trackStudentLogin(auth?: StudentAuthContext | null): Promi
 
     markLoginTracked(resolved.accessToken);
     storeLoginSessionId(loginId);
-    console.info('[engagement] login recorded:', loginId);
+    invalidateEngagementQueries(resolved.userId);
+    notifyEngagementTick(resolved.userId);
   } catch (err) {
     console.warn('[engagement] trackStudentLogin failed:', err);
   } finally {
@@ -383,8 +405,8 @@ export async function ensureLoginRecorded(auth?: StudentAuthContext | null): Pro
 }
 
 /**
- * Resume time tracking when a student returns with an existing auth session
- * (page reload / revisit) without counting as a new login.
+ * Resume time tracking after a reload or revisit. Never counts as a login and
+ * never credits the time the student was away.
  */
 export async function resumeStudentSession(auth?: StudentAuthContext | null): Promise<void> {
   if (isLoginInProgress()) return;
@@ -393,146 +415,50 @@ export async function resumeStudentSession(auth?: StudentAuthContext | null): Pr
     const resolved = await resolveAuthContext(auth);
     if (!resolved) return;
 
-    const storedId = getStoredLoginSessionId();
-    if (storedId) {
-      const { data: row } = await supabase
-        .from('student_login_history')
-        .select('logout_time')
-        .eq('id', storedId)
-        .eq('student_id', resolved.userId)
-        .maybeSingle();
-      if (row && !row.logout_time) return;
-      if (row?.logout_time) clearStoredLoginSessionId();
-    }
-
-    const openSessionId = await findOpenSessionId(resolved.userId);
-    if (openSessionId) {
-      storeLoginSessionId(openSessionId);
-      return;
-    }
-
-    const edgeResult = await callSyncStudentSession('resume', resolved);
-    if (edgeResult?.sessionId) {
-      storeLoginSessionId(edgeResult.sessionId);
-      invalidateEngagementQueries(resolved.userId);
-      return;
-    }
-
-    const loginId = await insertLoginSession(false, resolved);
-    if (!loginId) return;
-
-    storeLoginSessionId(loginId);
+    const sessionId = await ensureTrackedSession();
+    if (sessionId) invalidateEngagementQueries(resolved.userId);
   } catch (err) {
     console.warn('resumeStudentSession failed:', err);
   }
 }
 
-async function updateSessionHeartbeatDirect(loginId: string): Promise<boolean> {
-  const { data: row, error: readError } = await supabase
-    .from('student_login_history')
-    .select('login_time, student_id, logout_time, session_duration')
-    .eq('id', loginId)
-    .maybeSingle();
-
-  if (readError || !row?.login_time || row.logout_time) {
-    if (row?.logout_time) clearStoredLoginSessionId();
-    return false;
-  }
-
-  const start = Date.parse(row.login_time);
-  if (!Number.isFinite(start)) return false;
-
-  const sessionDuration = Math.max(0, Math.round((Date.now() - start) / 1000));
-  if (typeof row.session_duration === 'number' && sessionDuration - row.session_duration < 45) {
-    return true;
-  }
-  const { error: updateError } = await supabase
-    .from('student_login_history')
-    .update({ session_duration: sessionDuration })
-    .eq('id', loginId)
-    .is('logout_time', null);
-
-  if (updateError) {
-    console.warn('updateSessionHeartbeat failed:', updateError.message);
-    return false;
-  }
-
-  return true;
-}
-
 /**
- * Update elapsed time on the open session without closing it.
- * Keeps Total Time Spent accurate while the student is still active.
+ * Send one beat for the open session.
+ * `heartbeat` credits up to 90 seconds, `resume` restarts the window without
+ * crediting the gap, and `finalize` credits the last window and closes.
  */
-export async function updateSessionHeartbeat(): Promise<void> {
-  let loginId = getStoredLoginSessionId();
+export async function updateSessionHeartbeat(mode: SessionBeatMode = 'heartbeat'): Promise<void> {
+  if (isLoginInProgress()) return;
 
   try {
     const auth = await getAuthContext();
     if (!auth) return;
 
-    if (!loginId) {
-      loginId = await findOpenSessionId(auth.userId);
-      if (loginId) storeLoginSessionId(loginId);
-    }
+    const sessionId = getStoredLoginSessionId() ?? (await ensureTrackedSession());
+    if (!sessionId) return;
 
-    if (!loginId) return;
+    const row = await touchTrackedSession(sessionId, mode);
 
-    const edgeResult = await callSyncStudentSession('heartbeat', auth, loginId);
-    if (edgeResult?.closed) {
+    if (row?.closed && mode !== 'finalize') {
+      // The session was closed elsewhere (logout in another tab, stale sweep).
       clearStoredLoginSessionId();
       return;
     }
-    if (edgeResult?.ok) return;
 
-    await updateSessionHeartbeatDirect(loginId);
+    if (row?.ok) {
+      notifyEngagementTick(auth.userId);
+    }
+
+    if (mode === 'finalize') {
+      clearStoredLoginSessionId();
+      invalidateEngagementQueries(auth.userId);
+    }
   } catch (err) {
     console.warn('updateSessionHeartbeat failed:', err);
   }
 }
 
-async function finalizeStudentSessionDirect(loginId: string): Promise<void> {
-  const logoutTime = new Date().toISOString();
-  const { data: row, error: readError } = await supabase
-    .from('student_login_history')
-    .select('login_time, student_id, logout_time')
-    .eq('id', loginId)
-    .maybeSingle();
-
-  if (readError || !row || row.logout_time) {
-    clearStoredLoginSessionId();
-    return;
-  }
-
-  let sessionDuration: number | null = null;
-  if (row.login_time) {
-    const start = Date.parse(row.login_time);
-    const end = Date.parse(logoutTime);
-    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
-      sessionDuration = Math.round((end - start) / 1000);
-    }
-  }
-
-  const { error: updateError } = await supabase
-    .from('student_login_history')
-    .update({
-      logout_time: logoutTime,
-      session_duration: sessionDuration,
-    })
-    .eq('id', loginId)
-    .is('logout_time', null);
-
-  if (updateError) {
-    console.warn('finalizeStudentSession failed:', updateError.message);
-    return;
-  }
-
-  clearStoredLoginSessionId();
-
-  if (row.student_id) invalidateEngagementQueries(row.student_id);
-}
-
-/** Finalize the active session and accumulate session duration. */
+/** Finalize the active session and accumulate measured session time. */
 export async function finalizeStudentSession(): Promise<void> {
   const loginId = getStoredLoginSessionId();
   if (!loginId) return;
@@ -541,22 +467,20 @@ export async function finalizeStudentSession(): Promise<void> {
     const auth = await resolveAuthContext();
     if (!auth) return;
 
-    const edgeResult = await callSyncStudentSession('finalize', auth, loginId);
-    if (edgeResult?.ok || edgeResult?.closed) {
+    const row = await touchTrackedSession(loginId, 'finalize');
+    if (row?.ok || row?.closed) {
       clearStoredLoginSessionId();
       invalidateEngagementQueries(auth.userId);
-      return;
+      notifyEngagementTick(auth.userId);
     }
-
-    await finalizeStudentSessionDirect(loginId);
   } catch (err) {
     console.warn('finalizeStudentSession failed:', err);
   }
 }
 
 /**
- * Reliable finalize for page unload — uses keepalive fetch so the request
- * can complete after the tab closes.
+ * Reliable finalize for page unload — uses keepalive fetch so the request can
+ * complete after the tab closes.
  */
 export function finalizeStudentSessionKeepalive(): void {
   const loginId = getStoredLoginSessionId();
@@ -574,14 +498,14 @@ export function finalizeStudentSessionKeepalive(): void {
     if (!auth) return;
 
     try {
-      const res = await fetch(`${base}/functions/v1/sync-student-session`, {
+      const res = await fetch(`${base}/rest/v1/rpc/touch_student_session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${auth.accessToken}`,
           apikey: anonKey,
         },
-        body: JSON.stringify({ action: 'finalize', sessionId: loginId }),
+        body: JSON.stringify({ p_session_id: loginId, p_mode: 'finalize' }),
         keepalive: true,
       });
 

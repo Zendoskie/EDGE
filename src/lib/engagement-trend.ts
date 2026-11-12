@@ -7,6 +7,8 @@ export type LoginEvent = {
   login_time: string;
   logout_time?: string | null;
   session_duration?: number | null;
+  /** Measured active seconds (heartbeat accumulation). Preferred over wall-clock. */
+  active_seconds?: number | null;
   counts_as_login?: boolean | null;
 };
 
@@ -75,27 +77,37 @@ function toIsoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function sessionSecondsAt(login: LoginEvent, asOfMs: number): number {
+/**
+ * Seconds contributed by a session as of `asOfMs`.
+ *
+ * Only measured time is trusted. A session that is still open is never extended
+ * to "now" — that wall-clock inference is what used to turn four minutes into an
+ * hour. For sessions that straddle the as-of point, the contribution is limited
+ * to the wall-clock elapsed inside the window.
+ */
+export function sessionSecondsAt(login: LoginEvent, asOfMs: number): number {
   const start = Date.parse(login.login_time);
   if (!Number.isFinite(start) || start > asOfMs) return 0;
 
+  const measured =
+    login.active_seconds != null && Number.isFinite(login.active_seconds)
+      ? Math.max(0, Math.floor(login.active_seconds))
+      : login.session_duration != null && Number.isFinite(login.session_duration)
+        ? Math.max(0, Math.floor(login.session_duration))
+        : null;
+
+  if (measured != null) {
+    if (start + measured * 1000 <= asOfMs) return measured;
+    return Math.max(0, Math.min(measured, Math.round((asOfMs - start) / 1000)));
+  }
+
   if (login.logout_time) {
     const end = Date.parse(login.logout_time);
-    if (!Number.isFinite(end)) return 0;
-    const cappedEnd = Math.min(end, asOfMs);
-    if (cappedEnd < start) return 0;
-    if (login.session_duration != null && end <= asOfMs) {
-      return Math.max(0, login.session_duration);
-    }
-    return Math.max(0, Math.round((cappedEnd - start) / 1000));
+    if (!Number.isFinite(end) || end < start) return 0;
+    return Math.max(0, Math.round((Math.min(end, asOfMs) - start) / 1000));
   }
 
-  if (login.session_duration != null && Number.isFinite(login.session_duration)) {
-    const claimedEnd = start + login.session_duration * 1000;
-    if (claimedEnd <= asOfMs) return Math.max(0, login.session_duration);
-  }
-
-  return Math.max(0, Math.round((asOfMs - start) / 1000));
+  return 0;
 }
 
 function computeScoreAsOf(

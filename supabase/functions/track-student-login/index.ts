@@ -55,11 +55,13 @@ serve(async (req) => {
     const forwarded = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "";
     const ipAddress = forwarded.split(",")[0]?.trim() || null;
 
+    const loginTime = new Date().toISOString();
+
     const { data: inserted, error: insertError } = await supabase
       .from("student_login_history")
       .insert({
         student_id: user.id,
-        login_time: new Date().toISOString(),
+        login_time: loginTime,
         device: body.device ?? null,
         browser: body.browser ?? null,
         ip_address: ipAddress,

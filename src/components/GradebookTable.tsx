@@ -99,13 +99,12 @@ export function GradebookTable({
   const activityIds = columns.map((activity) => activity.id);
 
   const { data: enrollments = [], isLoading: enrollmentsLoading } = useQuery<EnrollmentListRow[]>({
-    queryKey: ['enrollments', subjectId, 'active'],
+    queryKey: ['enrollments', subjectId, 'roster'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enrollments')
         .select('*')
-        .eq('subject_id', subjectId)
-        .eq('status', 'active');
+        .eq('subject_id', subjectId);
       if (error) throw error;
       if (!data.length) return [];
       const studentIds = data.map((row) => row.student_id).filter(Boolean) as string[];
@@ -126,6 +125,35 @@ export function GradebookTable({
         ),
     [enrollments],
   );
+
+  /** Dropped-out students keep their enrollment row and saved grades, but leave the active roster. */
+  const inactiveStudents = useMemo(
+    () =>
+      [...enrollments]
+        .filter((row) => row.status === 'inactive' && typeof row.student_id === 'string' && row.student_id.length > 0)
+        .sort((a, b) =>
+          (a.profile?.full_name || '').localeCompare(b.profile?.full_name || '', undefined, { sensitivity: 'base' }),
+        )
+        .map((row) => ({
+          enrollmentId: row.id,
+          studentId: row.student_id as string,
+          name: row.profile?.full_name || 'Student',
+        })),
+    [enrollments],
+  );
+
+  const setEnrollmentStatus = useMutation({
+    mutationFn: async ({ enrollmentId, status }: { enrollmentId: string; status: 'active' | 'inactive' }) => {
+      const { error } = await supabase.from('enrollments').update({ status }).eq('id', enrollmentId);
+      if (error) throw error;
+      return status;
+    },
+    onSuccess: (status) => {
+      queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+      toast.success(status === 'inactive' ? 'Student marked inactive' : 'Student restored to active');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery({
     queryKey: ['gradebook-submissions', subjectId, activityIds.join(',')],
@@ -330,7 +358,7 @@ export function GradebookTable({
     return <p className="px-4 py-3 text-sm text-muted-foreground">Loading gradebook...</p>;
   }
 
-  if (students.length === 0) {
+  if (students.length === 0 && inactiveStudents.length === 0) {
     return <p className="px-4 py-3 text-sm text-muted-foreground">Enroll students first to input scores.</p>;
   }
 
@@ -449,10 +477,15 @@ export function GradebookTable({
 
       <FinalGradeReleasePanel
         subjectId={subjectId}
-        students={students.map((s) => ({ id: s.student_id, name: s.profile?.full_name || 'Student' }))}
+        students={students.map((s) => ({ id: s.student_id, name: s.profile?.full_name || 'Student', enrollmentId: s.id }))}
         preview={releasePreview}
         hasUnsavedDrafts={hasUnsavedDrafts}
         previewMayBeIncomplete={previewMayBeIncomplete}
+        inactiveStudents={inactiveStudents}
+        onSetEnrollmentStatus={(enrollmentId, status) => setEnrollmentStatus.mutate({ enrollmentId, status })}
+        statusUpdating={
+          setEnrollmentStatus.isPending ? setEnrollmentStatus.variables?.enrollmentId ?? null : null
+        }
       />
     </div>
   );

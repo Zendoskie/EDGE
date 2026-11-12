@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { AuthFrame } from '@/components/shell/AuthSlider';
+import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
+import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -60,6 +62,7 @@ function RequestForm() {
   const [department, setDepartment] = useState('');
   const [role,       setRole]       = useState<StaffRole | ''>('');
   const [remarks,    setRemarks]    = useState('');
+  const [idImages,   setIdImages]   = useState<IdVerificationValue>({ front: null, back: null });
   const [loading,    setLoading]    = useState(false);
   const [submitted,  setSubmitted]  = useState(false);
   const [errors,     setErrors]     = useState<Record<string, string>>({});
@@ -74,6 +77,8 @@ function RequestForm() {
     if (!email.trim())    errs.email    = 'Gmail is required.';
     else if (!EMAIL_REGEX.test(email.trim())) errs.email = 'Please enter a valid Gmail address.';
     if (!role)            errs.role     = 'Please select a role.';
+    if (!idImages.front)  errs.idFront  = 'The front of your ID is required.';
+    if (!idImages.back)   errs.idBack   = 'The back of your ID is required.';
     return errs;
   }
 
@@ -102,6 +107,12 @@ function RequestForm() {
         }
       }
 
+      const folder = newIdFolder('staff');
+      const [idFrontPath, idBackPath] = await Promise.all([
+        uploadIdImage(idImages.front!, folder, 'front'),
+        uploadIdImage(idImages.back!, folder, 'back'),
+      ]);
+
       const { error: insertError } = await (supabase as any)
         .from('staff_registration_requests')
         .insert({
@@ -110,6 +121,8 @@ function RequestForm() {
           department: department.trim() || null,
           role:       role as StaffRole,
           remarks:    remarks.trim() || null,
+          id_front_path: idFrontPath,
+          id_back_path:  idBackPath,
           status:     'pending',
         });
       if (insertError) throw insertError;
@@ -185,6 +198,13 @@ function RequestForm() {
           </div>
           {errors.role && <p className="edge-auth-error">{errors.role}</p>}
         </div>
+
+        <IdVerificationUpload
+          value={idImages}
+          onChange={(next) => { setIdImages(next); clearError('idFront'); clearError('idBack'); }}
+          disabled={loading}
+          error={errors.idFront || errors.idBack || null}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="req-remarks">Remarks</Label>

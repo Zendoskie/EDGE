@@ -32,26 +32,6 @@ export async function requestPasswordResetEmail(email: string): Promise<Password
   });
 
   const json = (await res.json().catch(() => ({}))) as { error?: unknown; sent?: number };
-  // #region agent log
-  fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
-    body: JSON.stringify({
-      sessionId: 'b4b4c1',
-      runId: 'password-reset-brevo',
-      hypothesisId: 'H-smtp',
-      location: 'request-password-reset.ts',
-      message: 'send-password-reset response',
-      data: {
-        httpOk: res.ok,
-        status: res.status,
-        sent: json.sent,
-        edgeError: typeof json.error === 'string' ? json.error : null,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   if (!res.ok) {
     const err = json.error;

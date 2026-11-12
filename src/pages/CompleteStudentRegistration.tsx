@@ -165,22 +165,6 @@ export default function CompleteStudentRegistration() {
         throw completeError;
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7625/ingest/6a79715d-0b2e-4776-b3c6-a4d1d1f425c5', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b4b4c1' },
-        body: JSON.stringify({
-          sessionId: 'b4b4c1',
-          runId: 'student-login-fix',
-          hypothesisId: 'H-session',
-          location: 'CompleteStudentRegistration.tsx:afterComplete',
-          message: 'invitation complete',
-          data: { activeSession, userIdLen: userId.length },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       if (activeSession) {
         try {
           await commitPasswordReset(pw);

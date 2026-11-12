@@ -1,3 +1,9 @@
+import {
+  ASSESSMENT_TYPES,
+  assessmentTypeOrder,
+  formatAssessmentTypeLabel,
+} from "./assessment-types.ts";
+
 const RISK_EMAIL_LEVELS = new Set(["critical", "at_risk", "stable", "excelling"]);
 
 export function escapeHtml(value: string): string {
@@ -175,20 +181,122 @@ export function missingActivityTitles(input: {
   return titles;
 }
 
+export type GradesTableLine = {
+  title: string;
+  score: number;
+  assessmentType?: string | null;
+};
+
+type GradeGroup = { label: string; order: number; lines: GradesTableLine[] };
+
+/** Stable section order: gradebook type order, unknown types next, untyped rows last. */
+function groupGradesByAssessmentType(lines: GradesTableLine[]): GradeGroup[] {
+  const groups = new Map<string, GradeGroup>();
+  for (const line of lines) {
+    const type = line.assessmentType?.trim() || "";
+    const key = type || "untyped";
+    const existing = groups.get(key);
+    if (existing) {
+      existing.lines.push(line);
+      continue;
+    }
+    groups.set(key, {
+      label: type ? formatAssessmentTypeLabel(type) : "Other",
+      order: type ? assessmentTypeOrder(type) : ASSESSMENT_TYPES.length + 1,
+      lines: [line],
+    });
+  }
+  return [...groups.values()].sort((a, b) => a.order - b.order);
+}
+
+/** Sections only when at least one row carries an assessment type. */
+function showGradeSections(groups: GradeGroup[]): boolean {
+  return groups.some((group) => group.label !== "Other");
+}
+
+/**
+ * One row per assessment, split into a section per assessment type. Gmail drops <style>
+ * blocks, so every cell carries its own styles and plain table attributes act as a fallback.
+ */
+export function gradesTableHtml(lines: GradesTableLine[]): string {
+  const cell = "padding:8px 12px;";
+  const bodyCell = `${cell}border-bottom:1px solid #e5e7eb;`;
+  const headCell = `${cell}background:#f3f4f6;border-bottom:1px solid #cbd5e1;color:#374151;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;`;
+  const sectionCell = `${cell}background:#eef2f7;border-top:1px solid #cbd5e1;border-bottom:1px solid #e5e7eb;color:#1f2937;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;`;
+  const row = (line: GradesTableLine) =>
+    `<tr><td style="${bodyCell}vertical-align:top;">${escapeHtml(line.title)}</td><td align="right" style="${bodyCell}text-align:right;font-weight:600;white-space:nowrap;">${escapeHtml(String(line.score))}</td></tr>`;
+  const groups = groupGradesByAssessmentType(lines);
+  const body = showGradeSections(groups)
+    ? groups
+      .map((group) =>
+        `<tr><td colspan="2" style="${sectionCell}">${escapeHtml(group.label)}</td></tr>` +
+        group.lines.map(row).join("")
+      )
+      .join("")
+    : lines.map(row).join("");
+  return [
+    '<table border="0" cellpadding="0" cellspacing="0" width="100%"',
+    ' style="border-collapse:collapse;width:100%;max-width:520px;margin:12px 0 16px;border:1px solid #d1d5db;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;">',
+    "<thead><tr>",
+    `<th align="left" scope="col" style="${headCell}">Assessment</th>`,
+    `<th align="right" scope="col" style="${headCell}text-align:right;">Score</th>`,
+    "</tr></thead>",
+    `<tbody>${body}</tbody>`,
+    "</table>",
+  ].join("");
+}
+
+/** Plain-text grade list: the same sections, one `Title: score` line each. */
+export function gradesLinesText(lines: GradesTableLine[]): string {
+  const groups = groupGradesByAssessmentType(lines);
+  if (!showGradeSections(groups)) {
+    return lines.map((line) => `${line.title}: ${line.score}`).join("\n");
+  }
+  return groups
+    .map((group) =>
+      `${group.label.toUpperCase()}\n${group.lines.map((line) => `${line.title}: ${line.score}`).join("\n")}`
+    )
+    .join("\n\n");
+}
+
+/** Plain-text fallback so table cells stay readable where HTML is not rendered. */
+function gradesPostedText(input: {
+  intro: string;
+  lines: GradesTableLine[];
+  missing: string[];
+  closing: string;
+}): string {
+  const missing = input.missing.length
+    ? `You have a missing grade in ${input.missing.join(", ")}.`
+    : "";
+  return [
+    input.intro,
+    gradesLinesText(input.lines),
+    missing,
+    input.closing,
+    "EDGE — Student Risk Analysis and AI Coaching System",
+  ].filter(Boolean).join("\n\n");
+}
+
 export function gradesPostedEmail(
   subjectCode: string | null | undefined,
-  lines: Array<{ title: string; score: number }>,
+  lines: GradesTableLine[],
   missingTitles: string[] = [],
-): { subject: string; html: string } {
+): { subject: string; html: string; text: string } {
   const code = subjectCode?.trim() || "your subject";
-  const list = lines.map((line) => `${escapeHtml(line.title)}: ${line.score}`).join("<br>");
   const missing = missingTitles.map((title) => title.trim()).filter(Boolean);
   const missingBlock = missing.length
     ? `<p>You have a missing grade in ${missing.map((title) => `<strong>${escapeHtml(title)}</strong>`).join(", ")}.</p>`
     : "";
   return {
     subject: `EDGE: ${code} — Grades posted`,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A grade is now available for <strong>${escapeHtml(code)}</strong>.</p><p>${list}</p>${missingBlock}<p>Sign in to EDGE to review your scores.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5; color:#111827;"><p>A grade is now available for <strong>${escapeHtml(code)}</strong>.</p>${gradesTableHtml(lines)}${missingBlock}<p>Sign in to EDGE to review your scores.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    text: gradesPostedText({
+      intro: `A grade is now available for ${code}.`,
+      lines,
+      missing,
+      closing: "Sign in to EDGE to review your scores.",
+    }),
   };
 }
 
@@ -196,15 +304,69 @@ export function finalGradeReleasedLogId(subjectId: string, studentId: string, fi
   return `${subjectId}:${studentId}:${finalGrade}`;
 }
 
+/** One row of the released-grade breakdown, one per weighted assessment type. */
+export type FinalGradeBreakdownRow = {
+  label: string;
+  weight: number;
+  average: number | null;
+};
+
+function formatScore2(value: number | null | undefined): string {
+  return value != null && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function formatWeight(weight: number): string {
+  if (!Number.isFinite(weight)) return "0%";
+  return `${Number.isInteger(weight) ? weight : weight.toFixed(1)}%`;
+}
+
+/** Weighted components table that ends in the released final grade. */
+export function finalGradeTableHtml(rows: FinalGradeBreakdownRow[], finalGrade: string): string {
+  const cell = "padding:8px 12px;";
+  const bodyCell = `${cell}border-bottom:1px solid #e5e7eb;`;
+  const headCell = `${cell}background:#f3f4f6;border-bottom:1px solid #cbd5e1;color:#374151;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;`;
+  const totalCell = `${cell}border-top:1px solid #cbd5e1;background:#f3f4f6;font-size:15px;font-weight:700;`;
+  const body = rows
+    .map((row) =>
+      `<tr><td style="${bodyCell}vertical-align:top;">${escapeHtml(row.label)}</td><td align="right" style="${bodyCell}text-align:right;color:#4b5563;white-space:nowrap;">${escapeHtml(formatWeight(row.weight))}</td><td align="right" style="${bodyCell}text-align:right;font-weight:600;white-space:nowrap;">${escapeHtml(formatScore2(row.average))}</td></tr>`
+    )
+    .join("");
+  return [
+    '<table border="0" cellpadding="0" cellspacing="0" width="100%"',
+    ' style="border-collapse:collapse;width:100%;max-width:520px;margin:12px 0 16px;border:1px solid #d1d5db;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;">',
+    "<thead><tr>",
+    `<th align="left" scope="col" style="${headCell}">Assessment Type</th>`,
+    `<th align="right" scope="col" style="${headCell}text-align:right;">Weight</th>`,
+    `<th align="right" scope="col" style="${headCell}text-align:right;">Average</th>`,
+    "</tr></thead>",
+    `<tbody>${body}`,
+    `<tr><td colspan="2" style="${totalCell}">Final grade</td><td align="right" style="${totalCell}text-align:right;white-space:nowrap;">${escapeHtml(finalGrade)}</td></tr>`,
+    "</tbody></table>",
+  ].join("");
+}
+
 export function finalGradeReleasedEmail(
   subjectCode: string | null | undefined,
   finalGrade: number,
-): { subject: string; html: string } {
+  breakdown: FinalGradeBreakdownRow[] = [],
+): { subject: string; html: string; text: string } {
   const code = subjectCode?.trim() || "your subject";
   const grade = Number.isFinite(finalGrade) ? finalGrade.toFixed(2) : String(finalGrade);
+  const rows = breakdown.filter((row) => Number.isFinite(row.weight) && row.weight > 0);
+  const table = rows.length > 0 ? finalGradeTableHtml(rows, grade) : "";
+  const tableText = rows.length > 0
+    ? rows.map((row) => `${row.label}: ${formatWeight(row.weight)} weight, ${formatScore2(row.average)} average`).join("\n") +
+      `\nFinal grade: ${grade}`
+    : "";
   return {
     subject: `EDGE: ${code} — Final grade released`,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>Your final grade for <strong>${escapeHtml(code)}</strong> is <strong>${escapeHtml(grade)}</strong>.</p><p>Sign in to EDGE to review your gradebook.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    html: `<div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5; color:#111827;"><p>Your final grade for <strong>${escapeHtml(code)}</strong> is <strong>${escapeHtml(grade)}</strong>.</p>${table}<p>Sign in to EDGE to review your gradebook.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    text: [
+      `Your final grade for ${code} is ${grade}.`,
+      tableText,
+      "Sign in to EDGE to review your gradebook.",
+      "EDGE — Student Risk Analysis and AI Coaching System",
+    ].filter(Boolean).join("\n\n"),
   };
 }
 
@@ -594,14 +756,20 @@ export function enrollmentDecisionEmail(input: {
 export function parentGradesPostedEmail(input: {
   studentName?: string | null;
   subjectCode?: string | null;
-  lines: Array<{ title: string; score: number }>;
-}): { subject: string; html: string } {
+  lines: GradesTableLine[];
+}): { subject: string; html: string; text: string } {
   const student = escapeHtml(input.studentName?.trim() || "Your student");
-  const code = escapeHtml(input.subjectCode?.trim() || "a course");
-  const list = input.lines.map((line) => `${escapeHtml(line.title)}: ${line.score}`).join("<br>");
+  const rawCode = input.subjectCode?.trim() || "a course";
+  const code = escapeHtml(rawCode);
   return {
-    subject: `EDGE: ${code} — Grade update for ${student}`,
-    html: `<div style="font-family: sans-serif; line-height: 1.5;"><p>A new grade is available for <strong>${student}</strong> in <strong>${code}</strong>.</p><p>${list}</p><p>Sign in to EDGE to review details for your linked student.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    subject: `EDGE: ${rawCode} — Grade update for ${student}`,
+    html: `<div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5; color:#111827;"><p>A new grade is available for <strong>${student}</strong> in <strong>${code}</strong>.</p>${gradesTableHtml(input.lines)}<p>Sign in to EDGE to review details for your linked student.</p><p style="color:#666;font-size:12px;">EDGE — Student Risk Analysis and AI Coaching System</p></div>`,
+    text: gradesPostedText({
+      intro: `A new grade is available for ${input.studentName?.trim() || "your student"} in ${rawCode}.`,
+      lines: input.lines,
+      missing: [],
+      closing: "Sign in to EDGE to review details for your linked student.",
+    }),
   };
 }
 

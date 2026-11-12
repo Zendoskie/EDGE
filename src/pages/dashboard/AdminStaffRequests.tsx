@@ -25,6 +25,7 @@ import {
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { emailRegistrationRequestRejected } from '@/lib/registration-rejection-email';
+import IdPreview from '@/components/IdPreview';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ type StaffRequest = {
   submitted_at: string;
   reviewed_at: string | null;
   rejection_reason: string | null;
+  id_front_path: string | null;
+  id_back_path: string | null;
 };
 
 type FilterTab = 'all' | RequestStatus;
@@ -120,7 +123,7 @@ export default function AdminStaffRequests() {
       const { data, error } = await (supabase as any)
         .from('staff_registration_requests')
         .select(
-          'id, full_name, email, department, role, remarks, status, submitted_at, reviewed_at, rejection_reason'
+          'id, full_name, email, department, role, remarks, status, submitted_at, reviewed_at, rejection_reason, id_front_path, id_back_path'
         )
         .order('submitted_at', { ascending: false });
 
@@ -589,6 +592,7 @@ export default function AdminStaffRequests() {
                   <DetailField label="Reviewed"   value={formatDate(viewRow.reviewed_at)} />
                 )}
               </div>
+              <IdPreview frontPath={viewRow.id_front_path} backPath={viewRow.id_back_path} />
               {viewRow.remarks && (
                 <div className="space-y-1 rounded-lg border border-border/50 bg-muted/30 p-3">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>

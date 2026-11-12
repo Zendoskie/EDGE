@@ -20,15 +20,19 @@ EDGE uses Supabase Auth with role rows in `public.user_roles` (`app_role`: `stud
 | **Administrator** | Admin approvals, user management, staff invitations, registration review, parent link final approval | Broad staff tools; RPCs such as `admin_decide_parent_request`, `admin_review_student_request`, account status. | Rejects/approves registrations; final parent-link gate; does not automatically bypass student consent for parent access. |
 | **Guidance counselor** | Guidance referrals, engagement views, counselor inbox | Policies reference `has_role(..., 'guidance_counselor')` for referrals, engagement summaries, and related student profiles (see migrations e.g. `20260831115504`, `20261005220000`). | Acts on referrals and engagement workflows; does not replace instructor grade entry. |
 
-### Parent linking (two-step)
+### Parent linking (two-step + ID verification)
 
-Documented in `20261002100100_parent_two_step_verification.sql`:
+Documented in `20261002100100_parent_two_step_verification.sql` and `20261111120000_id_verification.sql`:
 
 1. Parent requests link (`parent_request_student_link`) or registers as parent → status `pending`.
 2. Student approves → `pending_admin` (student must not skip admin).
-3. Administrator approves → `approved` (parent may access linked student data per RLS).
+3. Administrator approves → `approved` (sends the one-time completion link).
+4. Parent completes registration and uploads the front/back of a valid ID → link becomes `pending_verification`.
+5. Administrator verifies the ID (`admin_verify_parent_id`) → `approved` (parent may access linked student data per RLS).
 
-Statuses include `rejected` (student) and `admin_rejected` (administrator). Dashboard notifications are written by database triggers (`notify_parent_link_status_change`); emails use `send-parent-email` and related Edge paths (**deployment dependency**: Brevo secrets).
+Statuses include `rejected` (student), `admin_rejected` (administrator), and `pending_verification` (awaiting ID verification). ID images live in the private Storage bucket `id-documents`; only administrators can read them. Dashboard notifications are written by database triggers (`notify_parent_link_status_change`) and the completion/verification RPCs; emails use `send-parent-email` and related Edge paths (**deployment dependency**: Brevo secrets).
+
+Instructors and guidance counselors also submit front/back ID images with their staff registration request (`staff_registration_requests.id_front_path` / `id_back_path`); the administrator reviews them in the request detail dialog before approving.
 
 ### Permissions not fully enumerable here
 
@@ -114,6 +118,7 @@ Risk **classification** can be stored while evidence is incomplete. `riskDisplay
 - Saved gradebook scores stay in `submissions`; **release** writes a row to `final_grade_releases` so students and parents see **Final** instead of **Provisional**.
 - In the gradebook release panel, instructors choose **which complete students to include** in each run (unchecked students are **excluded** for that session only). Excluded learners keep all recorded scores and remain Provisional until included in a later release.
 - The `release-final-grades` Edge Function accepts an optional `student_ids` inclusion whitelist; omitted means all active enrollments.
+- The released-grade email (`finalGradeReleasedEmail`) shows the grade with a **by assessment type** breakdown table — Activity, Project, Attendance, Exam — each with its weight and average, ending in a **Final grade** row. `send-notification` recomputes the components with `computeSubjectWeightedGrade` and the same attendance convention as `release-final-grades`; zero-weight categories are omitted, and the released grade itself stays authoritative.
 
 ### 2.5 When classification is calculated or refreshed
 
@@ -160,7 +165,7 @@ Separate from “grade posted”:
 | Channel | Mechanism |
 |---------|-----------|
 | **Student dashboard inbox** | Database trigger `notify_first_activity_grade` on `submissions` when a score is **first recorded** (`INSERT` or `UPDATE` from null). Dedupe key `grade-posted:{activity_id}:{student_id}` (`20261022153000_student_grade_posted_inbox_dedupe.sql`). **Regrades** (score already set) do **not** create a new “Grade posted” row. |
-| **Email** | Client calls `emailGradesPosted` → `send-notification` event `grades_posted` (Brevo). Independent of inbox; failure does not remove inbox rows. |
+| **Email** | Client calls `emailGradesPosted` → `send-notification` event `grades_posted` (Brevo). Independent of inbox; failure does not remove inbox rows. The body renders a table split into one section per assessment type (Activity, Quiz, Project, Midterm Exam, Final Exam, …, in gradebook order) with a score per assessment — `gradesTableHtml`, inline styles only so Gmail keeps the layout. A grouped plain-text fallback (`text`) is sent alongside it. |
 
 Partial save example (A1=16, P1 blank, ME=45): only A1 and ME are saved (`gradebook.test.ts`); `grades_posted` email payloads include those two items only. Inbox “Grade posted” rows follow the trigger rules above when migration `20261022153000_student_grade_posted_inbox_dedupe.sql` is **applied on the target database**—the repository does not assert that staging or production have run it, and inbox behavior is not covered by `gradebook.test.ts`.
 
@@ -288,6 +293,27 @@ Parents with **approved** links see performance and predictions subject to RLS. 
 
 Instructors monitor cohorts through the instructor dashboard and subject detail views: gradebook trends, risk/prediction tables (refreshed when `predict-risk` runs), attendance entry, engagement panels (`StudentEngagementPanel`, charts), and intervention/referral history where enabled. This is **observational** over stored submissions and predictions—not a separate longitudinal report file unless exported from **Reports**.
 
+### 7.6 Engagement score, active time, and parent check-ins
+
+**Active time (time spent).** Session time is measured with heartbeats, not the wall clock. The student dashboard sends a beat every 60 seconds only while the tab is visible and the student has interacted within the last 5 minutes; the server credits at most 90 seconds per beat. Hidden tabs, idle time, and stale sessions are not counted. A new sign-in closes any open session, so a session left open overnight cannot keep growing. Credited seconds are stored per session (`student_login_history.active_seconds`) and per local reporting day (`student_daily_time`, Asia/Manila).
+
+**Period filters.** Students and linked parents can view the student's time spent for **Today**, **Yesterday**, **This week** (ISO week, Monday start), or **This month**. The values come from `get_student_time_spent`, which respects RLS: students see their own rows, approved parents see their linked student's rows. The student's own view ticks every second while the tab is visible and the student is interacting (`useStudentTimeSpent`), and reconciles with the authoritative server total on every heartbeat; it does not poll the database. Instructors do not get the time-spent filter; their roster shows the engagement grade with the level/risk/program/year filters instead.
+
+**Student engagement score (0–100).** A rolling 30-day window combines four signals (`ENGAGEMENT_CONFIG`, `recompute_student_engagement_internal`):
+
+| Signal | Weight | Full marks at |
+| --- | --- | --- |
+| Login frequency | 40% | 5 counted logins per week |
+| Active time | 30% | 5 hours of active time per week |
+| Assignment activity | 20% | 10 assignment views/submissions/quiz completions in the window |
+| AI coaching and feedback | 10% | 5 AI sessions/views or feedback submissions in the window |
+
+Each signal is capped at 100 before weighting, and the weighted result is capped at 100. Bands: 80+ Highly Active, 60+ Active, 40+ Low Engagement, below 40 Inactive. The in-app **How this is computed** dialog (`EngagementScoreInfo`) renders this formula from the same config, so the copy cannot drift. It is a participation measure, not an academic grade.
+
+**Parent check-in engagement (0–100).** Separate from the student's score: each opening of a linked student's performance page records one check-in (`parent_student_views`), deduplicated to one per 30 minutes. The score is check-ins per week over the last 30 days against a target of 2 per week (100 = target met, capped at 100). It is shown to the parent on their performance page and to instructors in the student engagement panel, and it never affects grades.
+
+**Legacy rows.** Sessions recorded before active-time tracking stored wall-clock time (including abandoned tabs). The migration closes them and drops that unverifiable time instead of estimating it; login counts, activity, submissions, AI sessions, and feedback are untouched. `total_time_spent_seconds` and `student_daily_time` therefore start at zero and grow only from measured heartbeats.
+
 ---
 
 ## 8. Academic disclaimer
@@ -310,6 +336,7 @@ Full and short disclaimer text lives in [ACADEMIC_DISCLAIMER.md](./ACADEMIC_DISC
 | Manual vs automated | §4 |
 | AI Coaching & limitations | §6 |
 | Instructor progress monitoring | §7.5 |
+| Engagement score formula, time filters, parent check-ins | §7.6 |
 | Student feedback | §7.2 |
 | Counseling referrals | §7.3 |
 | Parent dashboard | §1, §7.4 |

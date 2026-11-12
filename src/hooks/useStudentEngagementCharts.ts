@@ -43,7 +43,7 @@ export function useStudentEngagementCharts(studentId: string | undefined | null,
         fetchAllPages(async (from, to) =>
           supabase
             .from('student_login_history')
-            .select('login_time, logout_time, session_duration, counts_as_login')
+            .select('login_time, logout_time, session_duration, active_seconds, counts_as_login')
             .eq('student_id', studentId)
             .order('login_time', { ascending: true })
             .range(from, to),

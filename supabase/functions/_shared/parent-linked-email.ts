@@ -20,7 +20,7 @@ import {
 
 export type ParentEmailCounts = { sent: number; failed: number; duplicates: number };
 
-type SendBrevo = (opts: { to: string; subject: string; html: string }) => Promise<unknown>;
+type SendBrevo = (opts: { to: string; subject: string; html: string; text?: string }) => Promise<unknown>;
 
 export async function emailLinkedParentsGradesPosted(
   supabase: ReturnType<typeof createClient>,
@@ -28,7 +28,7 @@ export async function emailLinkedParentsGradesPosted(
   studentId: string,
   subjectId: string,
   subjectCode: string | null,
-  lines: Array<{ activityId: string; title: string; score: number }>,
+  lines: Array<{ activityId: string; title: string; score: number; assessmentType?: string | null }>,
 ): Promise<ParentEmailCounts> {
   let sent = 0;
   let failed = 0;
@@ -68,11 +68,15 @@ export async function emailLinkedParentsGradesPosted(
     const email = parentGradesPostedEmail({
       studentName: studentProfile?.full_name ?? null,
       subjectCode,
-      lines: pendingLines.map((line) => ({ title: line.title, score: line.score })),
+      lines: pendingLines.map((line) => ({
+        title: line.title,
+        score: line.score,
+        assessmentType: line.assessmentType ?? null,
+      })),
     });
     const delivery = await deliverEmail({
       alreadyLogged: false,
-      send: () => sendBrevoEmail({ to: parent.email, subject: email.subject, html: email.html }),
+      send: () => sendBrevoEmail({ to: parent.email, subject: email.subject, html: email.html, text: email.text }),
       log: async () => {
         const rows = pendingLines.map((line) => ({
           student_id: parent.parentUserId,

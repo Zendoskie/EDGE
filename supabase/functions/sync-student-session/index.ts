@@ -15,21 +15,11 @@ type EngagementMetrics = {
   last_login_at: string | null;
 };
 
-function parseUserAgent(ua: string): { device: string; browser: string } {
-  const lower = ua.toLowerCase();
-  let device = "Desktop";
-  if (/mobile|android|iphone|ipad|ipod/.test(lower)) device = "Mobile";
-  else if (/tablet/.test(lower)) device = "Tablet";
-
-  let browser = "Unknown";
-  if (lower.includes("edg/")) browser = "Edge";
-  else if (lower.includes("chrome/") && !lower.includes("chromium")) browser = "Chrome";
-  else if (lower.includes("firefox/")) browser = "Firefox";
-  else if (lower.includes("safari/") && !lower.includes("chrome")) browser = "Safari";
-  else if (lower.includes("opera") || lower.includes("opr/")) browser = "Opera";
-
-  return { device, browser };
-}
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
 async function fetchMetrics(
   supabase: ReturnType<typeof createClient>,
@@ -50,43 +40,40 @@ async function fetchMetrics(
   };
 }
 
+/**
+ * Session tracking proxy.
+ *
+ * The real rules live in the database (`start_student_session`,
+ * `touch_student_session`), so the browser and this function can never disagree
+ * about how time is credited. Each call runs as the signed-in student, so the
+ * RPC's auth.uid() checks and RLS still apply.
+ */
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!authHeader) return json({ error: "Not authenticated" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAnonKey =
+      Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
+
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid or expired session" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { data: { user }, error: authError } = await admin.auth.getUser(token);
+    if (authError || !user) return json({ error: "Invalid or expired session" }, 401);
 
-    const { data: roleRow } = await supabase
+    const { data: roleRow } = await admin
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .eq("role", "student")
       .maybeSingle();
 
-    if (!roleRow) {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!roleRow) return json({ ok: true, skipped: true });
 
     let body: { action?: SessionAction; sessionId?: string; userAgent?: string } = {};
     try {
@@ -97,184 +84,53 @@ serve(async (req) => {
 
     const action = body.action;
     if (!action || !["resume", "heartbeat", "finalize"].includes(action)) {
-      return new Response(JSON.stringify({ error: "Invalid action" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "Invalid action" }, 400);
     }
 
-    const studentId = user.id;
+    if (!supabaseAnonKey) {
+      return json({ error: "Server is missing the anon key" }, 500);
+    }
+
+    const asStudent = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     if (action === "resume") {
-      const { data: openSession } = await supabase
-        .from("student_login_history")
-        .select("id")
-        .eq("student_id", studentId)
-        .is("logout_time", null)
-        .order("login_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (openSession?.id) {
-        return new Response(
-          JSON.stringify({ ok: true, sessionId: openSession.id }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      const ua = body.userAgent ?? "";
-      const { device, browser } = parseUserAgent(ua);
-      const forwarded = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "";
-      const ipAddress = forwarded.split(",")[0]?.trim() || null;
-
-      const { data: inserted, error: insertError } = await supabase
-        .from("student_login_history")
-        .insert({
-          student_id: studentId,
-          login_time: new Date().toISOString(),
-          device,
-          browser,
-          ip_address: ipAddress,
-          counts_as_login: false,
-        })
-        .select("id")
-        .single();
-
-      if (insertError) {
-        return new Response(JSON.stringify({ error: insertError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response(
-        JSON.stringify({ ok: true, sessionId: inserted.id, recomputeError: null }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      const { data, error } = await asStudent.rpc("start_student_session");
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, sessionId: data, recomputeError: null });
     }
 
     const sessionId = body.sessionId;
-    if (!sessionId) {
-      return new Response(JSON.stringify({ error: "sessionId required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!sessionId) return json({ error: "sessionId required" }, 400);
 
-    const { data: row, error: readError } = await supabase
-      .from("student_login_history")
-      .select("login_time, student_id, logout_time, session_duration")
-      .eq("id", sessionId)
-      .eq("student_id", studentId)
-      .maybeSingle();
+    const { error } = await asStudent.rpc("touch_student_session", {
+      p_session_id: sessionId,
+      p_mode: action,
+    });
 
-    if (readError) {
-      return new Response(JSON.stringify({ error: readError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!row) {
-      return new Response(JSON.stringify({ error: "Session not found", closed: true }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (row.logout_time) {
-      return new Response(
-        JSON.stringify({ ok: true, closed: true, metrics: await fetchMetrics(supabase, studentId) }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    if (error) {
+      const closed = error.code === "P0002";
+      return json(
+        { error: error.message, closed },
+        closed ? 404 : 500,
       );
     }
 
-    if (!row.login_time) {
-      return new Response(JSON.stringify({ error: "Invalid session row" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const start = Date.parse(row.login_time);
-    if (!Number.isFinite(start)) {
-      return new Response(JSON.stringify({ error: "Invalid login_time" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (action === "heartbeat") {
-      const sessionDuration = Math.max(0, Math.round((Date.now() - start) / 1000));
-      const previous = (row as { session_duration?: number | null }).session_duration;
-      if (typeof previous === "number" && sessionDuration - previous < 45) {
-        return new Response(JSON.stringify({ ok: true, recomputeError: null }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    if (action === "finalize") {
+      let metrics: EngagementMetrics;
+      try {
+        metrics = await fetchMetrics(admin, user.id);
+      } catch {
+        metrics = { total_login_count: 0, total_time_spent_seconds: 0, last_login_at: null };
       }
-
-      const { error: updateError } = await supabase
-        .from("student_login_history")
-        .update({ session_duration: sessionDuration })
-        .eq("id", sessionId)
-        .eq("student_id", studentId)
-        .is("logout_time", null);
-
-      if (updateError) {
-        return new Response(JSON.stringify({ error: updateError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response(JSON.stringify({ ok: true, recomputeError: null }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ ok: true, closed: true, metrics, recomputeError: null });
     }
 
-    // finalize
-    const logoutTime = new Date().toISOString();
-    const end = Date.parse(logoutTime);
-    const sessionDuration = Number.isFinite(end) && end >= start
-      ? Math.round((end - start) / 1000)
-      : null;
-
-    const { error: updateError } = await supabase
-      .from("student_login_history")
-      .update({
-        logout_time: logoutTime,
-        session_duration: sessionDuration,
-      })
-      .eq("id", sessionId)
-      .eq("student_id", studentId)
-      .is("logout_time", null);
-
-    if (updateError) {
-      return new Response(JSON.stringify({ error: updateError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    let metrics: EngagementMetrics;
-    try {
-      metrics = await fetchMetrics(supabase, studentId);
-    } catch {
-      metrics = {
-        total_login_count: 0,
-        total_time_spent_seconds: 0,
-        last_login_at: null,
-      };
-    }
-
-    return new Response(JSON.stringify({ ok: true, closed: true, metrics, recomputeError: null }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ ok: true, recomputeError: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: message }, 500);
   }
 });

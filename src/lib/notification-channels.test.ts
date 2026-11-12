@@ -23,18 +23,31 @@ import {
   attendanceUpdateRecipient,
   gradesPostedEmail,
   gradesPostedLogId,
+  gradesLinesText,
+  gradesTableHtml,
   missingActivityTitles,
   instructorFeedbackEmail,
   interventionStudentEmail,
   isRiskEmailLevel,
   loggedInterventionRecipient,
   omitLoggedGradesPostedLines,
+  parentGradesPostedEmail,
   responsibleFeedbackInstructor,
   riskFeedbackEmail,
   riskFeedbackInstructor,
   selectGradesPostedLines,
   shouldEmailEngagementIntervention,
 } from '../../supabase/functions/_shared/notification-channels';
+import {
+  ASSESSMENT_TYPES as EDGE_ASSESSMENT_TYPES,
+  assessmentTypeOrder as edgeAssessmentTypeOrder,
+  formatAssessmentTypeLabel as edgeTypeLabel,
+} from '../../supabase/functions/_shared/assessment-types';
+import {
+  ASSESSMENT_TYPES as CLIENT_ASSESSMENT_TYPES,
+  formatAssessmentTypeLabel as clientTypeLabel,
+} from '@/lib/assessment-types';
+import { assessmentTypeOrder as clientAssessmentTypeOrder } from '@/lib/gradebook';
 import {
   canRetryCounselorFollowupEmail,
   emailCounselorFollowup,
@@ -391,7 +404,57 @@ describe('final_grade_released and missing_grade email helpers', () => {
   it('formats final-grade and missing-grade subjects and bodies', () => {
     expect(finalGradeReleasedEmail('PL101', 88.5).subject).toContain('Final grade released');
     expect(finalGradeReleasedEmail('PL101', 88.5).html).toContain('88.50');
+    expect(finalGradeReleasedEmail('PL101', 88.5).html).not.toContain('<table');
     expect(missingGradeEmail('PL101', 'You have a missing grade for Quiz 1 in PL101.').subject).toContain('Missing grade');
+  });
+
+  it('breaks the final grade down by assessment type', () => {
+    const email = finalGradeReleasedEmail('PL101', 86.2, [
+      { label: 'Activity', weight: 25, average: 88.5 },
+      { label: 'Project', weight: 25, average: 91 },
+      { label: 'Attendance', weight: 15, average: 100 },
+      { label: 'Exam', weight: 35, average: 78.5 },
+    ]);
+    expect(email.html).toContain('<table');
+    expect(email.html).toContain('>Assessment Type</th>');
+    expect(email.html).toContain('>Weight</th>');
+    expect(email.html).toContain('>Average</th>');
+    expect(email.html).toMatch(/Activity<\/td>.*?>25%<\/td>.*?>88\.50<\/td>/);
+    expect(email.html).toMatch(/Attendance<\/td>.*?>15%<\/td>.*?>100\.00<\/td>/);
+    expect(email.html).toContain('Final grade');
+    expect(email.html).toContain('>86.20</td>');
+    expect(email.text).toContain('Activity: 25% weight, 88.50 average');
+    expect(email.text).toContain('Final grade: 86.20');
+
+    // Zero-weight categories are not shown, and an unscored average reads as "—".
+    const trimmed = finalGradeReleasedEmail('PL101', 80, [
+      { label: 'Activity', weight: 100, average: 80 },
+      { label: 'Project', weight: 0, average: 91 },
+      { label: 'Exam', weight: 0, average: null },
+    ]);
+    expect(trimmed.html).not.toContain('>Project</td>');
+    expect(trimmed.html).not.toContain('>Exam</td>');
+    expect(trimmed.html).toContain('>80.00</td>');
+
+    const missingAverage = finalGradeReleasedEmail('PL101', 80, [
+      { label: 'Activity', weight: 60, average: null },
+      { label: 'Exam', weight: 40, average: 75 },
+    ]);
+    expect(missingAverage.html).toContain('>—</td>');
+  });
+
+  it('keeps the edge assessment-type labels and order in sync with the gradebook', () => {
+    expect(EDGE_ASSESSMENT_TYPES).toEqual(CLIENT_ASSESSMENT_TYPES);
+    for (const { value } of CLIENT_ASSESSMENT_TYPES) {
+      expect(edgeTypeLabel(value)).toBe(clientTypeLabel(value));
+      expect(edgeAssessmentTypeOrder(value)).toBe(clientAssessmentTypeOrder(value));
+    }
+    expect(edgeTypeLabel('exam')).toBe(clientTypeLabel('exam'));
+    // Legacy/unknown types sort after every known gradebook type.
+    expect(edgeAssessmentTypeOrder('exam')).toBe(CLIENT_ASSESSMENT_TYPES.length);
+    expect(edgeAssessmentTypeOrder('portfolio')).toBe(CLIENT_ASSESSMENT_TYPES.length);
+    expect(edgeTypeLabel('portfolio')).toBe('Portfolio');
+    expect(edgeTypeLabel(null)).toBe('—');
   });
 });
 
@@ -454,9 +517,16 @@ describe('grades_posted email', () => {
     expect(zeroKept).toEqual([{ studentId: student, activityId: a1, title: 'Activity A1', score: 0 }]);
 
     const email = gradesPostedEmail('PL101', lines.map((line) => ({ title: line.title, score: line.score })));
-    expect(email.html).toContain('Activity A1: 16');
-    expect(email.html).toContain('Midterm Exam: 45');
+    expect(email.html).toContain('<table');
+    expect(email.html).toContain('>Assessment</th>');
+    expect(email.html).toContain('>Score</th>');
+    expect(email.html).toMatch(/Activity A1<\/td>/);
+    expect(email.html).toMatch(/>16<\/td>/);
+    expect(email.html).toMatch(/Midterm Exam<\/td>/);
+    expect(email.html).toMatch(/>45<\/td>/);
     expect(email.html).not.toContain('Project P1');
+    expect(email.text).toContain('Activity A1: 16');
+    expect(email.text).toContain('Midterm Exam: 45');
     expect(missingActivityTitles({
       studentId: student,
       activities: [
@@ -477,7 +547,7 @@ describe('grades_posted email', () => {
       lines.map((line) => ({ title: line.title, score: line.score })),
       ['Project P1'],
     );
-    expect(withMissing.html).toContain('Activity A1: 16');
+    expect(withMissing.html).toMatch(/Activity A1<\/td>/);
     expect(withMissing.html).toContain('You have a missing grade in <strong>Project P1</strong>.');
     expect(withMissing.html).not.toContain('Project P1:');
     expect(isRiskEmailLevel(emailLogKey('grades_posted', gradesPostedLogId(a1, student)))).toBe(false);
@@ -490,12 +560,89 @@ describe('grades_posted email', () => {
       'PL101',
       pending.map((line) => ({ title: line.title, score: line.score })),
     );
-    expect(mixedEmail.html).toContain('Midterm Exam: 45');
+    expect(mixedEmail.html).toMatch(/Midterm Exam<\/td>/);
+    expect(mixedEmail.html).toMatch(/>45<\/td>/);
     expect(mixedEmail.html).not.toContain('Activity A1');
     expect(omitLoggedGradesPostedLines(lines, new Set([
       gradesPostedLogId(a1, student),
       gradesPostedLogId(mid, student),
     ]))).toEqual([]);
+  });
+
+  it('renders one table row per assessment with escaped titles', () => {
+    const html = gradesTableHtml([
+      { title: 'Quiz <1> & "extra"', score: 0 },
+      { title: 'Midterm Exam', score: 45.5 },
+    ]);
+    expect(html).toContain('<table');
+    expect(html).toContain('>Assessment</th>');
+    expect(html).toContain('>Score</th>');
+    expect(html).toContain('Quiz &lt;1&gt; &amp; &quot;extra&quot;');
+    expect(html).not.toContain('Quiz <1>');
+    expect(html).toMatch(/>0<\/td>/);
+    expect(html).toMatch(/>45\.5<\/td>/);
+    // Untyped rows stay a flat table instead of gaining an "Other" section.
+    expect(html).not.toContain('colspan="2"');
+    expect(html.match(/<tr><td/g)).toHaveLength(2);
+
+    const email = gradesPostedEmail('PL101', [
+      { title: 'Quiz <1> & "extra"', score: 0 },
+      { title: 'Midterm Exam', score: 45.5 },
+    ]);
+    expect(email.html).toContain(html);
+    expect(email.text).toBe(
+      [
+        'A grade is now available for PL101.',
+        'Quiz <1> & "extra": 0\nMidterm Exam: 45.5',
+        'Sign in to EDGE to review your scores.',
+        'EDGE — Student Risk Analysis and AI Coaching System',
+      ].join('\n\n'),
+    );
+
+    const parentEmail = parentGradesPostedEmail({
+      studentName: 'Ana Cruz',
+      subjectCode: 'PL101',
+      lines: [{ title: 'Midterm Exam', score: 45 }],
+    });
+    expect(parentEmail.html).toContain('<table');
+    expect(parentEmail.html).toMatch(/Midterm Exam<\/td>/);
+    expect(parentEmail.text).toContain('A new grade is available for Ana Cruz in PL101.');
+    expect(parentEmail.text).toContain('Midterm Exam: 45');
+  });
+
+  it('separates the grades table into one section per assessment type in gradebook order', () => {
+    const lines = [
+      { title: 'Final Exam', score: 82, assessmentType: 'final_exam' },
+      { title: 'Capstone Project', score: 91, assessmentType: 'project' },
+      { title: 'Activity 2', score: 18, assessmentType: 'activity' },
+      { title: 'Activity 1', score: 16, assessmentType: 'activity' },
+      { title: 'Legacy Exam', score: 77, assessmentType: 'exam' },
+      { title: 'Mystery Task', score: 5, assessmentType: 'portfolio' },
+      { title: 'Untyped Task', score: 3 },
+    ];
+    const html = gradesTableHtml(lines);
+    const sections = [...html.matchAll(/colspan="2" style="[^"]*">([^<]+)<\/td>/g)].map((m) => m[1]);
+    expect(sections).toEqual(['Activity', 'Final Exam', 'Project', 'Exam', 'Portfolio', 'Other']);
+    // Rows keep their input order inside a section.
+    expect(html.indexOf('Activity 2')).toBeLessThan(html.indexOf('Activity 1'));
+    expect(html.indexOf('>Activity</td>')).toBeLessThan(html.indexOf('Activity 2'));
+    expect(html.indexOf('Activity 1')).toBeLessThan(html.indexOf('>Final Exam</td>'));
+    expect(html.indexOf('Mystery Task')).toBeLessThan(html.indexOf('>Other</td>'));
+    expect(html).toContain('Mystery Task</td>');
+    expect(html).toContain('Untyped Task</td>');
+
+    const text = gradesLinesText(lines);
+    expect(text.split('\n\n')[0]).toBe('ACTIVITY\nActivity 2: 18\nActivity 1: 16');
+    expect(text).toContain('FINAL EXAM\nFinal Exam: 82');
+    expect(text).toContain('OTHER\nUntyped Task: 3');
+
+    const parentEmail = parentGradesPostedEmail({
+      studentName: 'Ana Cruz',
+      subjectCode: 'PL101',
+      lines,
+    });
+    expect(parentEmail.html).toContain('colspan="2"');
+    expect(parentEmail.html.indexOf('>Activity</td>')).toBeLessThan(parentEmail.html.indexOf('Capstone Project'));
   });
 
   it('retries grades_posted without writing another submission', async () => {

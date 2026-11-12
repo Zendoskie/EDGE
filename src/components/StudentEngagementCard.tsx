@@ -3,7 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useStudentEngagementMetrics } from '@/hooks/useStudentEngagementMetrics';
 import { useStudentEngagementSummary } from '@/hooks/useStudentEngagementSummary';
+import { useStudentTimeSpent } from '@/hooks/useStudentTimeSpent';
 import { EngagementBadge } from '@/components/EngagementBadge';
+import { EngagementScoreInfo } from '@/components/EngagementScoreInfo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +26,7 @@ export function StudentEngagementCard({ compact = false }: { compact?: boolean }
   const { user } = useAuth();
   const { metrics, isLoading, error } = useStudentEngagementMetrics(user?.id);
   const { summary } = useStudentEngagementSummary(user?.id);
+  const { timeSpent, isLoading: timeSpentLoading, error: timeSpentError } = useStudentTimeSpent(user?.id);
 
   const { data: latestFeedback } = useQuery({
     queryKey: ['student-engagement-feedback-latest', user?.id],
@@ -45,10 +48,13 @@ export function StudentEngagementCard({ compact = false }: { compact?: boolean }
   return (
     <Card className="bg-card/90 border-border/70">
       <CardHeader className={compact ? "pb-2 pt-4 px-4" : "pb-2"}>
-        <CardTitle className={`flex items-center gap-2 ${compact ? "text-base" : "text-lg"}`}>
-          <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
-          Student Engagement
-        </CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className={`flex items-center gap-2 ${compact ? "text-base" : "text-lg"}`}>
+            <Activity className="h-4 w-4 sm:h-5 sm:w-5" />
+            Student Engagement
+          </CardTitle>
+          <EngagementScoreInfo variant="student" />
+        </div>
       </CardHeader>
       <CardContent className={compact ? "space-y-3 px-4 pb-4" : "space-y-5"}>
         {isLoading ? (
@@ -85,10 +91,10 @@ export function StudentEngagementCard({ compact = false }: { compact?: boolean }
             <div className={`rounded-lg border ${compact ? "p-2" : "p-3"}`}>
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
                 <Clock className="h-3.5 w-3.5" />
-                Total Time Spent
+                Time Today
               </div>
-              <p className="font-semibold text-base leading-snug">
-                {formatTimeSpent(metrics?.total_time_spent_seconds)}
+              <p className={`font-semibold leading-snug ${compact ? "text-base" : "text-lg"}`}>
+                {timeSpentLoading || timeSpentError ? '—' : formatTimeSpent(timeSpent.today)}
               </p>
             </div>
             <div className={`rounded-lg border sm:col-span-1 ${compact ? "p-2" : "p-3"}`}>

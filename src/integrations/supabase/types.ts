@@ -1068,6 +1068,33 @@ export type Database = {
         }
         Relationships: []
       }
+      parent_student_views: {
+        Row: {
+          created_at: string
+          id: string
+          page: string | null
+          parent_user_id: string
+          student_user_id: string
+          viewed_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          page?: string | null
+          parent_user_id: string
+          student_user_id: string
+          viewed_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          page?: string | null
+          parent_user_id?: string
+          student_user_id?: string
+          viewed_at?: string
+        }
+        Relationships: []
+      }
       peer_connections: {
         Row: {
           collaboration_history: string[] | null
@@ -1427,6 +1454,27 @@ export type Database = {
           },
         ]
       }
+      student_daily_time: {
+        Row: {
+          active_seconds: number
+          day: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          active_seconds?: number
+          day: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          active_seconds?: number
+          day?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       student_engagement_feedback: {
         Row: {
           counselor_remarks: string | null
@@ -1573,36 +1621,42 @@ export type Database = {
       }
       student_login_history: {
         Row: {
+          active_seconds: number
           browser: string | null
           counts_as_login: boolean
           created_at: string | null
           device: string | null
           id: string
           ip_address: string | null
+          last_heartbeat_at: string | null
           login_time: string
           logout_time: string | null
           session_duration: number | null
           student_id: string
         }
         Insert: {
+          active_seconds?: number
           browser?: string | null
           counts_as_login?: boolean
           created_at?: string | null
           device?: string | null
           id?: string
           ip_address?: string | null
+          last_heartbeat_at?: string | null
           login_time?: string
           logout_time?: string | null
           session_duration?: number | null
           student_id: string
         }
         Update: {
+          active_seconds?: number
           browser?: string | null
           counts_as_login?: boolean
           created_at?: string | null
           device?: string | null
           id?: string
           ip_address?: string | null
+          last_heartbeat_at?: string | null
           login_time?: string
           logout_time?: string | null
           session_duration?: number | null
@@ -1958,36 +2012,42 @@ export type Database = {
       }
       student_login_logs: {
         Row: {
+          active_seconds: number | null
           browser: string | null
           counts_as_login: boolean | null
           created_at: string | null
           device: string | null
           id: string | null
           ip_address: string | null
+          last_heartbeat_at: string | null
           login_time: string | null
           logout_time: string | null
           session_duration: number | null
           student_id: string | null
         }
         Insert: {
+          active_seconds?: number | null
           browser?: string | null
           counts_as_login?: boolean | null
           created_at?: string | null
           device?: string | null
           id?: string | null
           ip_address?: string | null
+          last_heartbeat_at?: string | null
           login_time?: string | null
           logout_time?: string | null
           session_duration?: number | null
           student_id?: string | null
         }
         Update: {
+          active_seconds?: number | null
           browser?: string | null
           counts_as_login?: boolean | null
           created_at?: string | null
           device?: string | null
           id?: string | null
           ip_address?: string | null
+          last_heartbeat_at?: string | null
           login_time?: string | null
           logout_time?: string | null
           session_duration?: number | null
@@ -2107,6 +2167,16 @@ export type Database = {
           title: string
         }[]
       }
+      get_student_time_spent: {
+        Args: { p_student_id: string }
+        Returns: {
+          month_seconds: number
+          today_seconds: number
+          total_seconds: number
+          week_seconds: number
+          yesterday_seconds: number
+        }[]
+      }
       get_staff_invitation_by_token: {
         Args: { p_token: string }
         Returns: {
@@ -2206,6 +2276,10 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["attendance"]["Row"][]
       }
+      record_parent_student_view: {
+        Args: { p_page?: string; p_student_user_id: string }
+        Returns: boolean
+      }
       recompute_student_engagement: {
         Args: { p_student_id: string }
         Returns: undefined
@@ -2227,9 +2301,19 @@ export type Database = {
       }
       scan_engagement_inactivity_alerts: { Args: never; Returns: number }
       scan_due_intervention_followups: { Args: never; Returns: number }
+      start_student_session: { Args: never; Returns: string }
       student_decide_parent_request: {
         Args: { p_decision: string; p_link_id: string }
         Returns: string
+      }
+      touch_student_session: {
+        Args: { p_mode?: string; p_session_id: string }
+        Returns: {
+          active_seconds: number
+          closed: boolean
+          ok: boolean
+          session_id: string
+        }[]
       }
       validate_parent_signup: {
         Args: { p_parent_email: string; p_student_id_no: string }

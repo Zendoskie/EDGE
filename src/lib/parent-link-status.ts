@@ -1,18 +1,33 @@
 /**
  * Two-step parent/guardian verification statuses stored in parent_student_links.status.
  *
- * pending        -> awaiting the student's decision
- * pending_admin  -> student approved, awaiting an administrator
- * approved       -> administrator approved; the only status that grants data access
- * rejected       -> rejected by the student
- * admin_rejected -> rejected by an administrator
+ * pending            -> awaiting the student's decision
+ * pending_admin      -> student approved, awaiting an administrator
+ * pending_verification -> parent completed registration and uploaded an ID; awaiting admin ID verification
+ * approved           -> administrator verified the ID; the only status that grants data access
+ * rejected           -> rejected by the student
+ * admin_rejected     -> rejected by an administrator
  */
-export type ParentLinkStatus = "pending" | "pending_admin" | "approved" | "rejected" | "admin_rejected";
+export type ParentLinkStatus =
+  | "pending"
+  | "pending_admin"
+  | "pending_verification"
+  | "approved"
+  | "rejected"
+  | "admin_rejected";
 
 export function normalizeParentLinkStatus(status: unknown): ParentLinkStatus {
   if (typeof status !== "string") return "pending";
   const s = status.trim().toLowerCase();
-  if (s === "pending_admin" || s === "approved" || s === "rejected" || s === "admin_rejected") return s;
+  if (
+    s === "pending_admin" ||
+    s === "pending_verification" ||
+    s === "approved" ||
+    s === "rejected" ||
+    s === "admin_rejected"
+  ) {
+    return s;
+  }
   return "pending";
 }
 
@@ -22,6 +37,8 @@ export function parentLinkStatusLabel(status: unknown): string {
       return "Awaiting student approval";
     case "pending_admin":
       return "Awaiting admin approval";
+    case "pending_verification":
+      return "Awaiting ID verification";
     case "approved":
       return "Active";
     case "rejected":
@@ -47,6 +64,7 @@ export function studentApprovalState(status: unknown): ApprovalStepState {
 export function adminApprovalState(status: unknown): ApprovalStepState {
   switch (normalizeParentLinkStatus(status)) {
     case "pending_admin":
+    case "pending_verification":
       return "pending";
     case "approved":
       return "approved";
@@ -69,7 +87,7 @@ export function parentLinkStatusBadgeVariant(status: unknown): "default" | "seco
   const s = normalizeParentLinkStatus(status);
   if (s === "approved") return "default";
   if (s === "rejected" || s === "admin_rejected") return "destructive";
-  if (s === "pending_admin") return "outline";
+  if (s === "pending_admin" || s === "pending_verification") return "outline";
   return "secondary";
 }
 
@@ -82,9 +100,12 @@ export function parentLoginBlockedMessage(
   linkStatuses: unknown[],
 ): string | null {
   const statuses = linkStatuses.map(normalizeParentLinkStatus);
-  if (accountStatus === "approved" && statuses.includes("approved")) return null;
+  // Allow login if account is approved AND has at least one approved or pending_verification link
+  if (accountStatus === "approved" && (statuses.includes("approved") || statuses.includes("pending_verification"))) return null;
   if (accountStatus !== "approved" && accountStatus !== "pending" && accountStatus !== "rejected") return null;
 
+  // Note: pending_verification is NOT a login block - parents can sign in
+  // but they'll see limited functionality until ID is verified
   if (statuses.includes("pending_admin")) {
     return "The student approved your parent/guardian request. It is now waiting for administrator approval. You can sign in once an administrator approves it.";
   }
@@ -142,7 +163,7 @@ export function parentLinkErrorMessage(rawMessage: string | null | undefined): s
   if (msg.includes("account_not_active")) {
     return "Your parent account is not active yet.";
   }
-  if (msg.includes("request_not_pending") || msg.includes("request_not_awaiting_admin")) {
+  if (msg.includes("request_not_pending") || msg.includes("request_not_awaiting_admin") || msg.includes("request_not_pending_verification")) {
     return "This request has already been decided. Refresh to see its current status.";
   }
   if (msg.includes("request_not_found")) {

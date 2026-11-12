@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EngagementBadge } from '@/components/EngagementBadge';
+import { EngagementScoreInfo } from '@/components/EngagementScoreInfo';
 import { RiskBadge } from '@/components/RiskBadge';
 import { StudentEngagementPanel } from '@/components/StudentEngagementPanel';
 import { EngagementAlertsQueue } from '@/components/StudentEngagementActions';
@@ -49,7 +50,7 @@ import {
   engagementLabel,
   type CanonicalEngagementLevel,
 } from '@/lib/engagement-utils';
-import { formatLastLogin, formatTimeSpent } from '@/lib/engagement-format';
+import { formatLastLogin } from '@/lib/engagement-format';
 import {
   canonicalRiskLevel,
   type CanonicalRiskLevel,
@@ -64,7 +65,6 @@ type EngagementRow = {
   programName: string;
   yearLevel: number | null;
   totalLogins: number;
-  totalTimeSpentSeconds: number;
   lastLoginAt: string | null;
   engagementScore: number;
   engagementLevel: CanonicalEngagementLevel;
@@ -228,7 +228,6 @@ export default function StudentEngagementMonitoring() {
                 ? Number(programRow.year_level)
                 : null,
             totalLogins: summary?.total_login_count ?? 0,
-            totalTimeSpentSeconds: summary?.total_time_spent_seconds ?? 0,
             lastLoginAt: summary?.last_login_at ?? null,
             engagementScore:
               summary?.engagement_score != null && Number.isFinite(Number(summary.engagement_score))
@@ -412,10 +411,14 @@ export default function StudentEngagementMonitoring() {
       <Card className="edge-glass-card">
         <CardHeader className="space-y-4">
           <div>
-            <CardTitle className="text-lg">Engagement roster</CardTitle>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <CardTitle className="text-lg">Engagement roster</CardTitle>
+              <EngagementScoreInfo variant="student" />
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Search and filter enrolled students by engagement level, program, or year level.
-              Click a row to view live engagement charts.
+              Search and filter enrolled students by engagement level, program, or year level. The
+              engagement grade uses a rolling 30-day window; click a row for charts and the full
+              breakdown. Student time spent is shown to the student and their parent, not here.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -508,7 +511,6 @@ export default function StudentEngagementMonitoring() {
                     <TableHead>Program</TableHead>
                     <TableHead>Year Level</TableHead>
                     <TableHead className="text-right">Total Logins</TableHead>
-                    <TableHead>Total Time Spent</TableHead>
                     <TableHead>Last Login</TableHead>
                     <TableHead className="text-right">Engagement Score</TableHead>
                     <TableHead>Engagement Level</TableHead>
@@ -533,7 +535,6 @@ export default function StudentEngagementMonitoring() {
                       </TableCell>
                       <TableCell>{formatYearLevel(row.yearLevel)}</TableCell>
                       <TableCell className="text-right tabular-nums">{row.totalLogins}</TableCell>
-                      <TableCell>{formatTimeSpent(row.totalTimeSpentSeconds)}</TableCell>
                       <TableCell className="whitespace-nowrap text-sm">
                         {formatLastLogin(row.lastLoginAt)}
                       </TableCell>

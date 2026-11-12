@@ -7,14 +7,20 @@ vi.mock('@/lib/recalculate-risk', () => ({
   recalculateSubjectRisk: async () => ({ ok: true, count: 0 }),
 }));
 
-const { upsert, rpc, invoke, fromCalls, state } = vi.hoisted(() => ({
+const { upsert, rpc, invoke, fromCalls, updateCalls, state } = vi.hoisted(() => ({
   upsert: vi.fn(async () => ({ error: null })),
   rpc: vi.fn(async () => ({ data: [] as Array<Record<string, string>>, error: null })),
   invoke: vi.fn(async () => ({ data: { success: true }, error: null })),
   fromCalls: [] as string[],
+  updateCalls: [] as Array<{ patch: Record<string, unknown>; id: string }>,
   state: {
     submissions: [] as Array<Record<string, unknown>>,
     releases: [] as Array<Record<string, unknown>>,
+    enrollments: [
+      { id: 'e1', student_id: 's1', subject_id: 'sub-1', status: 'active' },
+      { id: 'e2', student_id: 's2', subject_id: 'sub-1', status: 'active' },
+      { id: 'e3', student_id: 's3', subject_id: 'sub-1', status: 'pending' },
+    ] as Array<Record<string, unknown>>,
   },
 }));
 
@@ -32,16 +38,17 @@ vi.mock('@/integrations/supabase/client', () => ({
       if (table === 'enrollments') {
         return {
           select: () => ({
-            eq: () => ({
-              eq: async () => ({
-                data: [
-                  { id: 'e1', student_id: 's1', subject_id: 'sub-1', status: 'active' },
-                  { id: 'e2', student_id: 's2', subject_id: 'sub-1', status: 'active' },
-                  { id: 'e3', student_id: 's3', subject_id: 'sub-1', status: 'pending' },
-                ],
-                error: null,
-              }),
-            }),
+            // The gradebook loads the whole roster (active + inactive) for one query.
+            eq: async () => ({ data: state.enrollments, error: null }),
+          }),
+          update: (patch: Record<string, unknown>) => ({
+            eq: async (_column: string, id: string) => {
+              updateCalls.push({ patch, id });
+              state.enrollments = state.enrollments.map((row) =>
+                row.id === id ? { ...row, ...patch } : row,
+              );
+              return { error: null };
+            },
           }),
         };
       }
@@ -121,7 +128,13 @@ const ACTIVITY_ONLY = { activity_weight: 100, project_weight: 0, attendance_weig
 beforeEach(() => {
   state.submissions = [...DEFAULT_SUBMISSIONS];
   state.releases = [];
+  state.enrollments = [
+    { id: 'e1', student_id: 's1', subject_id: 'sub-1', status: 'active' },
+    { id: 'e2', student_id: 's2', subject_id: 'sub-1', status: 'active' },
+    { id: 'e3', student_id: 's3', subject_id: 'sub-1', status: 'pending' },
+  ];
   fromCalls.length = 0;
+  updateCalls.length = 0;
 });
 
 describe('GradebookTable', () => {
@@ -235,6 +248,28 @@ describe('GradebookTable', () => {
     expect(screen.getByText(/cannot exceed 100/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /save grades/i }));
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('marks a dropped-out student inactive and keeps them restorable', async () => {
+    renderGradebook({ gradingSystem: ACTIVITY_ONLY, attendance: [] });
+    fireEvent.click(await screen.findByLabelText('Mark Ana Cruz inactive'));
+    const dialog = within(await screen.findByRole('alertdialog'));
+    expect(dialog.getByText(/Mark Ana Cruz as inactive\?/)).toBeTruthy();
+    fireEvent.click(dialog.getByRole('button', { name: /^mark inactive$/i }));
+
+    await waitFor(() => expect(updateCalls).toHaveLength(1));
+    expect(updateCalls[0]).toEqual({ patch: { status: 'inactive' }, id: 'e1' });
+
+    // The inactive student leaves the gradebook grid but stays visible and restorable.
+    await waitFor(() => expect(screen.queryByLabelText('Ana Cruz Activity 1')).toBeNull());
+    expect(await screen.findByText('Inactive students')).toBeTruthy();
+    expect(screen.getByLabelText('Restore Ana Cruz')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Restore Ana Cruz'));
+    await waitFor(() => expect(updateCalls).toHaveLength(2));
+    expect(updateCalls[1]).toEqual({ patch: { status: 'active' }, id: 'e1' });
+    await waitFor(() => expect(screen.queryByText('Inactive students')).toBeNull());
+    expect(await screen.findByLabelText('Ana Cruz Activity 1')).toBeTruthy();
   });
 });
 

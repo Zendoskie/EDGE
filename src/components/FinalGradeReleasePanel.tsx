@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Send } from 'lucide-react';
+import { Send, UserMinus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -49,12 +49,19 @@ export function FinalGradeReleasePanel({
   preview,
   hasUnsavedDrafts,
   previewMayBeIncomplete,
+  inactiveStudents = [],
+  onSetEnrollmentStatus,
+  statusUpdating = null,
 }: {
   subjectId: string;
-  students: Array<{ id: string; name: string }>;
+  students: Array<{ id: string; name: string; enrollmentId?: string }>;
   preview: Map<string, ReleasePreview> | null;
   hasUnsavedDrafts: boolean;
   previewMayBeIncomplete: boolean;
+  /** Students the instructor marked inactive (for example a dropout); they stay restorable here. */
+  inactiveStudents?: Array<{ enrollmentId: string; studentId: string; name: string }>;
+  onSetEnrollmentStatus?: (enrollmentId: string, status: 'active' | 'inactive') => void;
+  statusUpdating?: string | null;
 }) {
   const queryClient = useQueryClient();
   const releases = useSubjectFinalGradeReleases(subjectId);
@@ -63,6 +70,7 @@ export function FinalGradeReleasePanel({
   const [result, setResult] = useState<ReleaseCallResult | null>(null);
   const [included, setIncluded] = useState<Set<string>>(() => new Set());
   const [lastExcludedCount, setLastExcludedCount] = useState(0);
+  const [confirmInactive, setConfirmInactive] = useState<{ enrollmentId: string; name: string } | null>(null);
 
   const releaseByStudent = useMemo(
     () => new Map((releases.data ?? []).map((row) => [row.student_id, row])),
@@ -156,7 +164,9 @@ export function FinalGradeReleasePanel({
           <p className="text-xs text-muted-foreground">
             Students and parents see a grade as Final only after you release it. Grades stay Provisional until then, and
             show Under review if scores, attendance, assessments or weights change after release. Uncheck a student to
-            exclude them from this release; their saved grades stay in the gradebook.
+            exclude them from this release; their saved grades stay in the gradebook. Mark a student inactive if they
+            dropped out or stopped attending: they leave the active roster and gradebook, are not released, and keep
+            their saved scores.
           </p>
           {preview && completeStudentIds.length > 0 ? (
             <p className="text-xs text-muted-foreground">
@@ -255,6 +265,7 @@ export function FinalGradeReleasePanel({
               <TableHead>Student</TableHead>
               <TableHead>Preview</TableHead>
               <TableHead>Release status</TableHead>
+              <TableHead className="w-[132px]">Enrollment</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -302,12 +313,107 @@ export function FinalGradeReleasePanel({
                       <p className="mt-1 text-[11px] text-muted-foreground">{reviewReasonLabel(row.review_reason)}</p>
                     ) : null}
                   </TableCell>
+                  <TableCell className="align-top">
+                    {student.enrollmentId && onSetEnrollmentStatus ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={pending || statusUpdating === student.enrollmentId}
+                        aria-label={`Mark ${student.name} inactive`}
+                        onClick={() =>
+                          setConfirmInactive({ enrollmentId: student.enrollmentId!, name: student.name })
+                        }
+                      >
+                        <UserMinus className="mr-1 h-3.5 w-3.5" />
+                        Mark inactive
+                      </Button>
+                    ) : null}
+                  </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
       </div>
+
+      {inactiveStudents.length > 0 ? (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Inactive students</p>
+            <p className="text-xs text-muted-foreground">
+              Marked inactive after dropping out or stopping attendance. They are excluded from final grade release and
+              hidden from the gradebook; saved scores are kept. Restore a student to return them to the active roster.
+            </p>
+          </div>
+          <div className="overflow-auto rounded-md border border-border/60">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[120px]">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inactiveStudents.map((student) => (
+                  <TableRow key={student.enrollmentId}>
+                    <TableCell className="font-medium">{student.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={!onSetEnrollmentStatus || pending || statusUpdating === student.enrollmentId}
+                        aria-label={`Restore ${student.name}`}
+                        onClick={() => onSetEnrollmentStatus?.(student.enrollmentId, 'active')}
+                      >
+                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                        Restore
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : null}
+
+      <AlertDialog
+        open={confirmInactive !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmInactive(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark {confirmInactive?.name ?? 'this student'} as inactive?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This records that the student dropped out or is no longer attending. They are removed from the active
+              roster, gradebook, and final grade release. Saved scores and any released grade stay on record. You can
+              restore them from the inactive students list.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmInactive) onSetEnrollmentStatus?.(confirmInactive.enrollmentId, 'inactive');
+                setConfirmInactive(null);
+              }}
+              disabled={!onSetEnrollmentStatus}
+            >
+              Mark inactive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

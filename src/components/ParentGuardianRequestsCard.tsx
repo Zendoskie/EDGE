@@ -4,10 +4,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { UserCheck, UserX } from 'lucide-react';
+import { UserCheck, UserX, Eye } from 'lucide-react';
 import { ParentEmailMatchIndicator } from '@/components/ParentEmailMatchIndicator';
-import { adminDecideParentRequest, adminReviewParentRequest, type ParentLinkDecision } from '@/lib/parent-link-actions';
+import IdPreview from '@/components/IdPreview';
+import {
+  adminDecideParentRequest,
+  adminReviewParentRequest,
+  adminVerifyParentId,
+  type ParentLinkDecision,
+} from '@/lib/parent-link-actions';
 import { parentEmailsMatch } from '@/lib/parent-email-match';
 import { sendStaffInvitation } from '@/lib/invoke-staff-invitation';
 import { getPublicAppUrl } from '@/lib/app-url';
@@ -31,6 +40,10 @@ type RequestRow = {
   registered_parent_email: string | null;
   source: 'registration' | 'link';
   completed: boolean;
+  id_front_path: string | null;
+  id_back_path: string | null;
+  id_verified_at: string | null;
+  awaitingIdVerification: boolean;
 };
 
 type Filter = 'awaiting' | 'all';
@@ -57,17 +70,16 @@ export default function ParentGuardianRequestsCard() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('awaiting');
   const [inviteLinks, setInviteLinks] = useState<Array<{ id: string; email: string; url: string }>>([]);
+  const [viewRow, setViewRow] = useState<RequestRow | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const visibleStatuses = filter === 'awaiting'
-        ? ['pending_admin']
-        : ['pending_admin', 'admin_rejected', 'approved'];
       const query = supabase
         .from('parent_student_links')
         .select('id, status, requested_at, student_id_no, parent_user_id, student_user_id')
-        .in('status', visibleStatuses)
+        .in('status', ['pending_admin', 'admin_rejected', 'approved'])
         .order('requested_at', { ascending: false })
         .limit(200);
       const { data: links, error } = await query;
@@ -75,8 +87,8 @@ export default function ParentGuardianRequestsCard() {
 
       const { data: registrations, error: registrationError } = await (supabase as any)
         .from('parent_registration_requests')
-        .select('id, status, submitted_at, student_id, full_name, email, student_name, completed_at, student_user_id')
-        .in('status', visibleStatuses)
+        .select('id, status, submitted_at, student_id, full_name, email, student_name, completed_at, student_user_id, id_front_path, id_back_path, id_verified_at')
+        .in('status', ['pending_admin', 'admin_rejected', 'approved'])
         .order('submitted_at', { ascending: false })
         .limit(200);
       if (registrationError) throw registrationError;
@@ -102,24 +114,38 @@ export default function ParentGuardianRequestsCard() {
         registered_parent_email: byId.get(l.student_user_id)?.parent_email ?? null,
         source: 'link',
         completed: l.status === 'approved',
+        id_front_path: null,
+        id_back_path: null,
+        id_verified_at: null,
+        awaitingIdVerification: false,
       }));
-      const registrationRows: RequestRow[] = (registrations ?? []).map((r: any) => ({
-        id: r.id,
-        status: r.status,
-        requested_at: r.submitted_at,
-        student_id_no: r.student_id,
-        parent_name: r.full_name || '—',
-        parent_email: r.email || '—',
-        student_name: r.student_name || '—',
-        registered_parent_email: byId.get(r.student_user_id)?.parent_email ?? null,
-        source: 'registration',
-        completed: Boolean(r.completed_at),
-      }));
-      setRows(
-        [...registrationRows, ...linkRows].sort(
-          (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
-        ),
-      );
+      const registrationRows: RequestRow[] = (registrations ?? []).map((r: any) => {
+        const awaitingIdVerification = Boolean(r.completed_at) && !r.id_verified_at && Boolean(r.id_front_path || r.id_back_path);
+        return {
+          id: r.id,
+          status: r.status,
+          requested_at: r.submitted_at,
+          student_id_no: r.student_id,
+          parent_name: r.full_name || '—',
+          parent_email: r.email || '—',
+          student_name: r.student_name || '—',
+          registered_parent_email: byId.get(r.student_user_id)?.parent_email ?? null,
+          source: 'registration',
+          completed: Boolean(r.completed_at),
+          id_front_path: r.id_front_path ?? null,
+          id_back_path: r.id_back_path ?? null,
+          id_verified_at: r.id_verified_at ?? null,
+          awaitingIdVerification,
+        };
+      });
+
+      const combined = [...registrationRows, ...linkRows];
+      const visible = filter === 'awaiting'
+        ? combined.filter((r) => r.status === 'pending_admin' || r.awaitingIdVerification)
+        : combined;
+      setRows(visible.sort(
+        (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
+      ));
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to load parent/guardian requests');
       setRows([]);
@@ -173,21 +199,66 @@ export default function ParentGuardianRequestsCard() {
     }
   };
 
+  const verifyId = async (row: RequestRow, decision: ParentLinkDecision) => {
+    setVerifyBusy(true);
+    setBusyId(row.id);
+    try {
+      await adminVerifyParentId(row.id, decision);
+      toast.success(decision === 'approve'
+        ? 'ID verified. The parent/guardian can now view the student\'s records.'
+        : 'ID rejected. The parent/guardian access was not activated.');
+      setViewRow(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setVerifyBusy(false);
+      setBusyId(null);
+      await load();
+    }
+  };
+
   const statusText = (r: RequestRow) =>
     r.source === 'registration' && r.status === 'approved' && !r.completed
       ? 'Invitation sent'
-      : parentLinkStatusLabel(r.status);
+      : r.awaitingIdVerification
+        ? 'Awaiting ID verification'
+        : r.source === 'registration' && r.id_verified_at
+          ? 'ID verified'
+          : parentLinkStatusLabel(r.status);
 
   const actions = (r: RequestRow, fullWidth: boolean) =>
     r.status === 'pending_admin' ? (
       <div className={fullWidth ? 'flex flex-col gap-2 pt-1' : 'flex flex-col items-end gap-2'}>
         <ParentEmailMatchIndicator registeredEmail={r.registered_parent_email} requestEmail={r.parent_email} />
         <div className={fullWidth ? 'flex flex-col gap-2' : 'flex flex-wrap justify-end gap-2'}>
+        {(r.id_front_path || r.id_back_path) && (
+          <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => setViewRow(r)}>
+            <Eye className="h-4 w-4 shrink-0" />
+            View ID
+          </Button>
+        )}
         <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id || !parentEmailsMatch(r.registered_parent_email, r.parent_email)} onClick={() => void decide(r, 'approve')}>
           <UserCheck className="h-4 w-4 shrink-0" />
           Approve
         </Button>
         <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void decide(r, 'reject')}>
+          <UserX className="h-4 w-4 shrink-0" />
+          Reject
+        </Button>
+        </div>
+      </div>
+    ) : r.awaitingIdVerification ? (
+      <div className={fullWidth ? 'flex flex-col gap-2 pt-1' : 'flex flex-col items-end gap-2'}>
+        <div className={fullWidth ? 'flex flex-col gap-2' : 'flex flex-wrap justify-end gap-2'}>
+        <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => setViewRow(r)}>
+          <Eye className="h-4 w-4 shrink-0" />
+          View ID
+        </Button>
+        <Button type="button" size="sm" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void verifyId(r, 'approve')}>
+          <UserCheck className="h-4 w-4 shrink-0" />
+          Verify
+        </Button>
+        <Button type="button" size="sm" variant="outline" className={fullWidth ? 'w-full gap-1' : 'gap-1'} disabled={busyId === r.id} onClick={() => void verifyId(r, 'reject')}>
           <UserX className="h-4 w-4 shrink-0" />
           Reject
         </Button>
@@ -204,7 +275,7 @@ export default function ParentGuardianRequestsCard() {
           <div className="min-w-0 space-y-1">
             <CardTitle className="text-base sm:text-lg">Parent / Guardian requests</CardTitle>
             <CardDescription className="text-pretty">
-              Only requests the student has already approved appear here. Approving emails the parent a one-time link to create a password. Rejecting sends no invitation.
+              Requests here already match the student's registered parent email. Approving emails the parent a one-time link to create a password. Rejecting sends no invitation.
             </CardDescription>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -291,6 +362,36 @@ export default function ParentGuardianRequestsCard() {
           </>
         )}
       </CardContent>
+
+      <Dialog open={!!viewRow} onOpenChange={(open) => { if (!open && !verifyBusy) setViewRow(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Verify Parent/Guardian ID</DialogTitle>
+            <DialogDescription>
+              Review the submitted ID for <span className="font-medium text-foreground">{viewRow?.parent_name}</span>
+              {' '}({viewRow?.parent_email}) before activating access to {viewRow?.student_name}&apos;s records.
+            </DialogDescription>
+          </DialogHeader>
+          {viewRow && (
+            <div className="space-y-3 py-1">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Parent</p>
+                  <p className="break-words font-medium text-foreground">{viewRow.parent_name}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Student</p>
+                  <p className="break-words text-foreground">{viewRow.student_name} · <span className="font-mono">{viewRow.student_id_no}</span></p>
+                </div>
+              </div>
+              <IdPreview frontPath={viewRow.id_front_path} backPath={viewRow.id_back_path} />
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setViewRow(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
