@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
-import { callCompleteInvitationRpc, toErrorMessage } from '@/lib/complete-invitation';
+import { callCompleteInvitationRpc, EXISTING_ACCOUNT_HELP, isAlreadyRegisteredError, isObfuscatedExistingUser, signInExistingAccount, toErrorMessage } from '@/lib/complete-invitation';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
 import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
@@ -335,44 +335,51 @@ function InvitationForm({ token }: { token: string }) {
         },
       });
 
-      if (signUpError) {
-        const msg = (signUpError.message || '').toLowerCase();
-        const code = (signUpError as { code?: string }).code ?? '';
-        if (code === 'user_already_exists' || msg.includes('user already registered')) {
-          throw new Error('An account with this email already exists. Please sign in.');
+      let userId: string | null = null;
+
+      if (signUpError || isObfuscatedExistingUser(signUpData?.user)) {
+        if (signUpError && !isAlreadyRegisteredError(signUpError)) {
+          throw new Error(signUpError.message || 'Registration failed. Please try again.');
         }
-        throw new Error(signUpError.message || 'Registration failed. Please try again.');
+        // The auth account can survive from an earlier failed attempt. Signing in
+        // with the password just typed proves identity and lets us finish the RPC.
+        const existing = await signInExistingAccount(inv.email, password);
+        if (!existing) throw new Error(EXISTING_ACCOUNT_HELP);
+        userId = existing.id;
+      } else {
+        if (!signUpData?.user) {
+          throw new Error('Sign-up did not return a user. Please try again.');
+        }
+        userId = signUpData.user.id;
       }
 
-      if (!signUpData.user) {
-        throw new Error('Sign-up did not return a user. Please try again.');
+      if (!userId) {
+        throw new Error('Could not resolve your account. Please try again.');
       }
 
-      const userId = signUpData.user.id;
-
-      // Sign out any session that was immediately granted (email confirmation disabled).
-      if (signUpData.session) {
-        await supabase.auth.signOut();
-      }
+      // Clear any session granted by signUp/sign-in; completion runs as anon.
+      await supabase.auth.signOut();
 
       // 2. Complete the invitation: validates token + email match,
       //    marks invitation accepted, and sets account_status to 'approved'.
       const { error: completeError } = await callCompleteInvitationRpc(
         'complete_staff_invitation',
         { p_token: token, p_user_id: userId },
-        userId,
       );
 
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
+        // The RPC commits atomically, so an accepted invitation means an earlier
+        // attempt already completed. Keep going instead of failing the user.
+        if (cm.includes('invitation_already_accepted')) {
+          setState({ phase: 'success', email: inv.email });
+          return;
+        }
         if (cm.includes('invitation_expired') || cm.includes('invitation_not_valid')) {
           throw new Error('This invitation has expired or been cancelled. Contact an administrator.');
         }
         if (cm.includes('email_mismatch')) {
           throw new Error('The invitation email does not match your account email.');
-        }
-        if (cm.includes('invitation_already_accepted')) {
-          throw new Error('This invitation has already been used.');
         }
         if (cm.includes('user_profile_not_found')) {
           throw new Error('Your account is still being set up. Wait a moment and try again.');

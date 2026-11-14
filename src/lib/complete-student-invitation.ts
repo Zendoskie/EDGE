@@ -1,7 +1,4 @@
-import { callCompleteInvitationRpc, waitForProfileRow } from '@/lib/complete-invitation';
-
-/** Auth trigger may lag behind signUp; complete_student_invitation needs a profiles row. */
-export { waitForProfileRow };
+import { callCompleteInvitationRpc } from '@/lib/complete-invitation';
 
 export async function completeStudentInvitationRpc(
   token: string,
@@ -10,6 +7,5 @@ export async function completeStudentInvitationRpc(
   return callCompleteInvitationRpc(
     'complete_student_invitation',
     { p_token: token, p_user_id: userId },
-    userId,
   );
 }

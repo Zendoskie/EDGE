@@ -14,12 +14,13 @@ describe('parent registration welcome eligibility', () => {
     requestStatus: 'approved',
     requestCompletedAt: '2026-10-20T12:00:00.000Z',
     requestEmail: 'parent@example.com',
-    linkStatus: 'approved',
+    linkStatus: 'pending_verification',
     parentProfileEmail: 'Parent@Example.com',
   };
 
-  it('allows welcome email after completed registration', () => {
+  it('allows welcome email after completed registration (awaiting ID verification)', () => {
     expect(validateRegistrationWelcomeEligibility(base)).toEqual({ eligible: true });
+    expect(validateRegistrationWelcomeEligibility({ ...base, linkStatus: 'approved' })).toEqual({ eligible: true });
   });
 
   it('rejects non-parent invitation role', () => {

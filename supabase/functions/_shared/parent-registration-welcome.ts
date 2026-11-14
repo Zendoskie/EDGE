@@ -17,6 +17,16 @@ export const PARENT_REGISTRATION_APPROVED_STATUS = "approved";
 export const PARENT_INVITATION_ACCEPTED_STATUS = "accepted";
 export const PARENT_INVITATION_PARENT_ROLE = "parent";
 export const PARENT_STUDENT_LINK_APPROVED_STATUS = "approved";
+/**
+ * Completing a parent invitation creates the link as "pending_verification"
+ * until an admin verifies the uploaded ID. Both states mean the parent account
+ * exists and the welcome email should go out.
+ */
+export const PARENT_STUDENT_LINK_PENDING_VERIFICATION_STATUS = "pending_verification";
+export const PARENT_STUDENT_LINK_ELIGIBLE_STATUSES = [
+  PARENT_STUDENT_LINK_PENDING_VERIFICATION_STATUS,
+  PARENT_STUDENT_LINK_APPROVED_STATUS,
+] as const;
 
 export type RegistrationWelcomeContext = {
   invitationRole: string;
@@ -49,7 +59,10 @@ export function validateRegistrationWelcomeEligibility(
   if (!ctx.requestCompletedAt?.trim()) {
     return { eligible: false, reason: "registration_not_completed" };
   }
-  if (ctx.linkStatus !== PARENT_STUDENT_LINK_APPROVED_STATUS) {
+  if (
+    !ctx.linkStatus
+    || !(PARENT_STUDENT_LINK_ELIGIBLE_STATUSES as readonly string[]).includes(ctx.linkStatus)
+  ) {
     return { eligible: false, reason: "parent_link_not_approved" };
   }
 

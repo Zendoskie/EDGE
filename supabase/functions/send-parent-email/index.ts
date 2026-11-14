@@ -6,6 +6,7 @@ import {
   parentRegistrationDecisionLogId,
 } from "../_shared/notification-channels.ts";
 import {
+  PARENT_STUDENT_LINK_ELIGIBLE_STATUSES,
   normalizeEmailForCompare,
   registrationWelcomeDecisionId,
   validateRegistrationWelcomeEligibility,
@@ -152,6 +153,29 @@ ${idLine}
   }
 }
 
+/** Post-registration welcome. The link is normally awaiting ID verification. */
+function buildRegistrationWelcomeEmail(opts: {
+  parentName?: string | null;
+  studentName?: string | null;
+  linkStatus: string | null;
+}): { subject: string; html: string } {
+  const parentName = opts.parentName?.trim() || "Parent/Guardian";
+  const studentName = opts.studentName?.trim() || "student";
+  const awaitingVerification = opts.linkStatus !== "approved";
+  const statusLine = awaitingVerification
+    ? "An administrator will now verify the ID you submitted. You can sign in with the password you just created, but the student's records stay locked until your ID is verified."
+    : "Your access is active. Sign in with the password you just created to view the student's records.";
+
+  return {
+    subject: "EDGE: Your parent/guardian account is ready",
+    html: `<p>Hi ${parentName},</p>
+<p>Your parent/guardian account for <strong>${studentName}</strong> has been created on the <strong>EDGE Student Risk Analysis and AI Coaching System</strong>.</p>
+<p>${statusLine}</p>
+<p>Sign in: <a href="${appUrl}">${appUrl}</a></p>
+<p>– The EDGE Team</p>`,
+  };
+}
+
 async function handleRegistrationAccessActivated(
   supabase: ReturnType<typeof createClient>,
   body: Record<string, unknown>,
@@ -175,18 +199,18 @@ async function handleRegistrationAccessActivated(
   if (reqError) throw new Error("Could not verify parent registration request");
   if (!request) throw new Error("Parent registration request not found");
 
-  const { data: approvedLinks, error: linkError } = await supabase
+  const { data: eligibleLinks, error: linkError } = await supabase
     .from("parent_student_links")
     .select("parent_user_id, status")
     .eq("student_user_id", request.student_user_id)
-    .eq("status", "approved");
+    .in("status", [...PARENT_STUDENT_LINK_ELIGIBLE_STATUSES]);
   if (linkError) throw new Error("Could not verify parent link");
 
   const invitationEmailNorm = normalizeEmailForCompare(invitation.email);
   let linkStatus: string | null = null;
   let parentProfileEmail: string | null = null;
 
-  for (const link of approvedLinks ?? []) {
+  for (const link of eligibleLinks ?? []) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("email")
@@ -231,9 +255,10 @@ async function handleRegistrationAccessActivated(
     ),
   );
 
-  const emailContent = buildEmail("admin_approved", {
+  const emailContent = buildRegistrationWelcomeEmail({
     parentName: request.full_name,
     studentName: request.student_name,
+    linkStatus,
   });
 
   const delivery = await deliverRegistrationWelcomeEmail({

@@ -7,8 +7,15 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
-import { sendParentRegistrationWelcomeEmail } from '@/lib/invoke-parent-email';
-import { callCompleteInvitationRpc, toErrorMessage } from '@/lib/complete-invitation';
+import { sendParentRegistrationWelcomeBestEffort } from '@/lib/invoke-parent-email';
+import {
+  EXISTING_ACCOUNT_HELP,
+  callCompleteInvitationRpc,
+  isAlreadyRegisteredError,
+  isObfuscatedExistingUser,
+  signInExistingAccount,
+  toErrorMessage,
+} from '@/lib/complete-invitation';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
 import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
@@ -26,7 +33,7 @@ type TokenState =
   | { phase: 'loading' }
   | { phase: 'invalid'; reason: string }
   | { phase: 'form'; invitation: Invitation }
-  | { phase: 'success'; email: string; welcomeEmailWarning: string | null };
+  | { phase: 'success'; email: string };
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
@@ -117,36 +124,48 @@ export default function CompleteParentRegistration() {
         },
       });
 
-      if (signUpError) {
-        const msg = (signUpError.message || '').toLowerCase();
-        const code = (signUpError as { code?: string }).code ?? '';
-        if (code === 'user_already_exists' || msg.includes('user already registered')) {
-          throw new Error('An account with this email already exists. Sign in, or contact an administrator.');
+      let userId: string | null = null;
+
+      if (signUpError || isObfuscatedExistingUser(signUpData?.user)) {
+        if (signUpError && !isAlreadyRegisteredError(signUpError)) {
+          throw new Error(signUpError.message || 'Registration failed. Please try again.');
         }
-        throw new Error(signUpError.message || 'Registration failed. Please try again.');
-      }
-      if (!signUpData.user) {
-        throw new Error('Sign-up did not return a user. Please try again.');
+        // The auth account can survive from an earlier failed attempt. Signing in
+        // with the password just typed proves identity and lets us finish the RPC.
+        const existing = await signInExistingAccount(inv.email, password);
+        if (!existing) throw new Error(EXISTING_ACCOUNT_HELP);
+        userId = existing.id;
+      } else {
+        if (!signUpData?.user) {
+          throw new Error('Sign-up did not return a user. Please try again.');
+        }
+        userId = signUpData.user.id;
       }
 
-      if (signUpData.session) {
-        await supabase.auth.signOut();
+      if (!userId) {
+        throw new Error('Could not resolve your account. Please try again.');
       }
+
+      // Clear any session granted by signUp/sign-in; completion runs as anon.
+      await supabase.auth.signOut();
 
       const { error: completeError } = await callCompleteInvitationRpc(
         'complete_parent_invitation',
         {
           p_token: token,
-          p_user_id: signUpData.user.id,
+          p_user_id: userId,
           p_id_front_path: idFrontPath,
           p_id_back_path: idBackPath,
         },
-        signUpData.user.id,
       );
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
+        // The RPC commits atomically, so an accepted invitation means an earlier
+        // attempt already completed. Keep going instead of failing the user.
         if (cm.includes('invitation_already_accepted')) {
-          throw new Error('This invitation has already been used.');
+          sendParentRegistrationWelcomeBestEffort({ completion_token: token });
+          setState({ phase: 'success', email: inv.email });
+          return;
         }
         if (cm.includes('invitation_expired') || cm.includes('invitation_not_valid')) {
           throw new Error('This invitation has expired or been cancelled.');
@@ -160,13 +179,10 @@ export default function CompleteParentRegistration() {
         throw new Error(completeError.message || 'Registration failed. Please try again.');
       }
 
-      const welcome = await sendParentRegistrationWelcomeEmail({ completion_token: token });
-      setState({
-        phase: 'success',
-        email: inv.email,
-        // Never surface the raw server error here; the account was created either way.
-        welcomeEmailWarning: welcome.failed ? 'We could not send the welcome email. You can still sign in.' : null,
-      });
+      // Best effort: the account is already created, so never block or surface
+      // an email failure on the success screen.
+      sendParentRegistrationWelcomeBestEffort({ completion_token: token });
+      setState({ phase: 'success', email: inv.email });
     } catch (err: unknown) {
       toast.error(toErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
@@ -199,9 +215,6 @@ export default function CompleteParentRegistration() {
         <p className="edge-auth-lead">
           Your parent account is set up. An administrator will verify your ID before you can view the student&apos;s records.
         </p>
-        {state.welcomeEmailWarning ? (
-          <p className="text-sm text-amber-700 dark:text-amber-400">{state.welcomeEmailWarning}</p>
-        ) : null}
         <Button type="button" className="w-full" onClick={() => navigate('/login')}>Sign in to EDGE</Button>
       </div>
     );

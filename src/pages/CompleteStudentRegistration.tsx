@@ -9,7 +9,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import { completeStudentInvitationRpc } from '@/lib/complete-student-invitation';
-import { toErrorMessage } from '@/lib/complete-invitation';
+import {
+  isAlreadyRegisteredError,
+  isObfuscatedExistingUser,
+  signInExistingAccount,
+  toErrorMessage,
+} from '@/lib/complete-invitation';
 import { commitPasswordReset } from '@/lib/apply-password-reset';
 
 type Invitation = {
@@ -118,26 +123,22 @@ export default function CompleteStudentRegistration() {
         },
       });
 
-      if (signUpError) {
-        const msg = (signUpError.message || '').toLowerCase();
-        const code = (signUpError as { code?: string }).code ?? '';
-        if (code === 'user_already_exists' || msg.includes('user already registered')) {
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email,
-            password: pw,
-          });
-          if (signInError) {
-            throw new Error(
-              'An account already exists for this email. Use Forgot password on the sign-in page, then open this invitation link again or ask an administrator for a new one.',
-            );
-          }
-          userId = signInData.user?.id;
-          activeSession = Boolean(signInData.session);
-        } else {
+      if (signUpError || isObfuscatedExistingUser(signUpData?.user)) {
+        if (signUpError && !isAlreadyRegisteredError(signUpError)) {
           throw new Error(signUpError.message || 'Registration failed. Please try again.');
         }
+        // The auth account can survive from an earlier failed attempt. Signing in
+        // with the password just typed proves identity and lets us finish the RPC.
+        const existing = await signInExistingAccount(email, pw);
+        if (!existing) {
+          throw new Error(
+            'An account already exists for this email. Use Forgot password on the sign-in page, then open this invitation link again or ask an administrator for a new one.',
+          );
+        }
+        userId = existing.id;
+        activeSession = existing.hasSession;
       } else {
-        if (!signUpData.user) {
+        if (!signUpData?.user) {
           throw new Error('Sign-up did not return a user. Please try again.');
         }
         userId = signUpData.user.id;
@@ -151,8 +152,16 @@ export default function CompleteStudentRegistration() {
       const { error: completeError } = await completeStudentInvitationRpc(token, userId);
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
+        // The RPC commits atomically, so an accepted invitation means an earlier
+        // attempt already completed. Keep going instead of failing the user.
         if (cm.includes('invitation_already_accepted')) {
-          throw new Error('This invitation has already been used.');
+          const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: pw });
+          if (!signInError) {
+            navigate('/dashboard');
+            return;
+          }
+          setState({ phase: 'success', email });
+          return;
         }
         if (cm.includes('invitation_expired') || cm.includes('invitation_not_valid')) {
           throw new Error('This invitation has expired or been cancelled.');
