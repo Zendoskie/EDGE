@@ -149,6 +149,14 @@ export default function CompleteStudentRegistration() {
         throw new Error('Could not resolve your account. Please try again.');
       }
 
+      // The completion RPC sets account_status to 'approved'. The profiles guard
+      // trigger rejects that change from an authenticated non-admin (and only
+      // allows auth.uid() IS NULL), so run the RPC without the session and sign
+      // back in afterwards. Parent/staff pages already do the same.
+      if (activeSession) {
+        await supabase.auth.signOut();
+      }
+
       const { error: completeError } = await completeStudentInvitationRpc(token, userId);
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
@@ -172,18 +180,23 @@ export default function CompleteStudentRegistration() {
         if (cm.includes('user_profile_not_found')) {
           throw new Error('Your account is still being set up. Wait a moment and try again.');
         }
+        if (cm.includes('account_status_change_forbidden')) {
+          throw new Error('Your account could not be activated. Sign out, then reopen this invitation link.');
+        }
         throw new Error(completeError.message || 'Registration failed. Please try again.');
       }
 
       if (activeSession) {
+        // Restore the session cleared before the RPC, then finish setup.
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: pw });
+        if (signInError) {
+          setState({ phase: 'success', email });
+          return;
+        }
         try {
           await commitPasswordReset(pw);
         } catch {
-          const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: pw });
-          if (signInError) {
-            setState({ phase: 'success', email });
-            return;
-          }
+          // Non-fatal: the password is already set on the account.
         }
         navigate('/dashboard');
         return;
