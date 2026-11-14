@@ -165,7 +165,7 @@ async function handleRegistrationAccessActivated(
     .eq("token", completionToken)
     .maybeSingle();
   if (invError) throw new Error("Could not verify invitation");
-  if (!invitation?.parent_request_id) throw new Error("Invalid or incomplete registration");
+  if (!invitation?.parent_request_id) throw new Error("Invitation is not linked to a registration request");
 
   const { data: request, error: reqError } = await supabase
     .from("parent_registration_requests")
@@ -173,7 +173,7 @@ async function handleRegistrationAccessActivated(
     .eq("id", invitation.parent_request_id)
     .maybeSingle();
   if (reqError) throw new Error("Could not verify parent registration request");
-  if (!request) throw new Error("Invalid or incomplete registration");
+  if (!request) throw new Error("Parent registration request not found");
 
   const { data: approvedLinks, error: linkError } = await supabase
     .from("parent_student_links")
@@ -216,7 +216,7 @@ async function handleRegistrationAccessActivated(
     parentProfileEmail,
   });
   if (!eligibility.eligible) {
-    throw new Error("Invalid or incomplete registration");
+    throw new Error("Registration welcome email is not eligible for this request");
   }
 
   const parentEmail = normalizeEmail(request.email);

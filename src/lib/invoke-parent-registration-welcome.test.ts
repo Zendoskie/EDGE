@@ -59,11 +59,11 @@ describe('sendParentRegistrationWelcomeEmail', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({ error: 'Invalid or incomplete registration' }),
+      json: async () => ({ error: 'Invitation is not linked to a registration request' }),
     });
 
     const result = await sendParentRegistrationWelcomeEmail({ completion_token: 'bad' });
     expect(result.failed).toBe(true);
-    expect(result.error).toContain('Invalid or incomplete registration');
+    expect(result.error).toContain('Invitation is not linked to a registration request');
   });
 });

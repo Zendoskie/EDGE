@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import { completeStudentInvitationRpc } from '@/lib/complete-student-invitation';
+import { toErrorMessage } from '@/lib/complete-invitation';
 import { commitPasswordReset } from '@/lib/apply-password-reset';
 
 type Invitation = {
@@ -133,7 +134,7 @@ export default function CompleteStudentRegistration() {
           userId = signInData.user?.id;
           activeSession = Boolean(signInData.session);
         } else {
-          throw signUpError;
+          throw new Error(signUpError.message || 'Registration failed. Please try again.');
         }
       } else {
         if (!signUpData.user) {
@@ -162,7 +163,7 @@ export default function CompleteStudentRegistration() {
         if (cm.includes('user_profile_not_found')) {
           throw new Error('Your account is still being set up. Wait a moment and try again.');
         }
-        throw completeError;
+        throw new Error(completeError.message || 'Registration failed. Please try again.');
       }
 
       if (activeSession) {
@@ -188,7 +189,7 @@ export default function CompleteStudentRegistration() {
 
       setState({ phase: 'success', email });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed. Please try again.');
+      toast.error(toErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }

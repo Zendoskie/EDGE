@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
 import { sendParentRegistrationWelcomeEmail } from '@/lib/invoke-parent-email';
+import { callCompleteInvitationRpc, toErrorMessage } from '@/lib/complete-invitation';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
 import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
@@ -122,7 +123,7 @@ export default function CompleteParentRegistration() {
         if (code === 'user_already_exists' || msg.includes('user already registered')) {
           throw new Error('An account with this email already exists. Sign in, or contact an administrator.');
         }
-        throw signUpError;
+        throw new Error(signUpError.message || 'Registration failed. Please try again.');
       }
       if (!signUpData.user) {
         throw new Error('Sign-up did not return a user. Please try again.');
@@ -132,12 +133,16 @@ export default function CompleteParentRegistration() {
         await supabase.auth.signOut();
       }
 
-      const { error: completeError } = await (supabase as any).rpc('complete_parent_invitation', {
-        p_token: token,
-        p_user_id: signUpData.user.id,
-        p_id_front_path: idFrontPath,
-        p_id_back_path: idBackPath,
-      });
+      const { error: completeError } = await callCompleteInvitationRpc(
+        'complete_parent_invitation',
+        {
+          p_token: token,
+          p_user_id: signUpData.user.id,
+          p_id_front_path: idFrontPath,
+          p_id_back_path: idBackPath,
+        },
+        signUpData.user.id,
+      );
       if (completeError) {
         const cm = (completeError.message || '').toLowerCase();
         if (cm.includes('invitation_already_accepted')) {
@@ -149,17 +154,21 @@ export default function CompleteParentRegistration() {
         if (cm.includes('email_mismatch')) {
           throw new Error('The invitation email does not match this account.');
         }
-        throw completeError;
+        if (cm.includes('user_profile_not_found')) {
+          throw new Error('Your account is still being set up. Wait a moment and try again.');
+        }
+        throw new Error(completeError.message || 'Registration failed. Please try again.');
       }
 
       const welcome = await sendParentRegistrationWelcomeEmail({ completion_token: token });
       setState({
         phase: 'success',
         email: inv.email,
-        welcomeEmailWarning: welcome.failed ? (welcome.error ?? 'We could not send the welcome email. You can still sign in.') : null,
+        // Never surface the raw server error here; the account was created either way.
+        welcomeEmailWarning: welcome.failed ? 'We could not send the welcome email. You can still sign in.' : null,
       });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed. Please try again.');
+      toast.error(toErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }

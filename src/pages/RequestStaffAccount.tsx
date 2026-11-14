@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getPublicAppUrl } from '@/lib/app-url';
+import { callCompleteInvitationRpc, toErrorMessage } from '@/lib/complete-invitation';
 import { AuthFrame } from '@/components/shell/AuthSlider';
 import IdVerificationUpload, { type IdVerificationValue } from '@/components/IdVerificationUpload';
 import { newIdFolder, uploadIdImage } from '@/lib/id-verification';
@@ -340,7 +341,7 @@ function InvitationForm({ token }: { token: string }) {
         if (code === 'user_already_exists' || msg.includes('user already registered')) {
           throw new Error('An account with this email already exists. Please sign in.');
         }
-        throw signUpError;
+        throw new Error(signUpError.message || 'Registration failed. Please try again.');
       }
 
       if (!signUpData.user) {
@@ -356,9 +357,10 @@ function InvitationForm({ token }: { token: string }) {
 
       // 2. Complete the invitation: validates token + email match,
       //    marks invitation accepted, and sets account_status to 'approved'.
-      const { error: completeError } = await supabase.rpc(
-        'complete_staff_invitation' as any,
+      const { error: completeError } = await callCompleteInvitationRpc(
+        'complete_staff_invitation',
         { p_token: token, p_user_id: userId },
+        userId,
       );
 
       if (completeError) {
@@ -372,13 +374,16 @@ function InvitationForm({ token }: { token: string }) {
         if (cm.includes('invitation_already_accepted')) {
           throw new Error('This invitation has already been used.');
         }
-        throw completeError;
+        if (cm.includes('user_profile_not_found')) {
+          throw new Error('Your account is still being set up. Wait a moment and try again.');
+        }
+        throw new Error(completeError.message || 'Registration failed. Please try again.');
       }
 
       // 3. Done.
       setState({ phase: 'success', email: inv.email });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Registration failed. Please try again.');
+      toast.error(toErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
